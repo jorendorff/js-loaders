@@ -364,11 +364,13 @@ module "js/loaders" {
         eval(src, options) {
             let script = $CompileScript(this, src, options.url);
 
-            // Linking logically precedes execution, so the code below has two
-            // separate loops.  Fusing the loops would be observably different,
-            // because the body of module "A" could do System.delete("B").
+            /*
+              Linking logically precedes execution, so the code below has two
+              separate loops.  Fusing the loops would be observably different,
+              because the body of module "A" could do System.delete("B").
 
-            // First loop: Look up all modules imported by src.
+              First loop: Look up all modules imported by src.
+            */
             let names = $ScriptImportedModuleNames(script);
             let modules = [];
             let referer = {name: null, url: options.url};
@@ -389,16 +391,21 @@ module "js/loaders" {
                 $ArrayPush(modules, m);
             }
 
-            // The modules are already linked.  Now link the script.  Since
-            // this can throw a link error, it is observable that this happens
-            // before dependencies are executed below.
+            /*
+              The modules are already linked.  Now link the script.  Since
+              this can throw a link error, it is observable that this happens
+              before dependencies are executed below.
+            */
             $LinkScript(script, modules);
 
-            // Second loop:  Execute any module bodies that have not been
-            // executed yet.  Module bodies may throw.
-            // Loader.@ensureModuleExecuted() can execute other module
-            // bodies.  It ensures that barring cycles, a module is always
-            // executed before other modules that depend on it.
+            /*
+              Second loop:  Execute any module bodies that have not been
+              executed yet.  Module bodies may throw.
+
+              Loader.@ensureModuleExecuted() can execute other module bodies in
+              the graph, to ensure that barring cycles, a module is always
+              executed before other modules that depend on it.
+            */
             for (let i = 0; i < modules.length; i++)
                 Loader.@ensureModuleExecuted(modules[i]);
 
@@ -499,7 +506,7 @@ module "js/loaders" {
         }
 
         /*
-          ISSUE: proposed name for this method: addSources(sources)
+          ISSUE:  Proposed name for this method: addSources(sources)
         */
         ondemand(sources) {
             /*
@@ -507,10 +514,29 @@ module "js/loaders" {
               loop too.
             */
             for (let [url, contents] of $PropertyIterator(sources)) {
-                if (contents === null)
+                if (contents === null) {
                     $MapDelete(this.@ondemand, url);
-                else
-                    $MapSet(this.@ondemand, url, contents);  /* ISSUE: type checking here? */
+                } else if (typeof contents === 'string') {
+                    $MapSet(this.@ondemand, url, contents);
+                } else {
+                    /*
+                      contents must be either null, a string, or an iterable object.
+
+                      Rationale for making a copy of contents rather than
+                      keeping the object around: Determinism, exposing fewer
+                      implementation details.  Examining a JS object can run
+                      arbitrary code.  We want to fire all those hooks now,
+                      then store the data in a safer form so user code can't
+                      observe when we look at it.
+                    */
+                    let names = [];
+                    for (let name of contents) {
+                        if (typeof name !== 'string')
+                            throw $TypeError("ondemand: module names must be strings");
+                        $ArrayPush(names, name);
+                    }
+                    $MapSet(this.@ondemand, url, names);
+                }
             }
 
             // Destroy the reverse cache.
