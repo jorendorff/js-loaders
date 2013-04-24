@@ -753,59 +753,56 @@ module "js/loaders" {
                         throw $TypeError("import: options.url must be a string");
                 }
             }
+            let referer = {name, url};
 
-            function success(m) {
+            let fullName;
+            let setFullName = normalized => { fullName = normalized; };
+
+            function success() {
+                $Assert(typeof fullName === 'string');
+                let m = $MapGet(self.@modules, fullName);
+                if (m === undefined) {
+                    let exc = $TypeError("import(): module \"" + fullName +
+                                         "\" was deleted from the loader");
+                    return fail(exc);
+                }
                 Loader.@ensureModuleExecuted(m);
                 return done(m);
             }
 
-            this.@importFor({name, url}, moduleName, null, success, fail);
+            let unit = new LinkageUnit(this, success, fail);
+            this.@importFor(unit, referer, moduleName, setFullName);
         }
 
         /*
           The common implementation of the import() method and the processing
-          of import declarations in ES code.  There are two ways to call this
-          method:
+          of import declarations in ES code.
 
-          - If unit is non-null, it the result is reported to the unit via one
-            of these callback methods:
-              unit.onLinkedModule(name, module)
-              unit.addModuleAndDependencies(normalized, status)
-              unit.fail(exc)
-            In this case done and fail must be null.
+          unit is a LinkageUnit object. The result of loading the specified
+          module is reported to the unit via one of these callback methods:
+            unit.onLinkedModule(name, module)
+            unit.addModuleAndDependencies(normalized, status)
+            unit.fail(exc)
+          These callbacks are called asynchronously, in fresh event loop turns.
 
-          - If unit is null, then done and fail must be functions. In this
-            case, the loader fully loads the requested module. It creates a new
-            LinkageUnit to oversee the process, if there isn't already a
-            LinkageUnit that's exactly what we need. The result is either an
-            error, reported via fail(exc), or a Module object that has the
-            $ModuleHasExecuted bit set, reported via done(module).
+          referer provides information about the context of the import() call
+          or import-declaration.  This information is passed to all the loader
+          hooks.
 
-          In both cases, no callback is called before @importFor returns. If
-          the module is already in the registry, success is reported in the
-          next turn of the event loop.
+          name is the (pre-normalize) name of the module to be imported, as it
+          appears in the import-declaration or as the argument to
+          loader.import().
 
-          Implementation issue:  matching fetch callbacks to @importFor
-          invocations.
+          setFullName is a callback used to notify the caller of the full name
+          of the module being imported.  This is called with one argument, the
+          module's full name, after a successful call to the normalize hook.
+          setFullName must not throw.  (Unlike everything else, setFullName
+          is called synchronously.)
 
-          Not clear how the LinkageUnit will figure out what on earth it's
-          looking at when its callback eventually gets called.  Modules don't
-          even have a name property, plus when this gets called we do not yet
-          know what the normalized name will be.  It can be done with another
-          few closures, to be sure...
-
-          TODO:  suggest alternative name for options.referer. It really means
-          "fullNameOfImportingModule", nothing to do with the nasty
-          Referer HTTP header.  Perhaps "importContext".
-
-          TODO:  Implementation issue:  referer should be provided by the caller.
+          TODO:  Suggest alternative name for referer.  It is really nothing to
+          do with the nasty Referer HTTP header.  Perhaps "importContext".
         */
-        @importFor(referer, name, unit, done, fail) {
-            if (unit !== null) {
-                done = mod => unit.onLinkedModule(name, mod); ???
-                fail = exc => unit.fail(exc);
-            }
-
+        @importFor(unit, referer, name, setFullName) {
             /*
               Call the normalize hook to get a normalized module name and
               metadata.  See the comment on normalize().
@@ -874,17 +871,24 @@ module "js/loaders" {
                 if (metadata === undefined)
                     metadata = {};
             } catch (exc) {
-                AsyncCall(fail, exc);
+                $AddForNextTurn(() => unit.fail(exc));
                 return;
             }
 
+            setFullName(normalized);
+
             // If the module has already been loaded and linked, return that.
-            let m = $MapGet(this.@modules, moduleName);
+            let m = $MapGet(this.@modules, normalized);
             if (m !== undefined) {
-                if (unit !== null)
-                    $AddForNextTurn(() => unit.onModule(m));
-                else
-                    $AddForNextTurn(() = done(m));
+                /*
+                  ISSUE:  METADATA CLEANUP AND EARLY PIPELINE EXIT.  We have
+                  called the normalize hook, which may have created metadata.
+                  If so, that metadata is just dropped.  There is no per-load
+                  cleanup/dispose hook.  This is probably OK but I want to
+                  check.
+                */
+
+                $AddForNextTurn(() => unit.onLinkedModule(m));
                 return;
             }
 
@@ -904,34 +908,21 @@ module "js/loaders" {
             // If the module is loading, attach to the existing in-flight load.
             let status = $MapGet(this.@loading, normalized);
             if (status !== undefined) {
-                // This module is already loading.
-
-                /*
-                  ISSUE: We have called the normalize hook, which may have
-                  created metadata.  If so, that metadata is just dropped.
-                  No user hook is ever notified about it.  This is
-                  probably OK but I want to check.
-                */
-
-                if (unit !== null) {
-                    // Add the existing ModuleStatus to the existing
-                    // LinkageUnit.
-                    unit.addModuleAndDependencies(normalized, status);
-                } else if (status.soloLinkageUnit !== null) {
-                    // There is already a LinkageUnit consisting of only this
-                    // module and its dependencies. Piggyback on that.
-                    status.soloLinkageUnit.addListeners(done, fail);
-                } else {
-                    // Some other LinkageUnit is loading this module as
-                    // part of another module or script's dependency graph.
-                    // Make a new LinkageUnit loading just this module.
-                    this.@addLinkageUnitForModule(normalized, status, done, fail);
-                }
+                // This module is already loading.  Hook the LinkageUnit to the
+                // existing in-flight ModuleStatus.
+                unit.addModuleAndDependencies(normalized, status);
                 return;
             }
 
+            /*
+              Create a ModuleStatus object for this module load.  Once this
+              object is in this.@loading, other LinkageUnits may add themselves
+              to its set of listeners, so errors must be reported to
+              status.fail(), to affect all listening LinkageUnits, not just
+              unit.
+            */
             status = new ModuleStatus;
-            status.addHooks(unit, done, fail); // ???
+            $ArrayPush(status.listeners, unit);
             $MapSet(this.@loading, normalized, status);
 
             try {
@@ -970,31 +961,24 @@ module "js/loaders" {
                 /*
                   Implementation issue:  This isn't implemented yet, but
                   status.fail() will be responsible for forwarding this error
-                  to the unit or fail() hook, as well as all *other*
-                  LinkageUnits and/or fail hooks that have attached to status
-                  in the meantime.  It is also responsible for removing itself
-                  from this.@loading.
+                  to both unit and all *other* LinkageUnits that have attached
+                  to status in the meantime.  It is also responsible for
+                  removing status itself from this.@loading.
                 */
                 status.fail(exc);
                 return;
             }
 
-            // Call the fetch hook.
-            //
-            // On error, we will catch the exception below and call fail().
-            //
-            // On success, success and failure notification is forwarded to
-            // the ModuleStatus via these two lambdas. Note that these
-            // lambdas do not call done() and fail().
+            // Prepare to call the fetch hook.
             let fetchCompleted = false;
 
-            function fulfill(src, type, actualAddress) {
+            let fulfill = (src, type, actualAddress) => {
                 if (fetchCompleted)
                     return;
                 fetchCompleted = true;
 
                 // Implementation issue: check types here, before forwarding?
-                return status.onFetch(src, type, actualAddress);
+                return this.@onFetch(unit, normalized, metadata, src, type, actualAddress);
             }
 
             function reject(exc) {
@@ -1040,23 +1024,18 @@ module "js/loaders" {
                     status.fail($TypeError("mischief was not actually managed"));
             }
 
+            let options = {normalized, referer, metadata};
+
+            // Call fetch hook.
             try {
-                this.fetch(address, fulfill, reject, mischiefManaged, {normalized, referer, metadata});
+                this.fetch(address, fulfill, reject, mischiefManaged, options);
             } catch (exc) {
                 status.fail(exc);
-                return;
             }
+        }
 
-            if (unit === null) {
-                // Create a new LinkageUnit, subscribing the done() and fail()
-                // callbacks to it so that fulfill() eventually triggers
-                // done() and reject() immediately triggers fail().
-                this.@addLinkageUnitForModule(normalized, status, done, fail);
-            } else {
-                // Add status to the existing LinkageUnit.
-                unit.addModule(normalized, status);
-                status.listeners.push(unit);
-            }
+        @onFetch(unit, normalized, metadata, src, type, actualAddress) {
+            throw fit;  // TODO translate hook, link hook, listener notification
         }
 
         @failLinkageUnits(units, exc) {
@@ -1075,14 +1054,10 @@ module "js/loaders" {
               "locking in" was the right idea after all.
             */
 
-            // Call LinkageUnit fail hooks. (ISSUE: In what order?)
-            for (let i = 0; i < units.length; i++) {
-                let callbacks = units[i].failCallbacks;
-                for (let j = 0; j < callbacks.length; j++) {
-                    let fail = callbacks[j];
-                    AsyncCall(fail, exc);
-                }
-            }
+            // Call LinkageUnit fail hooks.
+            // ISSUE (NOT YET RIPE): In what order?
+            for (let i = 0; i < units.length; i++)
+                AsyncCall(units[i].failCallback, exc);
         }
 
         /*
@@ -1500,14 +1475,9 @@ module "js/loaders" {
             // TODO: make LinkageUnits not inherit from Object.prototype, for isolation;
             // or else use symbols for all these. :-P
             this.loader = loader;
-            this.doneCallbacks = [done];
-            this.failCallbacks = [fail];
+            this.doneCallback = done;
+            this.failCallback = fail;
             // TODO: finish overall load state
-        }
-
-        addListeners(done, fail) {
-            $ArrayPush(this.doneCallbacks, done);
-            $ArrayPush(this.failCallbacks, fail);
         }
 
         addModuleAndDependencies(name, modst) {
@@ -1545,15 +1515,20 @@ module "js/loaders" {
           .status === "waiting"
           .module is a Module or null
           .factory is a callable object or null
-          .dependencies is an Array of strings
+          .dependencies is an Array of strings (full module names)
 
-          Exactly one of [.module, .factory] is non-null.
+      Exactly one of [.module, .factory] is non-null.
 
-      3. Ready: The module has been linked. A Module object exists. It may have
-      already executed; it may be executing now; but it may only have been
-      scheduled to execute and we're in the middle of executing some other module
-      (a dependency or something totally unrelated). Or the module may be
-      factory-made in which case there is nothing left to execute.
+      TODO:  Cope with .dependencies needing to update to full names.  By the
+      time the module is linked, every element in .dependencies needs to be
+      populated with a full module name.
+
+      3. Ready: The module has been linked. A Module object exists. WARNING:
+      THIS COMMENT MAY BE OBSOLETE. It may have already executed; it may
+      be executing now; but it may only have been scheduled to execute and
+      we're in the middle of executing some other module (a dependency or
+      something totally unrelated). Or the module may be factory-made in which
+      case there is nothing left to execute.
 
           .status === "ready"
           .module is a Module
@@ -1675,8 +1650,8 @@ module "js/loaders" {
             can throw or return an invalid value.
 
           - The normalize, resolve, and link hooks may return objects that are
-            then destructured.  They could return objects that throw from a
-            getter or Proxy trap while being destructured.
+            then destructured.  These objects could throw from a getter or
+            Proxy trap during destructuring.
 
           - The fetch hook can report an error via the reject() callback
             (and perhaps skip() though it's not clear to me what that is).
@@ -1700,8 +1675,8 @@ module "js/loaders" {
         */
         fail(exc) {
             $Assert(this.status === "loading");
-            
             throw fit;  // TODO
+            this.loader.@failLinkageUnits(this.listeners);
         }
 
         /*
