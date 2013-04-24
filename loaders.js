@@ -362,7 +362,14 @@ module "js/loaders" {
           (2013 April 22)
         */
         eval(src, options) {
-            let script = $CompileScript(this, src, options.url);
+            let url = this.@baseURL;
+            if (options !== undefined && "url" in options) {
+                url = options.url;
+                if (typeof url !== 'string')
+                    throw $TypeError("eval: options.url must be a string");
+            }
+
+            let script = $CompileScript(this, src, url);
 
             /*
               Linking logically precedes execution, so the code below has two
@@ -373,7 +380,7 @@ module "js/loaders" {
             */
             let names = $ScriptImportedModuleNames(script);
             let modules = [];
-            let referer = {name: null, url: options.url};
+            let referer = {name: null, url: url};
             for (let i = 0; i < names.length; i++) {
                 let name = this.normalize(names[i], {referer});
 
