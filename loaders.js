@@ -50,6 +50,8 @@
   designed to be upwards-compatible to Futures.  per samth, 2013 April 22.
 */
 
+"use strict";
+
 import {
     // Embedding features
     $ReportUncaughtException,
@@ -735,9 +737,29 @@ module "js/loaders" {
         import(moduleName,
                done = () => undefined,
                fail = (exc) => { throw exc; },
-               options = {})
+               options = undefined)
         {
-            this.@importFor(moduleName, null, done, fail, options);
+            // Build referer.
+            let name = null, url = this.@baseURL;
+            if (options !== undefined) {
+                if ("module" in options) {
+                    name = options.module;
+                    if (typeof name !== 'string')
+                        throw $TypeError("import: options.module must be a string");
+                }
+                if ("url" in options) {
+                    url = options.url;
+                    if (typeof url !== 'string')
+                        throw $TypeError("import: options.url must be a string");
+                }
+            }
+
+            function success(m) {
+                Loader.@ensureModuleExecuted(m);
+                return done(m);
+            }
+
+            this.@importFor({name, url}, moduleName, null, success, fail);
         }
 
         /*
@@ -778,15 +800,15 @@ module "js/loaders" {
 
           TODO:  Implementation issue:  referer should be provided by the caller.
         */
-        @importFor(name, unit, done, fail, options) {
+        @importFor(referer, name, unit, done, fail) {
             if (unit !== null) {
                 done = mod => unit.onLinkedModule(name, mod); ???
                 fail = exc => unit.fail(exc);
             }
-            let referer = ???;
 
             /*
-              Call the normalize hook to get normalized and metadata.
+              Call the normalize hook to get a normalized module name and
+              metadata.  See the comment on normalize().
             */
             let normalized, metadata;
             try {
@@ -801,17 +823,6 @@ module "js/loaders" {
                 */
                 metadata = undefined;
                 if (result === undefined) {
-                    /*
-                      ISSUE: the google doc does not say what the default
-                      behavior should be, but I think the intent is that in
-                          module "a/b/c" {
-                              import "x" as x;
-                              import "../y" as y;
-                              import "/z" as z;
-                          }
-                      we should be importing "a/b/x", "a/y", and "z".
-                      Actually rather hard to say.
-                    */
                     normalized = request;
                 } else if (typeof result === "string") {
                     normalized = result;
@@ -833,9 +844,9 @@ module "js/loaders" {
                       Several hooks, including the normalize hook, may return
                       multiple values, by returning an object where several
                       properties are significant.  In all these cases, the
-                      object is just a temporary record.  The loader gets the
-                      data it wants out of the returned object and then
-                      discards it.
+                      object is just a temporary record.  The loader
+                      immediately gets the data it wants out of the returned
+                      object and then discards it.
 
                       In this case, we care about two properties on the
                       returned object, .normalized and .metadata, but only
@@ -1051,6 +1062,32 @@ module "js/loaders" {
                 // Add status to the existing LinkageUnit.
                 unit.addModule(normalized, status);
                 status.listeners.push(unit);
+            }
+        }
+
+        @failLinkageUnits(units, exc) {
+            /*
+              TODO: Find stranded ModuleStatuses, remove them from
+              this.@loading, and neuter their pending fetch() callbacks, if any
+              (so that the translate hook is never called).
+
+              If this failure is due to a ModuleStatus failing (e.g. a fetch
+              failing), then this step will definitely remove the ModuleStatus
+              that failed.
+
+              ISSUE: There's no efficient way to find stranded
+              ModuleStatuses. We can mark and sweep, if we keep a list of all
+              the other not-yet-failing LinkageUnits.  Beginning to think
+              "locking in" was the right idea after all.
+            */
+
+            // Call LinkageUnit fail hooks. (ISSUE: In what order?)
+            for (let i = 0; i < units.length; i++) {
+                let callbacks = units[i].failCallbacks;
+                for (let j = 0; j < callbacks.length; j++) {
+                    let fail = callbacks[j];
+                    AsyncCall(fail, exc);
+                }
             }
         }
 
@@ -1471,7 +1508,7 @@ module "js/loaders" {
             this.loader = loader;
             this.doneCallbacks = [done];
             this.failCallbacks = [fail];
-            // TODO: finish
+            // TODO: finish overall load state
         }
 
         addListeners(done, fail) {
@@ -1484,10 +1521,6 @@ module "js/loaders" {
         }
 
         onLinkedModule(mod) {
-            // TODO
-        }
-
-        fail(exc) {
             // TODO
         }
     }
