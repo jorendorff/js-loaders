@@ -345,8 +345,7 @@ module "js/loaders" {
           looking at Error().stack or Error().fileName for security purposes!
 
           ISSUE:  What about letting the user set the line number?
-
-          RESOLVED:  samth is receptive. 2013 April 22.
+          samth is receptive.  2013 April 22.
 
           NOTE:  The google doc mentions another option, options.module, which
           would be a string and would cause all imports to be normalized
@@ -681,27 +680,6 @@ module "js/loaders" {
                 AsyncCall(fail, exc);
             }
 
-            /*
-              ISSUE: what is skip()?
-
-              The spec calls the third callback argument to the fetch hook
-              'skip'.
-
-              skip() means "i'm not going to fetch this url, you'll never hear
-              from me again-- but don't worry about it, someone will get the
-              modules you want and eval() or loader.set() them into existence".
-              It is a way to support bulk-loading.  A fetch hook could respond
-              to everything with skip()!
-
-              But I think I talked samth into changing the hook to have a name
-              like done() or, jokingly, mischiefManaged(), and require the
-              fetch hook to call it only *after* the desired module is
-              available.  The problem with skip() was that it left the loader
-              with an impression that some work would be done, but no
-              expectation of an error callback if it went wrong.  The error
-              callback is important; failure must kill the whole LinkageUnit
-              and call its fail hook.  --jorendorff, 2013 April 22.
-            */
             function mischiefManaged() {
                 if (fetchCompleted)
                     return;
@@ -1022,13 +1000,39 @@ module "js/loaders" {
                 return status.fail(exc);
             }
 
+            /*
+              ISSUE: what is skip()?
+
+              The spec calls the third callback argument to the fetch hook
+              'skip'.
+
+              skip() means "i'm not going to fetch this url, you'll never hear
+              from me again-- but don't worry about it, someone will get the
+              modules you want and eval() or loader.set() them into existence".
+              It is a way to support bulk-loading.  A fetch hook could respond
+              to everything with skip()!
+
+              But I think I talked samth into changing the hook to have a name
+              like done() or, jokingly, mischiefManaged(), and require the
+              fetch hook to call it only *after* the desired module is
+              available.  The problem with skip() was that it left the loader
+              with an impression that some work would be done, but no
+              expectation of an error callback if it went wrong.  The error
+              callback is important; failure must kill the whole LinkageUnit
+              and call its fail hook.  --jorendorff, 2013 April 22.
+
+              ISSUE: Want use cases/rationale for skip/mischiefManaged.
+              --jorendorff, 2013 April 24.
+            */
             function mischiefManaged() {
                 if (fetchCompleted)
                     return;
                 fetchCompleted = true;
 
-                // TODO: cope with mischief
-                DIE;
+                if ($MapHas(this.@modules, normalized))
+                    status.cancel();
+                else
+                    status.fail($TypeError("mischief was not actually managed"));
             }
 
             try {
@@ -1670,6 +1674,17 @@ module "js/loaders" {
         fail(exc) {
             $Assert(this.status === "loading");
             
+            throw fit;  // TODO
+        }
+
+        /*
+          Cancel a load because the fetch hook, instead of loading source code,
+          went ahead and used eval() or loader.set() to put a finished module
+          into the registry.
+
+          (Used by the mischiefManaged callback in Loader.@importFor().)
+        */
+        cancel() {
             throw fit;  // TODO
         }
     }
