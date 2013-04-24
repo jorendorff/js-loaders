@@ -736,7 +736,7 @@ module "js/loaders" {
         */
         import(moduleName,
                done = () => undefined,
-               fail = (exc) => { throw exc; },
+               fail = exc => { throw exc; },
                options = undefined)
         {
             // Build referer.
@@ -870,6 +870,7 @@ module "js/loaders" {
 
                     metadata = result.metadata;  // can throw
                 }
+
                 if (metadata === undefined)
                     metadata = {};
             } catch (exc) {
@@ -880,17 +881,10 @@ module "js/loaders" {
             // If the module has already been loaded and linked, return that.
             let m = $MapGet(this.@modules, moduleName);
             if (m !== undefined) {
-                if (unit !== null) {
+                if (unit !== null)
                     $AddForNextTurn(() => unit.onModule(m));
-                } else {
-                    // In this case, if the module has never been executed, we
-                    // must do so before calling done().
-                    let work = () => {
-                        Loader.@ensureModuleExecuted(m);
-                        return m;
-                    };
-                    $AddForNextTurn(Loader.@makeContinuation(work, done, fail));
-                }
+                else
+                    $AddForNextTurn(() = done(m));
                 return;
             }
 
