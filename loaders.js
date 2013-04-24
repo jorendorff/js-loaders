@@ -371,15 +371,20 @@ module "js/loaders" {
             // First loop: Look up all modules imported by src.
             let names = $ScriptImportedModuleNames(script);
             let modules = [];
+            let referer = {name: null, url: options.url};
             for (let i = 0; i < names.length; i++) {
-                let m = $MapGet(this.@modules, names[i]);
+                let name = this.normalize(names[i], {referer});
+
+                let m = $MapGet(this.@modules, name);
                 if (m === undefined) {
-                    // Rationale for throwing a SyntaxError: SyntaxError is
-                    // already used for a few conditions that can be detected
-                    // statically (before a script begins to execute) but are
-                    // not really syntax errors per se.  Reusing it seems
-                    // better than inventing a new Error subclass.
-                    throw new SyntaxError("module not loaded: " + names[i]);
+                    /*
+                      Rationale for throwing a SyntaxError: SyntaxError is
+                      already used for a few conditions that can be detected
+                      statically (before a script begins to execute) but are
+                      not really syntax errors per se.  Reusing it seems
+                      better than inventing a new Error subclass.
+                    */
+                    throw new SyntaxError("module not loaded: " + name);
                 }
                 $ArrayPush(modules, m);
             }
