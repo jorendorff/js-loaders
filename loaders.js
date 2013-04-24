@@ -102,6 +102,8 @@ module "js/loaders" {
       Return true if Type(v) is Object.
     */
     function IsObject(v) {
+        // TODO: I don't think this is correct per ES6. May not be a good way
+        // to do it.
         return (typeof v === "object" && v !== null) ||
                typeof v === "function";
     }
@@ -978,7 +980,7 @@ module "js/loaders" {
                 fetchCompleted = true;
 
                 // Implementation issue: check types here, before forwarding?
-                return this.@onFetch(unit, normalized, metadata, src, type, actualAddress);
+                return this.@onFetch(status, normalized, metadata, src, type, actualAddress);
             }
 
             function reject(exc) {
@@ -1034,8 +1036,28 @@ module "js/loaders" {
             }
         }
 
-        @onFetch(unit, normalized, metadata, src, type, actualAddress) {
-            throw fit;  // TODO translate hook, link hook, listener notification
+        @onFetch(status, normalized, metadata, src, type, actualAddress) {
+            let 
+            try {
+                src = this.translate(src, {normalized, actualAddress, metadata, type});
+                let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
+
+                // TODO destructure linkResult
+                if (linkResult === undefined) {
+                    throw fit;  // TODO
+                } else if (!IsObject(linkResult)) {
+                    throw $TypeError("link hook must return an object or undefined");
+                } else if ($IsModule(linkResult)) {
+                    throw fit;  // TODO
+                } else {
+                    imports = ???;
+                    exports = linkResult.exports;
+                    execute = ???;
+                }
+                throw fit;  // TODO
+            } catch (exc) {
+                status.fail(exc);
+            }
         }
 
         @failLinkageUnits(units, exc) {
