@@ -66,7 +66,6 @@ import {
     $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
     $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
     $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
-    $ArrayIterator  // $ArrayIterator(arr) ~= arr[@@iterator]()
     $SetNew,        // $SetNew() ~= new Set
     $SetHas,        // $SetHas(set, v) ~= set.has(v)
     $SetAdd,        // $SetAdd(set, v) ~= set.add(v)
@@ -312,7 +311,8 @@ module "js/loaders" {
                 $SetAdd(seen, m);
 
                 let deps = $ModuleGetLinkedModules(mod);
-                for (let dep of $ArrayIterator(deps)) {
+                for (let i = 0; i < deps.length; i++) {
+                    let dep = deps[i];
                     if (!$SetHas(seen, dep))
                         walk(dep);
                 }
@@ -1636,7 +1636,6 @@ module "js/loaders" {
         }
     }
 }
-
 
 /*
   ISSUE: what if someone executes some code that says
