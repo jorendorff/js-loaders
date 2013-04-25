@@ -1,6 +1,8 @@
 /*
   loaders.js - pseudo-implementation of proposed ES6 module loaders
 
+  *** Current status **********************************************************
+
   This is currently extremely incomplete.  The following are in decent shape:
     - the Loader constructor;
     - .eval(src, options) and @ensureModuleExecuted;
@@ -19,6 +21,8 @@
   then the code here focuses on the first phase, with the easy bits of the
   third phase implemented too.
 
+
+  *** About loaders ***********************************************************
 
   The module loader is implemented in three classes, only one of which is
   ever visible to scripts.
@@ -171,12 +175,12 @@ module "js/loaders" {
             this.@locations = undefined;
 
             /* Various options. */
-            this.@global = options.global;
-            this.@strict = !!options.strict;
+            this.@global = options.global;  // P4 ISSUE: ToObject here?
+            this.@strict = ToBoolean(options.strict);
             this.@baseURL = $ToString(options.baseURL);
 
             /*
-              ISSUE: DETAILED BEHAVIOR OF HOOKS
+              P4 ISSUE: DETAILED BEHAVIOR OF HOOKS
 
               As implemented here, hooks are just ordinary properties of the
               Loader object.  Default implementations are just ordinary methods
@@ -241,12 +245,12 @@ module "js/loaders" {
         }
 
         /*
-          ISSUE:  Proposed name for this method: addSources(sources)
+          P4 ISSUE:  Proposed name for this method: addSources(sources)
         */
         ondemand(sources) {
             /*
-              ISSUE: Propose using the default iteration protocol for the outer
-              loop too.
+              P3 ISSUE: Propose using the default iteration protocol for the
+              outer loop too.
             */
             for (let [url, contents] of $PropertyIterator(sources)) {
                 if (contents === null) {
@@ -415,7 +419,7 @@ module "js/loaders" {
           certainly shouldn't matter to any code; code really shouldn't be
           looking at Error().stack or Error().fileName for security purposes!
 
-          ISSUE:  What about letting the user set the line number?
+          P4 ISSUE:  What about letting the user set the line number?
           samth is receptive.  2013 April 22.
 
           NOTE:  The google doc mentions another option, options.module, which
@@ -423,7 +427,7 @@ module "js/loaders" {
           relative to that module name.  per samth, 2013 April 22.  jorendorff
           objected to this feature and it is not presently implemented.
 
-          ISSUE:
+          P2 ISSUE:
           <jorendorff> samth: so does global.eval also go through the translate hook?
           <jorendorff> ...even direct eval?
           <samth> jorendorff: yes
@@ -583,7 +587,7 @@ module "js/loaders" {
             unit.addScriptAndDependencies(script);
 
             /*
-              ISSUE: EXECUTION ORDER WHEN MULTIPLE LINKAGE UNITS BECOME
+              P4 ISSUE: EXECUTION ORDER WHEN MULTIPLE LINKAGE UNITS BECOME
               LINKABLE AT ONCE.
 
               Proposed: When a fetch fulfill callback fires and completes the
@@ -602,26 +606,21 @@ module "js/loaders" {
 
           On success, call the done callback.
 
-          ISSUE: Does this capture the result of evaluating the script and pass
-          that value to the callback?  The code below assumes yes.
+          P2 ISSUE: Does this capture the result of evaluating the script and
+          pass that value to the callback?  The code below assumes yes.
 
           On error, pass an exception value or error message to the fail
           callback.
 
           The callbacks will not be called until after evalAsync returns.
 
-          ISSUE:  What should happen if the fetch hook calls skip() when we're
-          trying to fetch a script, not a module?
-
-          RESOLVED:  An error (reported to the fail callback).
-
-          ISSUE:  The google doc says:
+          P2 ISSUE:  The google doc says:
               Loader.prototype.load(url, callback, errback, { url }) -> void
           I count two "url" arguments there.
 
           TODO: load modules relative to url
 
-          ISSUE: I think the spec has the default errback doing nothing; the
+          P2 ISSUE: I think the spec has the default errback doing nothing; the
           reason I have it throwing is so that if something fails, and no error
           callback was provided, the browser embedding will see it as an
           uncaught excpetion and log it to the console.
@@ -642,7 +641,7 @@ module "js/loaders" {
             */
 
             /*
-              ISSUE: Check callability of callbacks here (and everywhere
+              P3 ISSUE: Check callability of callbacks here (and everywhere
               success/failure callbacks are provided)?  It would be a mercy,
               since the TypeError if they are not functions happens much later
               and with an empty stack.  But Futures don't do it.  Assuming no.
@@ -659,12 +658,6 @@ module "js/loaders" {
               scripts.  But we do want load() to use the fetch hook, which
               means we must come up with a metadata value of some kind
               (this is ordinarily the normalize hook's responsibility).
-
-              ISSUE:  Is loader.load() supposed to call the fetch hook?
-
-              RESOLVED:  Yes.  loader.load() does not call normalize/resolve
-              hooks but it does call the fetch/translate/link hooks.  per
-              samth, 2013 April 22.
             */
             let metadata = {};
 
@@ -675,7 +668,7 @@ module "js/loaders" {
             };
 
             /*
-              ISSUE: USER HOOKS AND CALLBACK MISUSE.  The fetch hook is user
+              P2 ISSUE: FETCH HOOK AND CALLBACK MISUSE.  The fetch hook is user
               code.  Callbacks the Loader passes to it are subject to every
               variety of misuse.  They must cope with being called multiple
               times (which should be a no-op, for Future compatibility) and
@@ -690,12 +683,13 @@ module "js/loaders" {
             let fetchCompleted = false;
 
             /*
-              ISSUE: USER HOOKS AND TOO-FAST CALLBACKS.  All the Loader methods
-              promise not to call any callbacks before returning; even if the
-              method has all the information it needs to report an error, it
-              schedules the fail() callback to be called during the next event
-              loop turn.  Should we hold user hooks to the same standard?  What
-              should happen if they call a callback immediately?
+              P2 ISSUE: USER HOOKS AND TOO-FAST CALLBACKS.  All the Loader
+              methods promise not to call any callbacks before returning; even
+              if the method has all the information it needs to report an
+              error, it schedules the fail() callback to be called during the
+              next event loop turn.  Should we hold user hooks to the same
+              standard?  What should happen if they call a callback
+              immediately?
             */
             function fulfill(src, type, actualAddress) {
                 if (fetchCompleted)
@@ -737,15 +731,14 @@ module "js/loaders" {
             }
 
             /*
-              ISSUE: Type of the argument to reject(). The Google doc says
+              P1 ISSUE: Type of the argument to reject() and error callbacks
+              generally. The Google doc does not specify the type of other
+              error callbacks.  For reject in particular, it says
                   reject: (message: string) -> void
-              but I think we should allow the argument to be any value.
-              (Futures are like that.)
-            */
-
-            /*
-              ISSUE:  If the fetch hook throws, does load() catch that and
-              forward to the error callback?  Assuming yes.
+              I think we should allow the argument to be any value (like
+              Futures), pass exception values thrown from user code to it
+              uninspected, and pass Error objects to it when reporting our own
+              errors.
             */
             try {
                 this.fetch(null, fulfill, reject, skip, fetchOptions);
@@ -753,7 +746,9 @@ module "js/loaders" {
                 /*
                   Call reject rather than calling the fail() callback directly.
                   Otherwise a badly-behaved fetch hook could reject() and then
-                  throw, causing fail() to be called twice.
+                  throw, causing fail() to be called twice.  This way, reject()
+                  may be called twice, but it ignores the second call; see
+                  fetchCompleted above.
                 */
                 reject(exc);
             }
@@ -767,14 +762,14 @@ module "js/loaders" {
 
           The callbacks will not be called until after evalAsync returns.
 
-          ISSUE: The google doc says
+          P2 ISSUE: The google doc says
               Loader.prototype.import(moduleName, callback, staticerrback,
                                       dynamicerrback, { module, url }) -> void
           but I can't tell what { url } is supposed to be.
           In particular the url is computed via the resolve hook, right?
           Does the url option override that?
 
-          ISSUE: After conversations with samth and dherman, I think we're
+          P2 ISSUE: After conversations with samth and dherman, I think we're
           mostly in agreement that we don't need separate staticerrback and
           dynamicerrback arguments.  -jorendorff 2013 April 20.
         */
@@ -815,7 +810,7 @@ module "js/loaders" {
             }
 
             let unit = new LinkageUnit(this, success, fail);
-            this.@importFor(unit, referer, moduleName, setFullName);
+            this.@importFor(unit, referer, moduleName, setFullName, true);
         }
 
         /*
@@ -843,10 +838,18 @@ module "js/loaders" {
           setFullName must not throw.  (Unlike everything else, setFullName
           is called synchronously.)
 
+          If singleModuleImport is true, avoid duplicating work with any other
+          singleModuleImport LinkageUnit loading the same module.  This flag is
+          only true when this method is called directly from import().  The
+          sole reason for this flag is to avoid having multiple import() calls
+          for the same module all do redundant incremental graph-walking and
+          normalize-hook-calling as dependencies load.
+
           TODO:  Suggest alternative name for referer.  It is really nothing to
-          do with the nasty Referer HTTP header.  Perhaps "importContext".
+          do with the nasty Referer HTTP header.  Perhaps "importContext",
+          "importer", "client".
         */
-        @importFor(unit, referer, name, setFullName) {
+        @importFor(unit, referer, name, setFullName, singleModuleImport) {
             /*
               Call the normalize hook to get a normalized module name and
               metadata.  See the comment on normalize().
@@ -925,9 +928,9 @@ module "js/loaders" {
             let m = $MapGet(this.@modules, normalized);
             if (m !== undefined) {
                 /*
-                  ISSUE:  METADATA CLEANUP AND EARLY PIPELINE EXIT.  We have
+                  P3 ISSUE:  METADATA CLEANUP AND EARLY PIPELINE EXIT.  We have
                   called the normalize hook, which may have created metadata.
-                  If so, that metadata is just dropped.  There is no per-load
+                  If so, that metadata is now dropped.  There is no per-load
                   cleanup/dispose hook.  This is probably OK but I want to
                   check.
                 */
@@ -937,7 +940,7 @@ module "js/loaders" {
             }
 
             /*
-              ISSUE: duplicate import() calls with mismatched options.
+              P2 ISSUE: duplicate import() calls with mismatched options.
 
               What should happen when:
               System.import("x", done, fail, {url: "x1.js"});
@@ -1034,7 +1037,7 @@ module "js/loaders" {
             }
 
             /*
-              ISSUE: what is skip()?
+              P1 ISSUE: AGREE ON A DESIGN FOR skip/mischiefManaged.
 
               The spec calls the third callback argument to the fetch hook
               'skip'.
@@ -1054,7 +1057,7 @@ module "js/loaders" {
               callback is important; failure must kill the whole LinkageUnit
               and call its fail hook.  --jorendorff, 2013 April 22.
 
-              ISSUE: Want use cases/rationale for skip/mischiefManaged.
+              P1 ISSUE: Want use cases/rationale for skip/mischiefManaged.
               --jorendorff, 2013 April 24.
             */
             function mischiefManaged() {
@@ -1140,15 +1143,10 @@ module "js/loaders" {
               If this failure is due to a ModuleStatus failing (e.g. a fetch
               failing), then this step will definitely remove the ModuleStatus
               that failed.
-
-              ISSUE: There's no efficient way to find stranded
-              ModuleStatuses. We can mark and sweep, if we keep a list of all
-              the other not-yet-failing LinkageUnits.  Beginning to think
-              "locking in" was the right idea after all.
             */
 
             // Call LinkageUnit fail hooks.
-            // ISSUE (NOT YET RIPE): In what order?
+            // P5 ISSUE: In what order?
             for (let i = 0; i < units.length; i++)
                 AsyncCall(units[i].failCallback, exc);
         }
@@ -1247,7 +1245,36 @@ module "js/loaders" {
 
           Return this loader.
 
-          Rationale: loader.delete("A") removes only "A" from the registry,
+          loader.delete("A") has no effect at all if !loader.@modules.has("A"),
+          even if "A" is currently loading (an entry exists in
+          loader.@loading).  This is analogous to .set().  per (reading between
+          the lines) discussions with dherman, 2013 April 17, and samth, 2013
+          April 22.
+
+          Effects on concurrent loads:  A delete has no immediate effect on
+          in-flight loads, but it can cause a load to fail later.  Here's how
+          it works:
+
+          - During load phase, whenever we find new code that imports a module,
+            we first look in the registry for that module, and failing that,
+            the table of in-flight loads.  If it is not in either table, we
+            start a fresh load.  There is no per-linkage-unit state to prevent
+            us from kicking off many loads for the same module during a single
+            load phase; in the case of cyclic imports, if someone keeps
+            deleting the successfully-loaded modules from the registry, we
+            could go on indefinitely.
+
+          - After a succesful load phase, when all fetches, translate hooks,
+            link hooks, and compiles have finished successfully, we move on to
+            link phase.  We walk the graph again, starting from the root, and
+            try to link all the not-yet-linked modules, looking up every
+            imported module in the registry as we go.  If at this point we find
+            that a module we need is no longer in the registry, that's a link
+            error.
+
+          per samth, 2013 April 22.
+
+          Containment: loader.delete("A") removes only "A" from the registry,
           and not other modules linked against "A", for several reasons:
 
           1. What a module is linked against is properly an implementation
@@ -1263,39 +1290,6 @@ module "js/loaders" {
              a bug.
 
           per samth, 2013 April 16.
-
-          loader.delete("A") has no effect at all if !loader.@modules.has("A"),
-          even if "A" is currently loading (an entry exists in
-          loader.@loading).  This is analogous to .set().  per (reading between
-          the lines) discussions with dherman, 2013 April 17, and samth, 2013
-          April 22.
-
-          ISSUE:  EFFECTS OF MODULE REGISTRY DELETION ON IN-FLIGHT LINKAGE
-          UNITS.  How does a delete() affect an in-flight evalAsync() that was
-          going to use that module?
-
-          Suppose a program loader.delete()s every module that loads, so that
-          an in-flight load() never has all the modules it needs at one time.
-          Does it keep trying to load the modules repeatedly?  Or does it
-          eventually fail?
-
-          RESOLVED: During load phase, whenever we find that some new code
-          imports a module, we first check the registry, and failing that the
-          table of in-flight loads.  If it is not in either table, we start a
-          fresh load.  There is no per-linkage-unit state to prevent us from
-          kicking off many loads of the same module during a single load phase;
-          in the case of cyclic imports, if someone keeps deleting the
-          successfully-loaded modules from the registry, we could go on
-          indefinitely.
-
-          After a succesful load phase, when all fetches, translate hooks, link
-          hooks, and compiles have finished successfully, we move on to link
-          phase.  We walk the graph again, starting from the root, and try to
-          link all the not-yet-linked modules, looking up every imported module
-          in the registry as we go.  If at this point we find that a module we
-          need is no longer in the registry, that's a link error.
-
-          per samth, 2013 April 22.
         */
         delete(name) {
             $MapDelete(this.@modules, name);
@@ -1311,6 +1305,7 @@ module "js/loaders" {
             $DefineBuiltins(obj, this);
             return obj;
         }
+
 
         /* Loader hooks ******************************************************/
 
@@ -1364,11 +1359,18 @@ module "js/loaders" {
           producing that information, passing it to the fulfill callback. Need
           to figure out how the information gets from here to there.
 
-          RESOLVED:  The resolve hook may return a pair {url: "blah", type: "script"},
-          per dherman, 2013 April 22.
+          Partially resolved:  The resolve hook may return a pair {url: "blah",
+          type: "script"}, per dherman, 2013 April 22.
 
-          ISSUE:  RELATIVE MODULE NAMES.  Suppose we have a module "a/b/c" loaded from
-          the url "http://example.com/scripts/a/b/c.js", and it does:
+          That leaves two questions:  1. Is the type passed to the fetch hook,
+          on the options object? (Current implementation assumes no.)  2. Does
+          the fulfill hook take a type parameter, so that the fetch hook can
+          overrule what the resolve hook said?  (Current implementation assumes
+          yes.)
+
+          P1 ISSUE:  RELATIVE MODULE NAMES.  Suppose we have a module "a/b/c"
+          loaded from the url "http://example.com/scripts/a/b/c.js", and it
+          does:
               import "x" as x, "../y" as y, "/z" as z;
           What full module names and urls are generated by the system loader's
           default normalize/resolve behavior?  According to samth, the default
@@ -1376,19 +1378,22 @@ module "js/loaders" {
           module names would be "x", "../y", and "/z" respectively.  But samth
           has also said that those aren't valid module names.
 
-          ISSUE:  DEFAULT RESOLVE BEHAVIOR VS. COMMON-SENSE URLS.  Again suppose we
-          have loaded a module "a/b/c" from the url
+          P1 ISSUE:  DEFAULT RESOLVE BEHAVIOR VS. COMMON-SENSE URLS.  Again
+          suppose we have loaded a module "a/b/c" from the url
           "http://example.com/scripts/a/b/c.js", and it contains
               import "x" as x;
-          The system loader's default resolve behavior produces the full name "x"
-          and the url "http://example.com/scripts/a/b/x.js", I think we have a problem.
+          The system loader's default resolve behavior produces the full name
+          "x" and the url "http://example.com/scripts/a/b/x.js".  That can't be
+          right.
 
-          ISSUE: DEFAULT RESOLVE BEHAVIOR VS. CONCATENATION.  Consider a module
-          "a/b/c", loaded in two different ways: first, as a module, from the
-          url "http://example.com/scripts/a/b/c.js"; second, "a/b/c" is defined
-          in a script loaded from the url "http://example.com/scripts/all.js"
-          which contains several modules.  It is the same module either way.
-          And it contains:
+          P1 ISSUE:  DEFAULT RESOLVE BEHAVIOR VS. CONCATENATION.  Consider a
+          module "a/b/c", in two different scenarios:
+          
+           1. loaded as a module from           http://js.com/scripts/a/b/c.js
+           2. defined in a script loaded from   http://js.com/scripts/all.js
+              which contains several modules.
+ 
+          It is the same module "a/b/c" either way.  It contains:
               import "x" as x;
           which triggers these resolve hook calls:
               // case 1
@@ -1426,18 +1431,12 @@ module "js/loaders" {
             }
 
             /*
-              ISSUE: This $ToAbsoluteURL call, could be part of the default
-              fetch behavior, allowing subclasses the luxury of omitting it.
-              Or it could stay here, allowing subclasses the luxury of assuming
-              super.resolve() is going to return an absolute URL.  Or it could
-              be in both places.
+              Both the resolve() method and the fetch() method call
+              $ToAbsoluteURL on the address, per samth 2013 April 22.
 
-              RESOLVED: Both places, per samth 2013 April 22. The default
-              resolve behavior should try to return an absolute URL; if the
-              user overrides it to return a relative URL, the default fetch
-              behavior should cope sensibly.
-
-              TODO: implement that.
+              Rationale:  The default resolve behavior should try to return an
+              absolute URL.  If the user overrides it to return a relative URL,
+              the default fetch behavior should cope with that.
 
               TODO: @baseURL isn't the right base url to use.
             */
@@ -1453,14 +1452,24 @@ module "js/loaders" {
           Asynchronously fetch the requested source from the given address
           (produced by the resolve hook).
 
+          If we're fetching a script, not a module, then the
+          skip/mischiefManaged callback should not be used; if called, it
+          reports an error to the fail callback.
+
           This hook is called for all modules and scripts whose source is not
           directly provided by the caller.  It is not called for the script
           bodies executed by loader.eval() and .evalAsync(), since those do not
           need to be fetched.  loader.evalAsync() can trigger this hook, for
           modules imported by the script.  loader.eval() is synchronous and
           thus never triggers the fetch hook.
+
+          (loader.load() does not call normalize/resolve hooks but it does call
+          the fetch/translate/link hooks, per samth, 2013 April 22.)
         */
-        fetch(address, fulfill, fail, skip, options) {
+        fetch(address, fulfill, fail, mischiefManaged, options) {
+            // TODO: @baseURL isn't the right base url to use here either (see
+            // $ToAbsoluteURL call in resolve() above).
+            address = $ToAbsoluteURL(this.@baseURL, address);
             return $DefaultFetch(address, fulfill, fail, options.normalized,
                                  options.referer);
         }
@@ -1487,13 +1496,13 @@ module "js/loaders" {
               The module bodies will then be executed on demand; see
               @ensureModuleExecuted.
 
-              ISSUE: I can't remember what we decided about link errors and
+              P3 ISSUE: I can't remember what we decided about link errors and
               whether a module can be left in loader.@loading afterwards.
 
            2. The hook may return a full Module instance object. The loader
               then simply adds that module to the registry.
 
-              ISSUE: But it is an error if there's already a module with that
+              P3 ISSUE: But it is an error if there's already a module with that
               full name in the registry, right?
 
            3. The hook may return a factory object which the loader will use to
@@ -1515,7 +1524,7 @@ module "js/loaders" {
               modules implemented with standard source-level module
               declarations can still be statically validated.
 
-              ISSUE: how does this work?
+              P3 ISSUE: how does this work?
 
           The default implementation does nothing and returns undefined.
         */
@@ -1553,11 +1562,37 @@ module "js/loaders" {
             this.loader = loader;
             this.doneCallback = done;
             this.failCallback = fail;
+
+            // Another LinkageUnit that has the same job as this one, or null.
+            // The only way this can happen is if two import() calls for the
+            // same module are merged.
+            this.clone = null;
+
             // TODO: finish overall load state
         }
 
         addModuleAndDependencies(name, modst) {
             // TODO
+        }
+
+        addScriptAndDependencies(script) {
+            // TODO
+
+            /*
+              When we load a script, we add all its modules and their
+              dependencies to the same linkage unit, per samth, 2013 April 22.
+
+              Example:
+                  module "A" {
+                      import "B" as B;
+                      B.hello();
+                  }
+                  alert("got here");
+
+              Note that toplevel does not import "A", so the body of "A" will
+              not execute, and we will not call B.hello().  Nevertheless, we
+              load "B.js" before executing the script.
+            */
         }
 
         onLinkedModule(mod) {
@@ -1571,6 +1606,8 @@ module "js/loaders" {
       It is in one of three states:
 
       1. Loading: Source is not available yet.
+
+         TODO: this should be called "fetching".
 
           .status === "loading"
           .listeners is an Array of LinkageUnits
@@ -1684,14 +1721,15 @@ module "js/loaders" {
         }
 
         /*
-          ISSUE (NOT YET RIPE): ERROR HANDLING. Suppose I do
+          P2 ISSUE: ERROR HANDLING. Suppose I do
               loader.evalAsync('import "x"; import "y";')
           and partway through the process of loading the many dependencies
           of "x" and "y", something fails. Now what?
 
-          Proposal: Every error that can occur throughout the process is
-          related to some specific Module (in loader.@modules) or in-flight
-          ModuleStatus (in loader.@loading). When an error occurs:
+          Proposal: Every error that can occur throughout the process (see
+          exhaustive list in the next comment, below) is related to some
+          specific Module (in loader.@modules) or in-flight ModuleStatus (in
+          loader.@loading). When an error occurs:
 
            1. Find the set of LinkageUnits that needed that module, the one
               that triggered the error.  We are going to fail all these
@@ -1706,11 +1744,15 @@ module "js/loaders" {
               any are in "loading" state, neuter the fetch hook's
               fulfill/reject/skip callbacks so that they become no-ops.
 
+              P3 ISSUE: In Loader.prototype.@failLinkageUnits, there's no
+              efficient way to find stranded in-flight modules. We can mark and
+              sweep, if the Loader has a list of all in-flight LinkageUnits
+              (the ones that aren't failing).
+
            3. Call the fail hooks for each LinkageUnit found in step 1.
 
-              ISSUE (NOT YET RIPE):  in any particular order?  We can spec the
-              order to be the order of the import()/load()/asyncEval() calls,
-              wouldn't be hard.
+              P5 ISSUE:  Ordering.  We can spec the order to be the order of
+              the import()/load()/asyncEval() calls, wouldn't be hard.
 
           After that, we drop the LinkageUnits and they become garbage.
 
@@ -1743,6 +1785,9 @@ module "js/loaders" {
 
           - A factory function can throw or return an invalid value.
 
+          - After linking, we add all modules to the registry.  This fails if
+            there's already an entry for any of the module names.
+
           - Execution of a module body or a script can throw.
         */
 
@@ -1767,6 +1812,10 @@ module "js/loaders" {
         }
     }
 
+    /* ES6 ToBoolean abstract operation. */
+    function ToBoolean(v) {
+        return !!v;
+    }
 
     /*
       Return true if Type(v) is Object.
@@ -1791,7 +1840,7 @@ module "js/loaders" {
 }
 
 /*
-  ISSUE: what if someone executes some code that says
+  What if someone executes some code that says
       module "A" {}
   while "A" is in-flight?
 
@@ -1801,18 +1850,4 @@ module "js/loaders" {
 
   RESOLVED: Whichever one happens first is allowed, and the second one is an
   error.  per samth, 2013 April 22.
-*/
-
-/*
-  ISSUE:
-
-  module "A" { import "B" as B; }
-  alert("got here");
-
-  Note that toplevel does not import "A".  Suppose we load and run this script.
-  Does it load B.js before executing the alert?  I think it does, but doesn't
-  run either module until one is imported.
-
-  RESOLVED:  Yes.  When we load a script, we add all its modules and their
-  dependencies to the same linkage unit.  per samth, 2013 April 22.
 */
