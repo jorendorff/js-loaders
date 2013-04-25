@@ -412,7 +412,7 @@ module "js/loaders" {
           Loader hooks:  This calls only the translate hook.  per samth,
           2013 April 22.  See rationale in the comment for evalAsync().
 
-          SECURITY ISSUE: This will allow Web content to run JS code that
+          P5 SECURITY ISSUE: This will allow Web content to run JS code that
           appears (in the devtools, for example) to be from any arbitrary URL.
           We might be able to constrain this to only same-domain URLs or
           something.  But ideally that filename just doesn't matter.  It
@@ -725,7 +725,7 @@ module "js/loaders" {
                     return;
                 fetchCompleted = true;
 
-                /* ISSUE: what kind of error to throw here. */
+                /* P5 ISSUE: what kind of error to throw here. */
                 let msg = "load(): fetch hook must not call mischiefManaged() callback";
                 AsyncCall(fail, $TypeError(msg));
             }
@@ -838,24 +838,35 @@ module "js/loaders" {
           setFullName must not throw.  (Unlike everything else, setFullName
           is called synchronously.)
 
-          If singleModuleImport is true, avoid duplicating work with any other
-          singleModuleImport LinkageUnit loading the same module.  This flag is
-          only true when this method is called directly from import().  The
-          sole reason for this flag is to avoid having multiple import() calls
-          for the same module all do redundant incremental graph-walking and
-          normalize-hook-calling as dependencies load.
+          If directImport is true, avoid duplicating work with any other
+          LinkageUnit also loading the same module with directImport.  This
+          flag is true only when this method is called directly from import().
+          The sole reason for this flag is to avoid having multiple import()
+          calls for the same module all do redundant incremental graph-walking
+          and normalize-hook-calling as dependencies load.  (Two such linkage
+          units always have the same dependency graph.)
 
           TODO:  Suggest alternative name for referer.  It is really nothing to
           do with the nasty Referer HTTP header.  Perhaps "importContext",
           "importer", "client".
         */
-        @importFor(unit, referer, name, setFullName, singleModuleImport) {
+        @importFor(unit, referer, name, setFullName, directImport) {
             /*
               Call the normalize hook to get a normalized module name and
               metadata.  See the comment on normalize().
             */
             let normalized, metadata;
             try {
+                /*
+                  P3 ISSUE: Here referer is passed to the normalize hook and
+                  later it is passed to the resolve hook, and so on.  Should we
+                  create a new object each time?  (I think it's OK to pass the
+                  same referer object to successive hooks within a single load;
+                  but eval() creates a new referer object for each call to the
+                  normalize() hook, since they are not abstractly all part of a
+                  single load.)
+                */
+
                 let result = this.normalize(request, {referer});
 
                 /*
@@ -939,22 +950,36 @@ module "js/loaders" {
                 return;
             }
 
-            /*
-              P2 ISSUE: duplicate import() calls with mismatched options.
-
-              What should happen when:
-              System.import("x", done, fail, {url: "x1.js"});
-              System.import("x", done, fail, {url: "x2.js"});  // different url
-
-              If we see the registry purely as a cache, we should really get
-              two competing loads here, and whichever one finishes later gets
-              an error... hmm. Perhaps a synchronous error on the second
-              System.import() call would be better.
-            */
-
             // If the module is loading, attach to the existing in-flight load.
             let status = $MapGet(this.@loading, normalized);
             if (status !== undefined) {
+                /*
+                  P1 ISSUE: duplicate import() calls with mismatched options.
+
+                  What should happen when:
+                      System.import("x", done, fail, {url: "x1.js"});
+                      System.import("x", done, fail, {url: "x2.js"});
+                  (Note the different urls.)
+
+                  If we see the registry purely as a cache, we should really
+                  get two competing loads here, and whichever one finishes
+                  later gets an error... hmm. Perhaps a synchronous error on
+                  the second System.import() call would be better.
+                */
+
+                if (directImport) {
+                    let leader = status.directImportLinkageUnit;
+                    if (status.directImportLinkageUnit === null) {
+                        status.directImportLinkageUnit = unit;
+                    } else {
+                        unit.isClone = true;
+
+                        // Prepend unit to the linked list of clones.
+                        unit.clone = leader.clone;
+                        leader.clone = unit;
+                    }
+                }
+
                 // This module is already loading.  Hook the LinkageUnit to the
                 // existing in-flight ModuleStatus.
                 unit.addModuleAndDependencies(normalized, status);
@@ -1123,17 +1148,6 @@ module "js/loaders" {
                 throw TODO;
         }
 
-        @addLinkageUnitForModule(normalized, status, done, fail) {
-            let unit = new LinkageUnit(this, done, fail);
-            unit.addModuleAndDependencies(normalized, status); // ???
-            status.soloLinkageUnit = unit;
-
-            // Implementation issue: LinkageUnits might need to have numeric
-            // ids to support time-ordering them, and they might need to be in
-            // a doubly linked list to support fast append and remove
-            // operations.
-        }
-
         @failLinkageUnits(units, exc) {
             /*
               TODO: Find stranded ModuleStatuses, remove them from
@@ -1147,8 +1161,10 @@ module "js/loaders" {
 
             // Call LinkageUnit fail hooks.
             // P5 ISSUE: In what order?
-            for (let i = 0; i < units.length; i++)
-                AsyncCall(units[i].failCallback, exc);
+            for (let i = 0; i < units.length; i++) {
+                for (let unit = units[i]; unit !== null; unit = unit.clone)
+                    AsyncCall(unit.failCallback, exc);
+            }
         }
 
         /* Module registry ***************************************************/
@@ -1353,9 +1369,9 @@ module "js/loaders" {
           to loader.load(), .eval(), or .evalAsync().  But it is called for all
           imports, including imports in scripts.
 
-          ISSUE:  The resolve hook is where we consult the @ondemand table and
-          therefore is where we know whether the resulting address is a module
-          or a script.  But it is the fetch hook that is responsible for
+          P1 ISSUE:  The resolve hook is where we consult the @ondemand table
+          and therefore is where we know whether the resulting address is a
+          module or a script.  But it is the fetch hook that is responsible for
           producing that information, passing it to the fulfill callback. Need
           to figure out how the information gets from here to there.
 
@@ -1563,9 +1579,12 @@ module "js/loaders" {
             this.doneCallback = done;
             this.failCallback = fail;
 
-            // Another LinkageUnit that has the same job as this one, or null.
-            // The only way this can happen is if two import() calls for the
-            // same module are merged.
+            /*
+              Another LinkageUnit that has the same job as this one; or null.
+              The only way this can become non-null is if multiple import()
+              calls for the same module are merged.  Many can be merged; it's
+              a linked list.
+            */
             this.clone = null;
 
             // TODO: finish overall load state
@@ -1662,7 +1681,7 @@ module "js/loaders" {
             // module.  (As opposed to other LinkageUnits that are trying to
             // load modules or scripts which directly or indirectly import on
             // this one.)
-            this.soloLinkageUnit = null;
+            this.directImportLinkageUnit = null;
         }
 
         /*
