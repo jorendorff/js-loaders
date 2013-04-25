@@ -1004,7 +1004,10 @@ module "js/loaders" {
                 let result = this.resolve(normalized, {referer, metadata});
 
                 // Interpret the result.
-                if (typeof result === "string") {
+                if (result === undefined) {
+                    address = this.@defaultResolve(normalized, referer);
+                    type = 'module';
+                } else if (typeof result === "string") {
                     address = result;
                     type = 'module';
                 } else if (IsObject(result)) {
@@ -1369,9 +1372,30 @@ module "js/loaders" {
           Determine the resource address (URL, path, etc.) for the requested
           module name.
 
-          This hook is not called for the main script body executed by a call
-          to loader.load(), .eval(), or .evalAsync().  But it is called for all
-          imports, including imports in scripts.
+          The resolve hook is also responsible for determining whether the
+          resource in question is a module or a script.
+
+          The hook may return:
+
+            - undefined, to request the default behavior described below.
+
+            - a string, the resource address. In this case the resource is a
+              module.
+
+            - an object that has a .address property which is a string, the
+              resource address.  The object may also have a .type property,
+              which if present must be either 'script' or 'module'.
+
+          Default behavior:  Consult the ondemand table. If any string value in
+          the table matches the module name, return the key. If any array value
+          in the table contains an element that matches the module name, return
+          {address: key, type: "script"}.  Otherwise, add ".js" to the end of
+          the module name, resolve it as a URL relative to this.@baseURL, and
+          return the absolute URL.
+
+          When called:  This hook is not called for the main script body
+          executed by a call to loader.load(), .eval(), or .evalAsync().  But
+          it is called for all imports, including imports in scripts.
 
           P1 ISSUE:  The resolve hook is where we consult the @ondemand table
           and therefore is where we know whether the resulting address is a
@@ -1429,26 +1453,40 @@ module "js/loaders" {
           contain a .type property? :-P
         */
         resolve(normalized, options) {
+            return this.@defaultResolve(normalized, options.referer);
+        }
+
+        @defaultResolve(normalized, referer) {
             if (this.@locations === undefined) {
+                /*
+                  P5 ISSUE: module names can appear in multiple values in the
+                  @ondemand table. This raises the question of ordering of
+                  duplicates.
+                */
                 var locations = $MapNew();
                 for (let [url, contents] of $MapIterator(this.@ondemand)) {
                     if (typeof contents === "string") {
                         $MapSet(locations, contents, url);
                     } else {
-                        // Assume contents is an iterable.
-                        for (var name of contents)
-                            $MapSet(locations, name, url);
+                        // contents is an array.
+                        for (let i = 0; i < contents.length; i++)
+                            $MapSet(locations, contents[i], url);
                     }
                 }
                 this.@locations = locations;
             }
 
             let address = $MapGet(this.@locations, normalized);
-            let found = address !== undefined;
-            if (!found) {
-                // Yes, really add ".js" here, per samth 2013 April 22.
-                address = normalized + ".js";
+            if (address !== undefined) {
+                /* P1 ISSUE: is baseURL the right URL to use here? */
+                address = $ToAbsoluteURL(this.@baseURL, address);
+                if (typeof $MapGet(this.@ondemand, address) === 'object')
+                    return {address, type: "script"};
+                return address;
             }
+
+            // Yes, really add ".js" here, per samth 2013 April 22.
+            address = normalized + ".js";
 
             /*
               Both the resolve() method and the fetch() method call
@@ -1458,14 +1496,9 @@ module "js/loaders" {
               absolute URL.  If the user overrides it to return a relative URL,
               the default fetch behavior should cope with that.
 
-              TODO: @baseURL isn't the right base url to use.
+              TODO: referer.url probably isn't the right base url to use.
             */
-            address = $ToAbsoluteURL(this.@baseURL, address);
-
-            if (found && typeof $MapGet(this.@ondemand, address) !== 'string')
-                return {address, type: "script"};
-
-            return address;
+            return $ToAbsoluteURL(referer.url, address);
         }
 
         /*
@@ -1816,7 +1849,7 @@ module "js/loaders" {
 
         fail(exc) {
             $Assert(this.status === "loading");
-            throw fit;  // TODO
+            throw TODO;
             this.loader.@failLinkageUnits(this.listeners);
         }
 
@@ -1828,7 +1861,7 @@ module "js/loaders" {
           (Used by the mischiefManaged callback in Loader.@importFor().)
         */
         cancel() {
-            throw fit;  // TODO
+            throw TODO;
         }
     }
 
