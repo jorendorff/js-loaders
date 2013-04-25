@@ -152,7 +152,7 @@ module "js/loaders" {
             */
             this.@modules = $MapNew();
 
-            /*???
+            /*
               this.@loading stores the status of modules that are loading and
               not yet linked.  It maps module names to ModuleStatus objects.
 
@@ -1057,7 +1057,7 @@ module "js/loaders" {
                 fetchCompleted = true;
 
                 // Implementation issue: check types here, before forwarding?
-                return this.@onFetch(status, normalized, metadata, src, type, actualAddress);
+                return this.@onFulfill(status, normalized, metadata, src, type, actualAddress);
             }
 
             function reject(exc) {
@@ -1097,10 +1097,13 @@ module "js/loaders" {
                     return;
                 fetchCompleted = true;
 
-                if ($MapHas(this.@modules, normalized))
-                    status.cancel();
-                else
-                    status.fail($TypeError("mischief was not actually managed"));
+                let mod = $MapGet(this.@modules, normalized);
+                if (mod === undefined) {
+                    status.fail(
+                        $TypeError("fetch hook mischiefManaged callback: " +
+                                   "mischief was not actually managed"));
+                }
+                status.onEndRun(normalized, mod);
             }
 
             let options = {referer, metadata, normalized, type};
@@ -1113,15 +1116,32 @@ module "js/loaders" {
             }
         }
 
-        @onFetch(status, normalized, metadata, src, type, actualAddress) {
+        @onFulfill(status, normalized, metadata, src, type, actualAddress) {
             let plan, mod, imports, exports, execute;
             try {
+                // Check arguments to fulfill hook.
+                if (typeof src !== 'string') {
+                    throw $TypeError("fetch hook fulfill callback: " +
+                                     "first argument must be a string");
+                }
+                if (type !== 'script' && type !== 'module') {
+                    throw $TypeError(
+                        "fetch hook fulfill callback: " +
+                        'second argument must be "script" or "module"');
+                }
+                if (typeof actualAddress !== 'string') {
+                    throw $TypeError("fetch hook fulfill callback: " +
+                                     "third argument must be a string");
+                }
+
+                // Call translate and link hooks.
                 src = this.translate(src, {normalized, actualAddress, metadata, type});
                 let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
 
-                // TODO destructure linkResult
+                // Interpret linkResult.  See comment on the link() method.
                 if (linkResult === undefined) {
                     plan = "default";
+                    // TODO: cope if type == 'script'
                     mod = $CompileModule(this, src, actualAddress);
                 } else if (!IsObject(linkResult)) {
                     throw $TypeError("link hook must return an object or undefined");
@@ -1150,7 +1170,7 @@ module "js/loaders" {
             if (plan == "default")
                 status.onModuleCompiled(normalized, mod);
             else if (plan == "done")
-                status.onLinkedModuleMagicallyAppeared(normalized, mod);
+                status.onEndRun(normalized, mod);
             else  // plan == "factory"
                 throw TODO;
         }
@@ -1724,6 +1744,8 @@ module "js/loaders" {
         /*
           This is called when a module passes the last loader hook (the .link hook).
           It transitions from "loading" to "waiting".
+
+          TODO: turn this into onModuleCompiled
         */
         onLoad(mod, fac, dependencyNames) {
             $Assert(this.status === "loading");
@@ -1735,6 +1757,14 @@ module "js/loaders" {
             this.module = mod;
             this.factory = fac;
             this.dependencies = dependencyNames;
+        }
+
+        onModuleCompiled() {
+            throw TODO;
+        }
+
+        onEndRun(name, mod) {
+            throw TODO;
         }
 
         /*
