@@ -1029,6 +1029,9 @@ module "js/loaders" {
                     } else {
                         type = "module";
                     }
+                } else {
+                    throw $TypeError("loader.resolve hook must return a " +
+                                     "string or an object with .address");
                 }
             } catch (exc) {
                 /*
@@ -1811,9 +1814,6 @@ module "js/loaders" {
           - Execution of a module body or a script can throw.
         */
 
-        /*
-          Notify that loading failed.
-        */
         fail(exc) {
             $Assert(this.status === "loading");
             throw fit;  // TODO
