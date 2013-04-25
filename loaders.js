@@ -661,12 +661,6 @@ module "js/loaders" {
             */
             let metadata = {};
 
-            let fetchOptions = {
-                normalized: null,
-                referer: null,
-                metadata: metadata
-            };
-
             /*
               P2 ISSUE: FETCH HOOK AND CALLBACK MISUSE.  The fetch hook is user
               code.  Callbacks the Loader passes to it are subject to every
@@ -730,6 +724,13 @@ module "js/loaders" {
                 AsyncCall(fail, $TypeError(msg));
             }
 
+            let options = {
+                referer: null,
+                metadata: metadata,
+                normalized: null,
+                type: 'script'
+            };
+
             /*
               P1 ISSUE: Type of the argument to reject() and error callbacks
               generally. The Google doc does not specify the type of other
@@ -741,7 +742,7 @@ module "js/loaders" {
               errors.
             */
             try {
-                this.fetch(null, fulfill, reject, skip, fetchOptions);
+                this.fetch(null, fulfill, reject, skip, options);
             } catch (exc) {
                 /*
                   Call reject rather than calling the fail() callback directly.
@@ -997,12 +998,12 @@ module "js/loaders" {
             $ArrayPush(status.listeners, unit);
             $MapSet(this.@loading, normalized, status);
 
+            let address, type;
             try {
                 // Call the resolve hook.
                 let result = this.resolve(normalized, {referer, metadata});
 
                 // Interpret the result.
-                let address, type;
                 if (typeof result === "string") {
                     address = result;
                     type = 'module';
@@ -1096,7 +1097,7 @@ module "js/loaders" {
                     status.fail($TypeError("mischief was not actually managed"));
             }
 
-            let options = {normalized, referer, metadata};
+            let options = {referer, metadata, normalized, type};
 
             // Call fetch hook.
             try {
@@ -1379,7 +1380,7 @@ module "js/loaders" {
           type: "script"}, per dherman, 2013 April 22.
 
           That leaves two questions:  1. Is the type passed to the fetch hook,
-          on the options object? (Current implementation assumes no.)  2. Does
+          on the options object? (Current implementation assumes yes.)  2. Does
           the fulfill hook take a type parameter, so that the fetch hook can
           overrule what the resolve hook said?  (Current implementation assumes
           yes.)
