@@ -52,52 +52,52 @@
 
 "use strict";
 
-import {
-    // Embedding features
-    $ReportUncaughtException,
-    $AddForNextTurn,
-    $ToAbsoluteURL,
-    $DefaultFetch,
-    $Assert,
-
-    // Capabilities that JS provides, but via methods that other code could
-    // delete or replace
-    $ToString,      // $ToString(v) === ES ToString algorithm ~= ("" + v)
-    $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
-    $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
-    $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
-    $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
-    $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
-    $SetNew,        // $SetNew() ~= new Set
-    $SetHas,        // $SetHas(set, v) ~= set.has(v)
-    $SetAdd,        // $SetAdd(set, v) ~= set.add(v)
-    $MapNew,        // $MapNew() ~= new Map
-    $MapHas,        // $MapHas(map, key) ~= map.has(key)
-    $MapGet,        // $MapGet(map, key) ~= map.get(key)
-    $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
-    $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
-    $MapIterator,   // $MapIterator(map) ~= map[@@iterator]()
-    $PropertyIterator, // $PropertyIterator(obj) ~= default for-of iteration behavior???
-    $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
-
-    // Modules
-    $LinkModule,
-    $ModuleGetLinkedModules,
-    $ModuleHasExecuted,
-    $ModuleSetExecuted,
-    $ExecuteModuleBody,
-
-    // Scripts
-    $CompileScript,
-    $LinkScript,
-    $ExecuteScript,
-    $ScriptImportedModuleNames,
-
-    // Globals
-    $DefineBuiltins
-} from "implementation-intrinsics";
-
 module "js/loaders" {
+    import {
+        // Embedding features
+        $ReportUncaughtException,
+        $AddForNextTurn,
+        $ToAbsoluteURL,
+        $DefaultFetch,
+        $Assert,
+
+        // Capabilities that JS provides, but via methods that other code could
+        // delete or replace
+        $ToString,      // $ToString(v) === ES ToString algorithm ~= ("" + v)
+        $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
+        $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
+        $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
+        $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
+        $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
+        $SetNew,        // $SetNew() ~= new Set
+        $SetHas,        // $SetHas(set, v) ~= set.has(v)
+        $SetAdd,        // $SetAdd(set, v) ~= set.add(v)
+        $MapNew,        // $MapNew() ~= new Map
+        $MapHas,        // $MapHas(map, key) ~= map.has(key)
+        $MapGet,        // $MapGet(map, key) ~= map.get(key)
+        $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
+        $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
+        $MapIterator,   // $MapIterator(map) ~= map[@@iterator]()
+        $PropertyIterator, // $PropertyIterator(obj) ~= default for-of iteration behavior???
+        $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
+
+        // Modules
+        $LinkModule,
+        $ModuleGetLinkedModules,
+        $ModuleHasExecuted,
+        $ModuleSetExecuted,
+        $ExecuteModuleBody,
+
+        // Scripts
+        $CompileScript,
+        $LinkScript,
+        $ExecuteScript,
+        $ScriptImportedModuleNames,
+
+        // Globals
+        $DefineBuiltins
+    } from "implementation-intrinsics";
+
     /*
       Return true if Type(v) is Object.
     */
