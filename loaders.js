@@ -82,6 +82,7 @@ module "js/loaders" {
         $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
 
         // Modules
+        $CompileModule,
         $LinkModule,
         $ModuleGetLinkedModules,
         $ModuleHasExecuted,
@@ -92,32 +93,11 @@ module "js/loaders" {
         $CompileScript,
         $LinkScript,
         $ExecuteScript,
-        $ScriptImportedModuleNames,
+        $ScriptImportedModuleNames,  // See comment in Loader.eval()
 
         // Globals
         $DefineBuiltins
     } from "implementation-intrinsics";
-
-    /*
-      Return true if Type(v) is Object.
-    */
-    function IsObject(v) {
-        // TODO: I don't think this is correct per ES6. May not be a good way
-        // to do it.
-        return (typeof v === "object" && v !== null) ||
-               typeof v === "function";
-    }
-
-    /*
-      Schedule fn to be called with the given arguments during the next turn of
-      the event loop.
-
-      (This is used to schedule calls to success and failure callbacks, since
-      the spec requires that those always be called from an empty stack.)
-    */
-    function AsyncCall(fn, ...args) {
-        $AddForNextTurn(() => fn(...args));
-    }
 
     /*
       A Loader is responsible for asynchronously finding, fetching, linking,
@@ -230,16 +210,103 @@ module "js/loaders" {
             takeHook("link");
         }
 
+
+        /* Configuration *****************************************************/
+
         /*
-          Try to ensure that the module mod and all its dependencies,
-          transitively, have started to execute exactly once (that is, the
-          $ModuleHasExecuted bit is set on all of them) by executing the
-          dependencies that have never started to execute.
+          Return the global object associated with this loader.
+        */
+        get global() {
+            return this.@global;
+        }
 
-          mod and its dependencies must already have been linked.
+        /*
+          Return the loader's strictness setting. If true, all code loaded by
+          this loader is treated as strict-mode code.
+        */
+        get strict() {
+            return this.@strict;
+        }
 
-          Dependencies are executed in depth-first, left-to-right, post order,
-          stopping at cycles.
+        /*
+          Get/set the base URL this loader uses for auto-mapping module names
+          to URLs.
+        */
+        get baseURL() {
+            return this.@baseURL;
+        }
+
+        set baseURL(url) {
+            this.@baseURL = $ToString(url);
+        }
+
+        /*
+          ISSUE:  Proposed name for this method: addSources(sources)
+        */
+        ondemand(sources) {
+            /*
+              ISSUE: Propose using the default iteration protocol for the outer
+              loop too.
+            */
+            for (let [url, contents] of $PropertyIterator(sources)) {
+                if (contents === null) {
+                    $MapDelete(this.@ondemand, url);
+                } else if (typeof contents === 'string') {
+                    $MapSet(this.@ondemand, url, contents);
+                } else {
+                    /*
+                      contents must be either null, a string, or an iterable object.
+
+                      Rationale for making a copy of contents rather than
+                      keeping the object around: Determinism, exposing fewer
+                      implementation details.  Examining a JS object can run
+                      arbitrary code.  We want to fire all those hooks now,
+                      then store the data in a safer form so user code can't
+                      observe when we look at it.
+                    */
+                    let names = [];
+                    for (let name of contents) {
+                        if (typeof name !== 'string')
+                            throw $TypeError("ondemand: module names must be strings");
+                        $ArrayPush(names, name);
+                    }
+                    $MapSet(this.@ondemand, url, names);
+                }
+            }
+
+            // Destroy the reverse cache.
+            this.@locations = undefined;
+        }
+
+
+        /* Loading and running code ******************************************/
+
+        /*
+          Walk the dependency graph of the module mod, executing all module
+          bodies that have not executed.
+
+          mod and its dependencies must already be linked.
+
+          On success, the module mod and all its dependencies, transitively,
+          will have started to execute exactly once.  That is, the
+          $ModuleHasExecuted bit is set on all of them.
+
+          Execution order:  Dependencies are executed in depth-first,
+          left-to-right, post order, stopping at cycles.
+
+          Error handling:  Module bodies can throw exceptions, and they are
+          propagated to the caller.  The $ModuleHasExecuted bit remains set on
+          a module after its body throws an exception.
+
+          Purpose:  Module bodies are executed on demand, as late as possible.
+          The loader always calls this function before returning a module to
+          script.
+
+          There is only one way a module can be exposed to script before it has
+          executed.  In the case of an import cycle, @ensureModuleExecuted
+          itself exposes the modules in the cycle to scripts before they have
+          all executed.  This is a consequence of the simple fact that we have
+          to start somewhere:  one of the modules in the cycle must run first.
         */
         static @ensureModuleExecuted(mod) {
             /*
@@ -365,6 +432,7 @@ module "js/loaders" {
           (2013 April 22)
         */
         eval(src, options) {
+            // Unpack options. Only one option is supported: options.url.
             let url = this.@baseURL;
             if (options !== undefined && "url" in options) {
                 url = options.url;
@@ -375,17 +443,29 @@ module "js/loaders" {
             let script = $CompileScript(this, src, url);
 
             /*
+              $ScriptImportedModuleNames returns an array of [client, request]
+              pairs.
+
+              client tells where the import appears. It is the full name of the
+              enclosing module, or null for toplevel imports.
+
+              request is the name being imported.  It is not necessarily a full
+              name, so we call the normalize hook below.
+            */
+            let pairs = $ScriptImportedModuleNames(script);
+
+            /*
               Linking logically precedes execution, so the code below has two
               separate loops.  Fusing the loops would be observably different,
               because the body of module "A" could do System.delete("B").
 
               First loop: Look up all modules imported by src.
             */
-            let names = $ScriptImportedModuleNames(script);
             let modules = [];
-            let referer = {name: null, url: url};
-            for (let i = 0; i < names.length; i++) {
-                let name = this.normalize(names[i], {referer});
+            for (let i = 0; i < pairs.length; i++) {
+                let [client, request] = pairs[i];
+                let referer = {name: client, url: url};
+                let name = this.normalize(request, {referer});
 
                 let m = $MapGet(this.@modules, name);
                 if (m === undefined) {
@@ -513,44 +593,6 @@ module "js/loaders" {
 
               samth is unsure but thinks probably so.
             */
-        }
-
-        /*
-          ISSUE:  Proposed name for this method: addSources(sources)
-        */
-        ondemand(sources) {
-            /*
-              ISSUE: Propose using the default iteration protocol for the outer
-              loop too.
-            */
-            for (let [url, contents] of $PropertyIterator(sources)) {
-                if (contents === null) {
-                    $MapDelete(this.@ondemand, url);
-                } else if (typeof contents === 'string') {
-                    $MapSet(this.@ondemand, url, contents);
-                } else {
-                    /*
-                      contents must be either null, a string, or an iterable object.
-
-                      Rationale for making a copy of contents rather than
-                      keeping the object around: Determinism, exposing fewer
-                      implementation details.  Examining a JS object can run
-                      arbitrary code.  We want to fire all those hooks now,
-                      then store the data in a safer form so user code can't
-                      observe when we look at it.
-                    */
-                    let names = [];
-                    for (let name of contents) {
-                        if (typeof name !== 'string')
-                            throw $TypeError("ondemand: module names must be strings");
-                        $ArrayPush(names, name);
-                    }
-                    $MapSet(this.@ondemand, url, names);
-                }
-            }
-
-            // Destroy the reverse cache.
-            this.@locations = undefined;
         }
 
         /*
@@ -1037,27 +1079,56 @@ module "js/loaders" {
         }
 
         @onFetch(status, normalized, metadata, src, type, actualAddress) {
-            let 
+            let plan, mod, imports, exports, execute;
             try {
                 src = this.translate(src, {normalized, actualAddress, metadata, type});
                 let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
 
                 // TODO destructure linkResult
                 if (linkResult === undefined) {
-                    throw fit;  // TODO
+                    plan = "default";
+                    mod = $CompileModule(this, src, actualAddress);
                 } else if (!IsObject(linkResult)) {
                     throw $TypeError("link hook must return an object or undefined");
                 } else if ($IsModule(linkResult)) {
-                    throw fit;  // TODO
+                    if ($MapHas(this.@modules, normalized)) {
+                        throw $TypeError("fetched module \"" + normalized + "\" " +
+                                         "but a module with that name is already " +
+                                         "in the registry");
+                    }
+                    plan = "done";
+                    mod = linkResult;
+                    $MapSet(this.@modules, normalized, mod);
                 } else {
-                    imports = ???;
-                    exports = linkResult.exports;
-                    execute = ???;
+                    plan = "factory";
+                    mod = null;
+                    imports = linkResult.imports;
+                    if (imports !== undefined)
+                        imports = [...imports];
+                    exports = [...linkResult.exports];
+                    execute = linkResult.execute;
                 }
-                throw fit;  // TODO
             } catch (exc) {
                 status.fail(exc);
             }
+
+            if (plan == "default")
+                status.onModuleCompiled(normalized, mod);
+            else if (plan == "done")
+                status.onLinkedModuleMagicallyAppeared(normalized, mod);
+            else  // plan == "factory"
+                throw TODO;
+        }
+
+        @addLinkageUnitForModule(normalized, status, done, fail) {
+            let unit = new LinkageUnit(this, done, fail);
+            unit.addModuleAndDependencies(normalized, status); // ???
+            status.soloLinkageUnit = unit;
+
+            // Implementation issue: LinkageUnits might need to have numeric
+            // ids to support time-ordering them, and they might need to be in
+            // a doubly linked list to support fast append and remove
+            // operations.
         }
 
         @failLinkageUnits(units, exc) {
@@ -1081,6 +1152,8 @@ module "js/loaders" {
             for (let i = 0; i < units.length; i++)
                 AsyncCall(units[i].failCallback, exc);
         }
+
+        /* Module registry ***************************************************/
 
         /*
           Get a module by name from this loader's module registry.
@@ -1230,33 +1303,6 @@ module "js/loaders" {
         }
 
         /*
-          Return the global object associated with this loader.
-        */
-        get global() {
-            return this.@global;
-        }
-
-        /*
-          Return the loader's strictness setting. If true, all code loaded by
-          this loader is treated as strict-mode code.
-        */
-        get strict() {
-            return this.@strict;
-        }
-
-        /*
-          Get/set the base URL this loader uses for auto-mapping module names
-          to URLs.
-        */
-        get baseURL() {
-            return this.@baseURL;
-        }
-
-        set baseURL(url) {
-            this.@baseURL = $ToString(url);
-        }
-
-        /*
           Define all the built-in objects and functions of the ES6 standard
           library associated with this loader’s intrinsics as properties on
           obj.
@@ -1266,7 +1312,7 @@ module "js/loaders" {
             return obj;
         }
 
-        /* Loader hooks. */
+        /* Loader hooks ******************************************************/
 
         /*
           For each import() call or import-declaration, the Loader first calls
@@ -1431,41 +1477,49 @@ module "js/loaders" {
 
         /*
           The link hook allows a loader to optionally override the default
-          linking behavior.  It can do this in one of several ways:
+          linking behavior.  There are three options.
 
-          - eagerly providing a full Module instance object;
+           1. The link hook may return undefined. The loader then uses the
+              default linking behavior.  It compiles src as an ES module, looks
+              at its imports, loads all dependencies asynchronously, and
+              finally links them as a unit and adds them to the registry.
 
-          - declaring external dependencies and a factory function for
-            executing the module body once the dependencies are resolved;
+              The module bodies will then be executed on demand; see
+              @ensureModuleExecuted.
 
-          - doing the same but also specifying the module's export set; or
+              ISSUE: I can't remember what we decided about link errors and
+              whether a module can be left in loader.@loading afterwards.
 
-          - choosing not to override the default linking for the given module
-            by returning undefined.
+           2. The hook may return a full Module instance object. The loader
+              then simply adds that module to the registry.
 
-          If the hook does not specify a module's exports, the module is
-          dynamically linked.  In this case, it is executed during the linking
-          process.  First all of its dependencies are executed and linked, and
-          then passed to the relevant execute function.  Then the resulting
-          module is linked iwth the downstream dependencies.  This requires
-          incremental linking when such modules are present, but it ensures
-          that modules implemented with standard source-level module
-          declarations can still be statically validated.
+              ISSUE: But it is an error if there's already a module with that
+              full name in the registry, right?
+
+           3. The hook may return a factory object which the loader will use to
+              create the module and link it with its clients and dependencies.
+
+              The form of a factory object is:  {
+                  imports: <array of strings (module names)>,
+                  ?exports: <array of strings (property names)>,
+                  execute: <function (Module, Module, ...) -> Module>
+              }
+
+              The array of exports is optional.  If the hook does not specify
+              exports, the module is dynamically linked.  In this case, it is
+              executed during the linking process.  First all of its
+              dependencies are executed and linked, and then passed to the
+              relevant execute function.  Then the resulting module is linked
+              iwth the downstream dependencies.  This requires incremental
+              linking when such modules are present, but it ensures that
+              modules implemented with standard source-level module
+              declarations can still be statically validated.
+
+              ISSUE: how does this work?
 
           The default implementation does nothing and returns undefined.
         */
         link(src, options) {
-        }
-
-        @addLinkageUnitForModule(normalized, status, done, fail) {
-            let unit = new LinkageUnit(this, done, fail);
-            unit.addModuleAndDependencies(normalized, status); // ???
-            status.soloLinkageUnit = unit;
-
-            // Implementation issue: LinkageUnits might need to have numeric
-            // ids to support time-ordering them, and they might need to be in
-            // a doubly linked list to support fast append and remove
-            // operations.
         }
     }
 
@@ -1712,6 +1766,28 @@ module "js/loaders" {
             throw fit;  // TODO
         }
     }
+
+
+    /*
+      Return true if Type(v) is Object.
+    */
+    function IsObject(v) {
+        // TODO: I don't think this is correct per ES6. May not be a good way
+        // to do it.
+        return (typeof v === "object" && v !== null) ||
+               typeof v === "function";
+    }
+
+    /*
+      Schedule fn to be called with the given arguments during the next turn of
+      the event loop.
+
+      (This is used to schedule calls to success and failure callbacks, since
+      the spec requires that those always be called from an empty stack.)
+    */
+    function AsyncCall(fn, ...args) {
+        $AddForNextTurn(() => fn(...args));
+    }
 }
 
 /*
@@ -1724,7 +1800,7 @@ module "js/loaders" {
   What happens when the in-flight module finishes loading?
 
   RESOLVED: Whichever one happens first is allowed, and the second one is an
-  error. per samth, 2013 April 22.
+  error.  per samth, 2013 April 22.
 */
 
 /*
@@ -1737,6 +1813,6 @@ module "js/loaders" {
   Does it load B.js before executing the alert?  I think it does, but doesn't
   run either module until one is imported.
 
-  RESOLVED:  Yes. When we load a script, we add all its modules and their
+  RESOLVED:  Yes.  When we load a script, we add all its modules and their
   dependencies to the same linkage unit.  per samth, 2013 April 22.
 */
