@@ -1402,10 +1402,6 @@ module "js/loaders" {
 
           P1 ISSUE #4:  Relative module names.
           https://github.com/jorendorff/js-loaders/issues/4
-
-          P1 ISSUE #5: The fulfill hook takes a type parameter, so that the
-          fetch hook can overrule what the resolve hook said. Why?
-          https://github.com/jorendorff/js-loaders/issues/5
         */
         resolve(normalized, options) {
             return this.@defaultResolve(normalized, options.referer);
@@ -1471,6 +1467,17 @@ module "js/loaders" {
 
           (loader.load() does not call normalize/resolve hooks but it does call
           the fetch/translate/link hooks, per samth, 2013 April 22.)
+
+          Rationale for type argument to fulfill():  This allows the fetch hook
+          to overrule what the resolve hook said about whether the result will
+          be a script or a module.  Converting a "module" load into a "script"
+          load is potentially useful for bulk fetching.  The loader and server
+          can cooperate, for example, so that when the loader asks for a
+          module, the server sends a script containing that module and some or
+          all of its dependencies.  With the extra type argument, this can be
+          implemented as a single fetch hook rather than cooperating resolve
+          and fetch hooks. (jorendorff is skeptical, 2013 April 26. Discussion in
+          <https://github.com/jorendorff/js-loaders/issues/5>.)
         */
         fetch(address, fulfill, fail, done, options) {
             // See comment in resolve() above.
