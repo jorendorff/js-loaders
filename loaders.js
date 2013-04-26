@@ -245,6 +245,13 @@ module "js/loaders" {
         }
 
         /*
+          P2 ISSUE:
+              System.ondemand({"all.js": ["a", "b", "c"]});
+              System.evalAsync("import 'a' as a, 'b' as b, 'c' as c;", done);
+          How do these get merged into a single load?  (In the current
+          implementation, they don't.)  I guess we need a second table of
+          in-flight script loads: @loadingModules and @loadingScripts.
+
           P4 ISSUE:  Proposed name for this method: addSources(sources)
         */
         ondemand(sources) {
