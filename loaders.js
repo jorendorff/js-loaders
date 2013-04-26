@@ -1058,8 +1058,8 @@ module "js/loaders" {
                     return;
                 fetchCompleted = true;
 
-                // Implementation issue: check types here, before forwarding?
-                return this.@onFulfill(status, normalized, metadata, src, type, actualAddress);
+                return this.@onFulfill(status, normalized, metadata,
+                                       src, type, actualAddress);
             }
 
             function reject(exc) {
