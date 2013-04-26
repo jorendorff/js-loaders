@@ -403,7 +403,7 @@ module "js/loaders" {
           Execute the program src.
 
           src may import modules, but if it imports a module that is not
-          already in this loader's module registry, an error is thrown.
+          already in this loader's module registry, a SyntaxError is thrown.
 
           options.url is used as the script's filename.  (This may be used in
           Error objects thrown while executing the program, and it may appear
@@ -731,16 +731,6 @@ module "js/loaders" {
                 type: 'script'
             };
 
-            /*
-              P1 ISSUE: Type of the argument to reject() and error callbacks
-              generally. The Google doc does not specify the type of other
-              error callbacks.  For reject in particular, it says
-                  reject: (message: string) -> void
-              I think we should allow the argument to be any value (like
-              Futures), pass exception values thrown from user code to it
-              uninspected, and pass Error objects to it when reporting our own
-              errors.
-            */
             try {
                 this.fetch(null, fulfill, reject, skip, options);
             } catch (exc) {
@@ -954,20 +944,8 @@ module "js/loaders" {
             // If the module is loading, attach to the existing in-flight load.
             let status = $MapGet(this.@loading, normalized);
             if (status !== undefined) {
-                /*
-                  P1 ISSUE: duplicate import() calls with mismatched options.
-
-                  What should happen when:
-                      System.import("x", done, fail, {url: "x1.js"});
-                      System.import("x", done, fail, {url: "x2.js"});
-                  (Note the different urls.)
-
-                  If we see the registry purely as a cache, we should really
-                  get two competing loads here, and whichever one finishes
-                  later gets an error... hmm. Perhaps a synchronous error on
-                  the second System.import() call would be better.
-                */
-
+                // Merge effectively identical loader.import() calls
+                // to avoid doing redundant work.
                 if (directImport) {
                     let leader = status.directImportLinkageUnit;
                     if (status.directImportLinkageUnit === null) {
@@ -978,6 +956,7 @@ module "js/loaders" {
                         // Prepend unit to the linked list of clones.
                         unit.clone = leader.clone;
                         leader.clone = unit;
+                        return;
                     }
                 }
 
@@ -1643,6 +1622,9 @@ module "js/loaders" {
               a linked list.
             */
             this.clone = null;
+
+            /* True if some other unit's .clone property points to this. */
+            this.isClone = false;
 
             // TODO: finish overall load state
         }
