@@ -576,11 +576,6 @@ module "js/loaders" {
         }
 
         @evalAsync(src, done, fail, options) {
-            /*
-              TODO: $ParentUrl(options.url) should be used in place of baseURL
-              for the purposes of default resolve behavior in here.
-            */
-
             let script;
             try {
                 script = $CompileScript(this, code, options.url);
@@ -592,6 +587,41 @@ module "js/loaders" {
             let ctn = Loader.@makeContinuation(() => $ScriptExec(script), done, fail);
             let unit = new LinkageUnit(this, ctn, fail);
             unit.addScriptAndDependencies(script);
+
+            /*
+              P2 ISSUE: What if someone executes some code that says
+
+                  module "A" {}
+
+              while "A" is in-flight?
+
+              That is, suppose a ModuleStatus for "A" is in loader.@loading
+              when a script executes that contains a module-declaration for
+              "A". Is that allowed?  What happens when the in-flight module
+              finishes loading?
+
+              RESOLVED: Whichever one happens first is allowed, and the second
+              one is an error.  per samth, 2013 April 22.
+
+              But wait! REOPENED by jorendorff, 2013 April 26, because
+
+              P2 ISSUE: Since multiple scripts can contain module-declarations
+              for a module, multiple declarations of a module can be in flight
+              at the same time. Consider two evalAsync calls:
+
+                  System.evalAsync('module "x" { import "y" as y; }', ok, err);
+                  System.evalAsync('module "x" { import "z" as z; }', ok, err);
+
+              Does the second evalAsync throw a SyntaxError immediately?  Or do
+              they race (as samth's answer above suggests)?
+
+              If they race, suppose a third evalAsync call does:
+
+                  System.evalAsync('import "x" as x; x.foo();', ok3, err3);
+
+              Now suppose fetching "y.js" fails. Does that cause err3 to be
+              called?
+            */
 
             /*
               P4 ISSUE: EXECUTION ORDER WHEN MULTIPLE LINKAGE UNITS BECOME
@@ -1862,16 +1892,3 @@ module "js/loaders" {
         $AddForNextTurn(() => fn(...args));
     }
 }
-
-/*
-  What if someone executes some code that says
-      module "A" {}
-  while "A" is in-flight?
-
-  That is, suppose a ModuleStatus for "A" is in loader.@loading when a script
-  executes that contains a module-declaration for "A". Is that allowed?
-  What happens when the in-flight module finishes loading?
-
-  RESOLVED: Whichever one happens first is allowed, and the second one is an
-  error.  per samth, 2013 April 22.
-*/
