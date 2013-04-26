@@ -721,13 +721,13 @@ module "js/loaders" {
                 AsyncCall(fail, exc);
             }
 
-            function mischiefManaged() {
+            function done() {
                 if (fetchCompleted)
                     return;
                 fetchCompleted = true;
 
                 /* P5 ISSUE: what kind of error to throw here. */
-                let msg = "load(): fetch hook must not call mischiefManaged() callback";
+                let msg = "load(): fetch hook must not call done() callback";
                 AsyncCall(fail, $TypeError(msg));
             }
 
@@ -739,7 +739,7 @@ module "js/loaders" {
             };
 
             try {
-                this.fetch(null, fulfill, reject, skip, options);
+                this.fetch(null, fulfill, reject, done, options);
             } catch (exc) {
                 /*
                   Call reject rather than calling the fail() callback directly.
@@ -856,6 +856,22 @@ module "js/loaders" {
             let normalized, metadata;
             try {
                 /*
+                  P2 ISSUE: As currently written, the normalize hook could
+                  return an absolute URL "http://x.com/x" or a relative URL
+                  with an absolute path, like "/x". We would pass that to the
+                  resolve hook, which for an absolute URL would simply add
+                  ".js".  I don't think that's what we want.
+
+                  Proposal:  Parse the normalized module name and fail if it
+                  doesn't match "segment(/segment)*"; where each segments is an
+                  Identifier.  This would forbid "." or ":" anywhere in a
+                  segment.  Too restrictive?
+
+                  To support loading modules with non-ASCII names, the default
+                  resolve hook should encodeURI() each segment. (At least in
+                  the browser; I'm still a little fuzzy on what will be left
+                  implementation-defined.)
+
                   P3 ISSUE: Here referer is passed to the normalize hook and
                   later it is passed to the resolve hook, and so on.  Should we
                   create a new object each time?  (I think it's OK to pass the
@@ -1055,39 +1071,20 @@ module "js/loaders" {
             }
 
             /*
-              P1 ISSUE: AGREE ON A DESIGN FOR skip/mischiefManaged.
-
-              The spec calls the third callback argument to the fetch hook
-              'skip'.
-
-              skip() means "i'm not going to fetch this url, you'll never hear
-              from me again-- but don't worry about it, someone will get the
-              modules you want and eval() or loader.set() them into existence".
-              It is a way to support bulk-loading.  A fetch hook could respond
-              to everything with skip()!
-
-              But I think I talked samth into changing the hook to have a name
-              like done() or, jokingly, mischiefManaged(), and require the
-              fetch hook to call it only *after* the desired module is
-              available.  The problem with skip() was that it left the loader
-              with an impression that some work would be done, but no
-              expectation of an error callback if it went wrong.  The error
-              callback is important; failure must kill the whole LinkageUnit
-              and call its fail hook.  --jorendorff, 2013 April 22.
-
-              P1 ISSUE: Want use cases/rationale for skip/mischiefManaged.
-              --jorendorff, 2013 April 24.
+              P1 ISSUE #3: Agree on a design for skip/done() hook;
+              get use cases/rationale for skip/done() hook.
+              https://github.com/jorendorff/js-loaders/issues/3
             */
-            function mischiefManaged() {
+            function done() {
                 if (fetchCompleted)
                     return;
                 fetchCompleted = true;
 
                 let mod = $MapGet(this.@modules, normalized);
                 if (mod === undefined) {
-                    status.fail(
-                        $TypeError("fetch hook mischiefManaged callback: " +
-                                   "mischief was not actually managed"));
+                    let msg = "fetch hook done() callback: " +
+                        "not actually done loading \"" + normalized + "\"";
+                    status.fail($TypeError(msg));
                 }
                 status.onEndRun(normalized, mod);
             }
@@ -1096,7 +1093,7 @@ module "js/loaders" {
 
             // Call fetch hook.
             try {
-                this.fetch(address, fulfill, reject, mischiefManaged, options);
+                this.fetch(address, fulfill, reject, done, options);
             } catch (exc) {
                 status.fail(exc);
             }
@@ -1403,60 +1400,12 @@ module "js/loaders" {
           executed by a call to loader.load(), .eval(), or .evalAsync().  But
           it is called for all imports, including imports in scripts.
 
-          P1 ISSUE:  The resolve hook is where we consult the @ondemand table
-          and therefore is where we know whether the resulting address is a
-          module or a script.  But it is the fetch hook that is responsible for
-          producing that information, passing it to the fulfill callback. Need
-          to figure out how the information gets from here to there.
+          P1 ISSUE #4:  Relative module names.
+          https://github.com/jorendorff/js-loaders/issues/4
 
-          Partially resolved:  The resolve hook may return a pair {url: "blah",
-          type: "script"}, per dherman, 2013 April 22.
-
-          That leaves two questions:  1. Is the type passed to the fetch hook,
-          on the options object? (Current implementation assumes yes.)  2. Does
-          the fulfill hook take a type parameter, so that the fetch hook can
-          overrule what the resolve hook said?  (Current implementation assumes
-          yes.)
-
-          P1 ISSUE:  RELATIVE MODULE NAMES.  Suppose we have a module "a/b/c"
-          loaded from the url "http://example.com/scripts/a/b/c.js", and it
-          does:
-              import "x" as x, "../y" as y, "/z" as z;
-          What full module names and urls are generated by the system loader's
-          default normalize/resolve behavior?  According to samth, the default
-          normalize behavior is to return the name unchanged, so the full
-          module names would be "x", "../y", and "/z" respectively.  But samth
-          has also said that those aren't valid module names.
-
-          P1 ISSUE:  DEFAULT RESOLVE BEHAVIOR VS. COMMON-SENSE URLS.  Again
-          suppose we have loaded a module "a/b/c" from the url
-          "http://example.com/scripts/a/b/c.js", and it contains
-              import "x" as x;
-          The system loader's default resolve behavior produces the full name
-          "x" and the url "http://example.com/scripts/a/b/x.js".  That can't be
-          right.
-
-          P1 ISSUE:  DEFAULT RESOLVE BEHAVIOR VS. CONCATENATION.  Consider a
-          module "a/b/c", in two different scenarios:
-          
-           1. loaded as a module from           http://js.com/scripts/a/b/c.js
-           2. defined in a script loaded from   http://js.com/scripts/all.js
-              which contains several modules.
- 
-          It is the same module "a/b/c" either way.  It contains:
-              import "x" as x;
-          which triggers these resolve hook calls:
-              // case 1
-              loader.resolve("x", {referer: {name: "a/b/c",
-                                             url: "http://example.com/scripts/a/b/c.js"}})
-              // case 2
-              loader.resolve("x", {referer: {name: "a/b/c",
-                                             url: "http://example.com/scripts/all.js"}})
-
-          It is hard to imagine these two calls (or whatever else the default
-          behavior is) returning the same URL for x, which is too bad if we
-          want to support concatenation.  Perhaps a Referer object should also
-          contain a .type property? :-P
+          P1 ISSUE #5: The fulfill hook takes a type parameter, so that the
+          fetch hook can overrule what the resolve hook said. Why?
+          https://github.com/jorendorff/js-loaders/issues/5
         */
         resolve(normalized, options) {
             return this.@defaultResolve(normalized, options.referer);
@@ -1501,19 +1450,17 @@ module "js/loaders" {
               Rationale:  The default resolve behavior should try to return an
               absolute URL.  If the user overrides it to return a relative URL,
               the default fetch behavior should cope with that.
-
-              TODO: referer.url probably isn't the right base url to use.
             */
-            return $ToAbsoluteURL(referer.url, address);
+            return $ToAbsoluteURL(this.@baseURL, address);
         }
 
         /*
           Asynchronously fetch the requested source from the given address
           (produced by the resolve hook).
 
-          If we're fetching a script, not a module, then the
-          skip/mischiefManaged callback should not be used; if called, it
-          reports an error to the fail callback.
+          If we're fetching a script, not a module, then the skip/done callback
+          should not be used; if called, it reports an error to the fail
+          callback.
 
           This hook is called for all modules and scripts whose source is not
           directly provided by the caller.  It is not called for the script
@@ -1525,10 +1472,10 @@ module "js/loaders" {
           (loader.load() does not call normalize/resolve hooks but it does call
           the fetch/translate/link hooks, per samth, 2013 April 22.)
         */
-        fetch(address, fulfill, fail, mischiefManaged, options) {
-            // TODO: @baseURL isn't the right base url to use here either (see
-            // $ToAbsoluteURL call in resolve() above).
+        fetch(address, fulfill, fail, done, options) {
+            // See comment in resolve() above.
             address = $ToAbsoluteURL(this.@baseURL, address);
+
             return $DefaultFetch(address, fulfill, fail, options.normalized,
                                  options.referer);
         }
@@ -1752,6 +1699,14 @@ module "js/loaders" {
             throw TODO;
         }
 
+
+        /*
+          Cancel this load because the fetch hook either merged it with another
+          fetch or used loader.eval() or loader.set() to put a finished module
+          into the registry.
+
+          (Used by the done() callback in Loader.@importFor().)
+        */
         onEndRun(name, mod) {
             throw TODO;
         }
@@ -1870,17 +1825,6 @@ module "js/loaders" {
             $Assert(this.status === "loading");
             throw TODO;
             this.loader.@failLinkageUnits(this.listeners);
-        }
-
-        /*
-          Cancel a load because the fetch hook, instead of loading source code,
-          went ahead and used eval() or loader.set() to put a finished module
-          into the registry.
-
-          (Used by the mischiefManaged callback in Loader.@importFor().)
-        */
-        cancel() {
-            throw TODO;
         }
     }
 
