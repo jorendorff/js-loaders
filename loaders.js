@@ -1429,7 +1429,8 @@ module "js/loaders" {
 
             let address = $MapGet(this.@locations, normalized);
             if (address !== undefined) {
-                /* P1 ISSUE: is baseURL the right URL to use here? */
+                // Relative URLs in the ondemand table are resolved relative to
+                // the baseURL, per samth 2013 April 26.
                 address = $ToAbsoluteURL(this.@baseURL, address);
                 if (typeof $MapGet(this.@ondemand, address) === 'object')
                     return {address, type: "script"};
