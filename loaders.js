@@ -735,15 +735,8 @@ module "js/loaders" {
             let fetchCompleted = false;
 
             /*
-              P2 ISSUE: USER HOOKS AND TOO-FAST CALLBACKS.  All the Loader
-              methods promise not to call any callbacks before returning; even
-              if the method has all the information it needs to report an
-              error, it schedules the errback() callback to be called during the
-              next event loop turn.  Should we hold user hooks to the same
-              standard?  What should happen if they call a callback
-              immediately?
-
-              RESOLVED: Allow this (!)
+              Note that the fetch hook may call fulfill() and the other hooks
+              synchronously; see comment on fetch().
             */
             function fulfill(src, type, actualAddress) {
                 if (fetchCompleted)
@@ -1580,18 +1573,20 @@ module "js/loaders" {
           (loader.load() does not call normalize/resolve hooks but it does call
           the fetch/translate/link hooks, per samth, 2013 April 22.)
 
-          Rationale for type argument to fulfill():  This allows the fetch hook
-          to overrule what the resolve hook said about whether the result will
-          be a script or a module.  Converting a "module" load into a "script"
-          load is potentially useful for bulk fetching.  The loader and server
-          can cooperate, for example, so that when the loader asks for a
-          module, the server sends a script containing that module and some or
-          all of its dependencies.  With the extra type argument, this can be
-          implemented as a single fetch hook rather than cooperating resolve
-          and fetch hooks. (jorendorff is skeptical, 2013 April 26. Discussion in
-          <https://github.com/jorendorff/js-loaders/issues/5>.)
+          The fetch hook may call the fulfill/reject/done callback
+          synchronously rather than waiting for the next event loop turn.  The
+          fulfill hook in turn synchronously calls the translate and link
+          hooks, compiles the code, and starts loading any modules the code
+          imports that are not already loaded or loading.  (However the fulfill
+          callback, like the rest of the loader, never synchronously calls a
+          success or failure callback.)  Per meeting, 2013 April 26.
 
-          type is tentatively removed.
+          (P2 ISSUE:  The agreed behavior above means that fetch() can
+          synchronously call fulfill(), which can synchronously call fetch().
+          Too confusing?  Maybe fulfill should stop after compilation and
+          handle imports/linking asynchronously.)
+
+          TODO:  Work out any further observable implications of the above.
         */
         fetch(resolved, fulfill, reject, done, options) {
             // See comment in resolve() above.
