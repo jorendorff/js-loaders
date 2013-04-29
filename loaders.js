@@ -541,26 +541,37 @@ module "js/loaders" {
         }
 
         /*
-          Asynchronously evaluate the program `src`.  If it evaluates
-          successfully, pass the result value to the given `callback`.  If
-          parsing src throws a SyntaxError, or evaluating it throws an
-          exception, pass the exception to the error callback, `errback`.
+          Asynchronously evaluate the program `src`.
 
           src may import modules that have not been loaded yet.  In that case,
           load all those modules, and their imports, transitively, before
-          evaluating the script.  If an error occurs during loading, pass it to
-          the error callback.
+          evaluating the script.
 
-          Loader hooks:  For the script `src`, the normalize, resolve, fetch,
-          and link hooks are not called.  The fetch hook is for obtaining code,
-          which we already have, and the other three operate only on modules,
-          not scripts.  It is not yet decided whether the translate hook is
-          called; see the ISSUE comment on the eval method.  Of course for
-          modules imported by `src` that are not already loaded, all the loader
-          hooks can be called.
+          On success, the result of evaluating the program is passed to
+          `callback`.
 
-          The callback() or errback() callback is always called in a fresh
-          event loop turn.
+          About callback and errback:
+            Loader.prototype.evalAsync(), .load(), and .import() all take two
+            callback arguments, callback and errback, the success and failure
+            callbacks respectively.
+
+            On success, these methods each schedule the success callback to be
+            called with a single argument (the result of the operation).
+
+            These three methods never throw. Instead, on error, the exception
+            is stored until the next event loop turn and then passed to the
+            failure callback.
+
+            Both arguments are optional.  The default success callback does
+            nothing.  The default failure callback throws its argument.
+            (Rationale:  the event loop will then treat it like any other
+            unhandled exception.)
+
+            Success and failure callbacks are always called in a fresh event
+            loop turn.  This means they will not be called until after
+            evalAsync returns, and they are always called directly from the
+            event loop:  except in the case of nested event loops, these
+            callbacks are never called while user code is on the stack.
 
           options.url, if present, is passed to each loader hook, for each
           module loaded, as options.referer.url.  (The default loader hooks
@@ -573,6 +584,14 @@ module "js/loaders" {
           (options.module is being specified, to serve an analogous purpose for
           normalization, but it is not implemented here. See the comment on
           eval().)
+
+          Loader hooks:  For the script `src`, the normalize, resolve, fetch,
+          and link hooks are not called.  The fetch hook is for obtaining code,
+          which we already have, and the other three operate only on modules,
+          not scripts.  It is not yet decided whether the translate hook is
+          called; see the ISSUE comment on the eval method.  Of course for
+          modules imported by `src` that are not already loaded, all the loader
+          hooks can be called.
         */
         evalAsync(src,
                   callback = value => undefined,
@@ -651,21 +670,14 @@ module "js/loaders" {
           declarations, this can cause modules to be loaded, linked, and
           executed.
 
-          On success, call the `callback`, passing the result of evaluating
-          the script.
+          On success, the result of evaluating the script is passed to the
+          success callback.
 
-          On error, pass an exception value or error message to the `errback`
-          callback.
+          See the comment on asyncEval() for more about callback and errback.
 
           If options is not undefined and options.url is not undefined, then
           options.url is passed to the loader hooks as options.referer.url.
           (The default loader hook implementations ignore options.referer.)
-
-          The callbacks will not be called until after evalAsync returns.
-
-          Rationale for default errback: The default errback throws its
-          argument because the event loop should treat it like any other
-          uncaught exception.
         */
         load(url,
              callback = value => undefined,
@@ -801,13 +813,10 @@ module "js/loaders" {
 
         /*
           Asynchronously load, link, and execute a module and any dependencies
-          it imports.  On success, pass the Module object to the given
-          `callback`.  On error, pass an exception value or error message to
-          the error callback, `errback`.
+          it imports.  On success, pass the Module object to the success
+          callback.
 
-          The callbacks will not be called until after evalAsync returns.
-
-          TODO - the above sentence is a general rule; mention it once up top
+          See the comment on asyncEval() for more about callback and errback.
         */
         import(moduleName,
                callback = () => undefined,
