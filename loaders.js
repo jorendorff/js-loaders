@@ -1425,10 +1425,10 @@ module "js/loaders" {
         /*
           For each import() call or import-declaration, the Loader first calls
           loader.normalize(name, options) passing the module name as passed to
-          import() or as written in the import-declaration.  This hook then
-          returns a full module name which is used for the rest of the import
-          process. (In particular, modules are stored in the registry under
-          their full module name.)
+          import() or as written in the import-declaration.  This hook returns
+          a full module name which is used for the rest of the import process.
+          (In particular, modules are stored in the registry under their full
+          module name.)
 
           This hook is not called for the main script body executed by a call
           to loader.load(), .eval(), or .evalAsync().  But it is called for all
@@ -1449,7 +1449,7 @@ module "js/loaders" {
               empty Object to serve as the metadata object for the rest of the
               load; OR
 
-            - undefined, equivalent to returning name unchanged; OR
+            - undefined, equivalent to returning `name` unchanged; OR
 
             - an object that has a .normalized property that is a string, the
               full module name.
@@ -1500,7 +1500,7 @@ module "js/loaders" {
           by ':', it is returned unchanged; else we add ".js" and resolve
           relative to the baseURL.
 
-          P3 ISSUE:  Is the ondemand table part of the default resolve hook's
+          P1 ISSUE:  Is the ondemand table part of the default resolve hook's
           behavior?  How exactly does the browser's resolve hook call into
           that?
 
