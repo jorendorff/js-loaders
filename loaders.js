@@ -657,26 +657,20 @@ module "js/loaders" {
           On error, pass an exception value or error message to the `errback`
           callback.
 
+          If options is not undefined and options.url is not undefined, then
+          options.url is passed to the loader hooks as options.referer.url.
+          (The default loader hook implementations ignore options.referer.)
+
           The callbacks will not be called until after evalAsync returns.
 
-          P2 ISSUE:  The google doc says:
-              Loader.prototype.load(url, callback, errback, { url }) -> void
-          I count two "url" arguments there.
-
-          RESOLVED: the second one is just a referer url.
-
-          TODO: load modules relative to url
-
-          P2 ISSUE: I think the spec has the default errback doing nothing; the
-          reason I have it throwing is so that if something fails, and no error
-          callback was provided, the browser embedding will see it as an
-          uncaught exception and log it to the console.
-
-          RESOLVED: Yes, throw.  per meeting, 2013 April 26.
+          Rationale for default errback: The default errback throws its
+          argument because the event loop should treat it like any other
+          uncaught exception.
         */
         load(url,
              callback = value => undefined,
-             errback = exc => { throw exc; })
+             errback = exc => { throw exc; },
+             options = undefined)
         {
             /*
               This method only does two things.
@@ -688,6 +682,19 @@ module "js/loaders" {
                  extra turn of the event loop which we could eliminate; not
                  sure how visible it would be from a spec perspective.)
             */
+
+            let referer = null;
+            if (options !== undefined && "url" in options) {
+                let url = options.url;
+                if (url !== undefined) {
+                    if (typeof url !== 'string') {
+                        let msg = "load: options.url must be a string or undefined";
+                        AsyncCall(errback, $TypeError(msg));
+                        return;
+                    }
+                    referer = {name: null, url: url};
+                }
+            }
 
             /*
               P3 ISSUE: Check callability of callbacks here (and everywhere
@@ -779,15 +786,15 @@ module "js/loaders" {
                 AsyncCall(errback, $TypeError(msg));
             }
 
-            let options = {
-                referer: null,
+            let fetchOptions = {
+                referer: referer,
                 metadata: metadata,
                 normalized: null,
                 type: 'script'
             };
 
             try {
-                this.fetch(null, fulfill, reject, done, options);
+                this.fetch(null, fulfill, reject, done, fetchOptions);
             } catch (exc) {
                 /*
                   Call reject rather than calling the errback() callback directly.
