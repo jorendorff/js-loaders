@@ -97,6 +97,7 @@ module "js/loaders" {
         $CompileScript,
         $LinkScript,
         $ExecuteScript,
+        $ScriptDeclaredModuleNames,  // array of strings
         $ScriptImportedModuleNames,  // See comment in Loader.eval()
 
         // Globals
@@ -453,6 +454,7 @@ module "js/loaders" {
             }
 
             let script = $CompileScript(this, src, url);
+            this.@checkModuleDeclarations("eval", script);
 
             /*
               $ScriptImportedModuleNames returns an array of [client, request]
@@ -587,10 +589,40 @@ module "js/loaders" {
             return this.@evalAsync(src, done, fail, url);
         }
 
+        /*
+          Throw a SyntaxError if `src` declares a module that we are
+          already loading.
+
+          Rationale: Consider two evalAsync calls.
+
+              System.evalAsync('module "x" { import "y" as y; }', ok, err);
+              System.evalAsync('module "x" { import "z" as z; }', ok, err);
+
+          It seemed perverse to let them race trying to load "y" and "z"
+          after we know one of the two module "x" declarations must
+          fail.  Instead, the second evalAsync fails immediately, passing a
+          SyntaxError to the error callback in the next event loop turn.
+          Per meeting, 2013 April 26.
+        */
+        @checkModuleDeclarations(methodName, script) {
+            let names = $ScriptDeclaredModuleNames(script);
+            for (let i = 0; i < names.length; i++) {
+                let name = names[i];
+                if ($MapHas(this.@modules, name)
+                    || $MapHas(this.@loading, name))
+                {
+                    throw $SyntaxError(
+                        methodName + ": script declares module \"" + name +
+                        "\", which is already loaded or loading");
+                }
+            }
+        }
+
         @evalAsync(src, done, fail, srcurl) {
             let script;
             try {
                 script = $CompileScript(this, code, srcurl);
+                this.@checkModuleDeclarations("evalAsync", script);
             } catch (exc) {
                 AsyncCall(fail, exc);
                 return;
@@ -599,43 +631,6 @@ module "js/loaders" {
             let ctn = Loader.@makeContinuation(() => $ScriptExec(script), done, fail);
             let unit = new LinkageUnit(this, ctn, fail);
             unit.addScriptAndDependencies(script);
-
-            /*
-              P2 ISSUE: What if someone executes some code that says
-
-                  module "A" {}
-
-              while "A" is in-flight?
-
-              That is, suppose a ModuleStatus for "A" is in loader.@loading
-              when a script executes that contains a module-declaration for
-              "A". Is that allowed?  What happens when the in-flight module
-              finishes loading?
-
-              RESOLVED: Whichever one happens first is allowed, and the second
-              one is an error.  per samth, 2013 April 22.
-
-              RE-RESOLVED: `module "A" {}` fails if a load is in-flight for
-              "A".  per meeting, 2013 April 26.
-
-              But wait! REOPENED by jorendorff, 2013 April 26, because
-
-              P2 ISSUE: Since multiple scripts can contain module-declarations
-              for a module, multiple declarations of a module can be in flight
-              at the same time. Consider two evalAsync calls:
-
-                  System.evalAsync('module "x" { import "y" as y; }', ok, err);
-                  System.evalAsync('module "x" { import "z" as z; }', ok, err);
-
-              Does the second evalAsync throw a SyntaxError immediately?
-
-              RESOLVED: Well, it doesn't throw; the error callback is
-              called. But yes the second evalAsync fails immediately.
-
-              Or do they race (as samth's answer above suggests)?
-
-              RESOLVED: NO, they do not race.  per meeting, 2013 April 26.
-            */
 
             /*
               P4 ISSUE: EXECUTION ORDER WHEN MULTIPLE LINKAGE UNITS BECOME
