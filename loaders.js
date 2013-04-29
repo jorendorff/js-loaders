@@ -6,12 +6,12 @@
   This is currently extremely incomplete.  The following are in decent shape:
     - the Loader constructor;
     - .eval(src, options) and @ensureModuleExecuted;
-    - .load(url, done, fail);
+    - .load(url, callback, errback);
     - .get(name), .has(name), .set(name, module), .delete(name);
     - .ondemand(sources).
   The following are partly implemented:
-    - .evalAsync(src, done, fail, options)
-    - .import(name, done, fail, options)
+    - .evalAsync(src, callback, errback, options)
+    - .import(name, callback, errback, options)
   Everything else is a mess.
 
   If you imagine loading as happening in three phases:
@@ -96,7 +96,7 @@ module "js/loaders" {
         // Scripts
         $CompileScript,
         $LinkScript,
-        $ExecuteScript,
+        $EvaluateScript,
         $ScriptDeclaredModuleNames,  // array of strings
         $ScriptImportedModuleNames,  // See comment in Loader.eval()
 
@@ -513,15 +513,15 @@ module "js/loaders" {
             for (let i = 0; i < modules.length; i++)
                 Loader.@ensureModuleExecuted(modules[i]);
 
-            return $ExecuteScript(script);
+            return $EvaluateScript(script);
         }
 
         /*
           Create a callback which calls work(), then either passes its return
-          value to the done callback (on success) or passes the exception to
-          the fail callback (on exception).
+          value to the given `callback` (on success) or passes the exception to
+          the error callback, `errback` (on exception).
         */
-        static @makeContinuation(work, done, fail) {
+        static @makeContinuation(work, callback, errback) {
             return () => {
                 /*
                   Tail calls would probably be equivalent to AsyncCall,
@@ -533,23 +533,23 @@ module "js/loaders" {
                 try {
                     result = work();
                 } catch (exc) {
-                    AsyncCall(fail, exc);
+                    AsyncCall(errback, exc);
                     return;
                 }
-                AsyncCall(done, result);
+                AsyncCall(callback, result);
             };
         }
 
         /*
-          Asynchronously evaluate the program src.  If it evaluates
-          successfully, pass the result value to the done callback.  If parsing
-          src throws a SyntaxError, or evaluating it throws an exception, pass
-          the exception to the fail callback.
+          Asynchronously evaluate the program `src`.  If it evaluates
+          successfully, pass the result value to the given `callback`.  If
+          parsing src throws a SyntaxError, or evaluating it throws an
+          exception, pass the exception to the error callback, `errback`.
 
           src may import modules that have not been loaded yet.  In that case,
           load all those modules, and their imports, transitively, before
           evaluating the script.  If an error occurs during loading, pass it to
-          the fail callback.
+          the error callback.
 
           Loader hooks:  For the script `src`, the normalize, resolve, fetch,
           and link hooks are not called.  The fetch hook is for obtaining code,
@@ -559,8 +559,8 @@ module "js/loaders" {
           modules imported by `src` that are not already loaded, all the loader
           hooks can be called.
 
-          The done() or fail() callback is always called in a fresh event loop
-          turn.
+          The callback() or errback() callback is always called in a fresh
+          event loop turn.
 
           options.url, if present, is passed to each loader hook, for each
           module loaded, as options.referer.url.  (The default loader hooks
@@ -575,8 +575,8 @@ module "js/loaders" {
           eval().)
         */
         evalAsync(src,
-                  done = val => undefined,
-                  fail = exc => { throw exc; },
+                  callback = value => undefined,
+                  errback = exc => { throw exc; },
                   options = undefined)
         {
             let url = undefined;
@@ -586,7 +586,7 @@ module "js/loaders" {
                     throw $TypeError("options.url must be a string or undefined");
             }
 
-            return this.@evalAsync(src, done, fail, url);
+            return this.@evalAsync(src, callback, errback, url);
         }
 
         /*
@@ -618,18 +618,19 @@ module "js/loaders" {
             }
         }
 
-        @evalAsync(src, done, fail, srcurl) {
+        @evalAsync(src, callback, errback, srcurl) {
             let script;
             try {
                 script = $CompileScript(this, code, srcurl);
                 this.@checkModuleDeclarations("evalAsync", script);
             } catch (exc) {
-                AsyncCall(fail, exc);
+                AsyncCall(errback, exc);
                 return;
             }
 
-            let ctn = Loader.@makeContinuation(() => $ScriptExec(script), done, fail);
-            let unit = new LinkageUnit(this, ctn, fail);
+            let ctn = Loader.@makeContinuation(
+                () => $EvaluateScript(script), callback, errback);
+            let unit = new LinkageUnit(this, ctn, errback);
             unit.addScriptAndDependencies(script);
 
             /*
@@ -650,14 +651,10 @@ module "js/loaders" {
           declarations, this can cause modules to be loaded, linked, and
           executed.
 
-          On success, call the done callback.
+          On success, call the `callback`, passing the result of evaluating
+          the script.
 
-          P2 ISSUE: Does this capture the result of evaluating the script and
-          pass that value to the callback?  The code below assumes yes.
-
-          RESOLVED: yes, per samth, 2013 April 26.
-
-          On error, pass an exception value or error message to the fail
+          On error, pass an exception value or error message to the `errback`
           callback.
 
           The callbacks will not be called until after evalAsync returns.
@@ -678,8 +675,8 @@ module "js/loaders" {
           RESOLVED: Yes, throw.  per meeting, 2013 April 26.
         */
         load(url,
-             done = () => undefined,
-             fail = exc => { throw exc; })
+             callback = value => undefined,
+             errback = exc => { throw exc; })
         {
             /*
               This method only does two things.
@@ -698,9 +695,9 @@ module "js/loaders" {
               since the TypeError if they are not functions happens much later
               and with an empty stack.  But Futures don't do it.  Assuming no.
 
-              if (typeof done !== 'function')
+              if (typeof callback !== 'function')
                   throw $TypeError("Loader.load: callback must be a function");
-              if (typeof fail !== 'function')
+              if (typeof errback !== 'function')
                   throw $TypeError("Loader.load: error callback must be a function");
             */
 
@@ -736,7 +733,7 @@ module "js/loaders" {
               P2 ISSUE: USER HOOKS AND TOO-FAST CALLBACKS.  All the Loader
               methods promise not to call any callbacks before returning; even
               if the method has all the information it needs to report an
-              error, it schedules the fail() callback to be called during the
+              error, it schedules the errback() callback to be called during the
               next event loop turn.  Should we hold user hooks to the same
               standard?  What should happen if they call a callback
               immediately?
@@ -750,18 +747,18 @@ module "js/loaders" {
 
                 if (typeof src !== 'string') {
                     let msg = "load() fulfill callback: first argument must be a string";
-                    AsyncCall(fail, $TypeError(msg));
+                    AsyncCall(errback, $TypeError(msg));
                 }
                 if (type !== 'script') {
                     let msg = "load() fulfill callback: second argument must be 'script'";
-                    AsyncCall(fail, $TypeError(msg));
+                    AsyncCall(errback, $TypeError(msg));
                 }
                 if (typeof actualAddress !== 'string') {
                     let msg = "load() fulfill callback: third argument must be a string";
-                    AsyncCall(fail, $TypeError(msg));
+                    AsyncCall(errback, $TypeError(msg));
                 }
 
-                this.@evalAsync(src, done, fail, actualAddress);
+                this.@evalAsync(src, callback, errback, actualAddress);
             }
 
             function reject(exc) {
@@ -769,7 +766,7 @@ module "js/loaders" {
                     return;
                 fetchCompleted = true;
 
-                AsyncCall(fail, exc);
+                AsyncCall(errback, exc);
             }
 
             function done() {
@@ -779,7 +776,7 @@ module "js/loaders" {
 
                 /* P5 ISSUE: what kind of error to throw here. */
                 let msg = "load(): fetch hook must not call done() callback";
-                AsyncCall(fail, $TypeError(msg));
+                AsyncCall(errback, $TypeError(msg));
             }
 
             let options = {
@@ -793,9 +790,9 @@ module "js/loaders" {
                 this.fetch(null, fulfill, reject, done, options);
             } catch (exc) {
                 /*
-                  Call reject rather than calling the fail() callback directly.
+                  Call reject rather than calling the errback() callback directly.
                   Otherwise a badly-behaved fetch hook could reject() and then
-                  throw, causing fail() to be called twice.  This way, reject()
+                  throw, causing errback() to be called twice.  This way, reject()
                   may be called twice, but it ignores the second call; see
                   fetchCompleted above.
 
@@ -807,17 +804,17 @@ module "js/loaders" {
 
         /*
           Asynchronously load, link, and execute a module and any dependencies
-          it imports.  On success, pass the Module object to the done callback.
-          On error, pass an exception value or error message to the fail
-          callback.
+          it imports.  On success, pass the Module object to the given
+          `callback`.  On error, pass an exception value or error message to
+          the error callback, `errback`.
 
           The callbacks will not be called until after evalAsync returns.
 
           TODO - the above sentence is a general rule; mention it once up top
         */
         import(moduleName,
-               done = () => undefined,
-               fail = exc => { throw exc; },
+               callback = () => undefined,
+               errback = exc => { throw exc; },
                options = undefined)
         {
             // Build referer.
@@ -845,13 +842,14 @@ module "js/loaders" {
                 if (m === undefined) {
                     let exc = $TypeError("import(): module \"" + fullName +
                                          "\" was deleted from the loader");
-                    return fail(exc);
+                    return errback(exc);
                 }
+                // TODO: bug here if an exception is thrown
                 Loader.@ensureModuleExecuted(m);
-                return done(m);
+                return callback(m);
             }
 
-            let unit = new LinkageUnit(this, success, fail);
+            let unit = new LinkageUnit(this, success, errback);
             this.@importFor(unit, referer, moduleName, setFullName, true);
         }
 
@@ -1167,8 +1165,8 @@ module "js/loaders" {
             }
 
             /*
-              P1 ISSUE #3: Agree on a design for skip/done() hook;
-              get use cases/rationale for skip/done() hook.
+              P1 ISSUE #3: Agree on a design for done() hook; get use
+              cases/rationale for done() hook.
               https://github.com/jorendorff/js-loaders/issues/3
             */
             function done() {
@@ -1271,7 +1269,7 @@ module "js/loaders" {
             // P5 ISSUE: In what order?
             for (let i = 0; i < units.length; i++) {
                 for (let unit = units[i]; unit !== null; unit = unit.clone)
-                    AsyncCall(unit.failCallback, exc);
+                    AsyncCall(unit.errback, exc);
             }
         }
 
@@ -1555,9 +1553,11 @@ module "js/loaders" {
           Asynchronously fetch the requested source from the given url
           (produced by the resolve hook).
 
-          If we're fetching a script, not a module, then the skip/done callback
-          should not be used; if called, it reports an error to the fail
+          If we're fetching a script, not a module, then the done callback
+          should not be used.  If called, it reports an error to the reject
           callback.
+
+          TODO: clean up that last sentence
 
           This hook is called for all modules and scripts whose source is not
           directly provided by the caller.  It is not called for the script
@@ -1582,11 +1582,11 @@ module "js/loaders" {
 
           type is tentatively removed.
         */
-        fetch(resolved, fulfill, fail, done, options) {
+        fetch(resolved, fulfill, reject, done, options) {
             // See comment in resolve() above.
             resolved = $ToAbsoluteURL(this.@baseURL, resolved);
 
-            return $DefaultFetch(resolved, fulfill, fail, options.normalized,
+            return $DefaultFetch(resolved, fulfill, reject, options.normalized,
                                  options.referer);
         }
 
@@ -1672,12 +1672,12 @@ module "js/loaders" {
       LinkageUnit.
     */
     class LinkageUnit {
-        constructor(loader, done, fail) {
+        constructor(loader, callback, errback) {
             // TODO: make LinkageUnits not inherit from Object.prototype, for isolation;
             // or else use symbols for all these. :-P
             this.loader = loader;
-            this.doneCallback = done;
-            this.failCallback = fail;
+            this.callback = callback;
+            this.errback = errback;
 
             /*
               Another LinkageUnit that has the same job as this one; or null.
@@ -1718,6 +1718,10 @@ module "js/loaders" {
         }
 
         onLinkedModule(mod) {
+            // TODO
+        }
+
+        fail(exc) {
             // TODO
         }
     }
@@ -1911,7 +1915,7 @@ module "js/loaders" {
 
               P4 ISSUE: cancellation and fetch hooks
 
-           5. Call the fail hooks for each LinkageUnit in F.
+           5. Call the errback hooks for each LinkageUnit in F.
 
               P5 ISSUE:  Ordering.  We can spec the order to be the order of
               the import()/load()/asyncEval() calls, wouldn't be hard.
@@ -1961,7 +1965,7 @@ module "js/loaders" {
           - The fetch hook errors described above can happen when fetching
             script code for a load() call. This happens so early that no
             LinkageUnits and no modules are involved. We can skip the complex
-            error-handling process and just directly call the fail hook.
+            error-handling process and just directly call the errback hook.
         */
 
         fail(exc) {
