@@ -252,6 +252,9 @@ module "js/loaders" {
           implementation, they don't.)  I guess we need a second table of
           in-flight script loads: @loadingModules and @loadingScripts.
 
+          RESOLVED: samth has changed the resolve hook in the google doc to
+          make sharing expressible.  per meeting, 2013 April 26.
+
           P4 ISSUE:  Proposed name for this method: addSources(sources)
         */
         ondemand(sources) {
@@ -441,6 +444,10 @@ module "js/loaders" {
           <samth> well, i think so
           <samth> i seem to recall dherman disagreeing
           (2013 April 22)
+
+          A wide-ranging discussion involving virtualization, iframes, object
+          capabilities, and intrinsics failed to reach a conclusion on this.
+          2013 April 26.
         */
         eval(src, options) {
             // Unpack options. Only one option is supported: options.url.
@@ -570,6 +577,8 @@ module "js/loaders" {
           (options.module is being specified, to serve an analogous purpose for
           normalization, but it is not implemented here. See the comment on
           eval().)
+
+          TODO: default arguments including done/fail
         */
         evalAsync(src, done, fail, options) {
             return this.@evalAsync(src, done, fail, options);
@@ -603,6 +612,9 @@ module "js/loaders" {
               RESOLVED: Whichever one happens first is allowed, and the second
               one is an error.  per samth, 2013 April 22.
 
+              RE-RESOLVED: `module "A" {}` fails if a load is in-flight for
+              "A".  per meeting, 2013 April 26.
+
               But wait! REOPENED by jorendorff, 2013 April 26, because
 
               P2 ISSUE: Since multiple scripts can contain module-declarations
@@ -612,15 +624,14 @@ module "js/loaders" {
                   System.evalAsync('module "x" { import "y" as y; }', ok, err);
                   System.evalAsync('module "x" { import "z" as z; }', ok, err);
 
-              Does the second evalAsync throw a SyntaxError immediately?  Or do
-              they race (as samth's answer above suggests)?
+              Does the second evalAsync throw a SyntaxError immediately?
 
-              If they race, suppose a third evalAsync call does:
+              RESOLVED: Well, it doesn't throw; the error callback is
+              called. But yes the second evalAsync fails immediately.
 
-                  System.evalAsync('import "x" as x; x.foo();', ok3, err3);
+              Or do they race (as samth's answer above suggests)?
 
-              Now suppose fetching "y.js" fails. Does that cause err3 to be
-              called?
+              RESOLVED: NO, they do not race.  per meeting, 2013 April 26.
             */
 
             /*
@@ -646,6 +657,8 @@ module "js/loaders" {
           P2 ISSUE: Does this capture the result of evaluating the script and
           pass that value to the callback?  The code below assumes yes.
 
+          RESOLVED: yes, per samth, 2013 April 26.
+
           On error, pass an exception value or error message to the fail
           callback.
 
@@ -655,12 +668,16 @@ module "js/loaders" {
               Loader.prototype.load(url, callback, errback, { url }) -> void
           I count two "url" arguments there.
 
+          RESOLVED: the second one is just a referer url.
+
           TODO: load modules relative to url
 
           P2 ISSUE: I think the spec has the default errback doing nothing; the
           reason I have it throwing is so that if something fails, and no error
           callback was provided, the browser embedding will see it as an
-          uncaught excpetion and log it to the console.
+          uncaught exception and log it to the console.
+
+          RESOLVED: Yes, throw.  per meeting, 2013 April 26.
         */
         load(url,
              done = () => undefined,
@@ -706,6 +723,10 @@ module "js/loaders" {
               with invalid arguments.  The being called multiple times thing is
               what this fetchCompleted flag is about.
 
+              RESOLVED: keep fetchCompleted but throw instead of silently
+              returning when you try to complete a fetch that's already
+              completed.
+
               Rationale for fetchCompleted:  Compatibility with Futures.
               Consquentially, a fetch hook can try two ways of fetching a file
               asynchronously, in parallel, and just let them race; the first
@@ -721,6 +742,8 @@ module "js/loaders" {
               next event loop turn.  Should we hold user hooks to the same
               standard?  What should happen if they call a callback
               immediately?
+
+              RESOLVED: Allow this (!)
             */
             function fulfill(src, type, actualAddress) {
                 if (fetchCompleted)
@@ -777,6 +800,8 @@ module "js/loaders" {
                   throw, causing fail() to be called twice.  This way, reject()
                   may be called twice, but it ignores the second call; see
                   fetchCompleted above.
+
+                  TODO fix this.
                 */
                 reject(exc);
             }
@@ -790,16 +815,7 @@ module "js/loaders" {
 
           The callbacks will not be called until after evalAsync returns.
 
-          P2 ISSUE: The google doc says
-              Loader.prototype.import(moduleName, callback, staticerrback,
-                                      dynamicerrback, { module, url }) -> void
-          but I can't tell what { url } is supposed to be.
-          In particular the url is computed via the resolve hook, right?
-          Does the url option override that?
-
-          P2 ISSUE: After conversations with samth and dherman, I think we're
-          mostly in agreement that we don't need separate staticerrback and
-          dynamicerrback arguments.  -jorendorff 2013 April 20.
+          TODO - the above sentence is a general rule; mention it once up top
         */
         import(moduleName,
                done = () => undefined,
@@ -886,14 +902,24 @@ module "js/loaders" {
             let normalized, metadata;
             try {
                 /*
+                  The normalize hook may return an absolute URL.
+
+                  default resolve hook: identity function?
+                  browser resolve hook:
+                  - if the front has a URL scheme, return it
+                  - otherwise add .js and prepend the base URL.
+
+                  TODO rewrite the ideas below in light of meeting
+
                   P2 ISSUE: As currently written, the normalize hook could
                   return an absolute URL "http://x.com/x" or a relative URL
                   with an absolute path, like "/x". We would pass that to the
                   resolve hook, which for an absolute URL would simply add
                   ".js".  I don't think that's what we want.
 
-                  Proposal:  Parse the normalized module name and fail if it
-                  doesn't match "segment(/segment)*"; where each segments is an
+                  Proposal: In the browser's resolve hook, parse the normalized
+                  module name and fail if it doesn't match
+                  "segment(/segment)*"; where each segment is (?) an
                   Identifier.  This would forbid "." or ":" anywhere in a
                   segment.  Too restrictive?
 
@@ -1022,12 +1048,12 @@ module "js/loaders" {
             /*
               Create a ModuleStatus object for this module load.  Once this
               object is in this.@loading, other LinkageUnits may add themselves
-              to its set of listeners, so errors must be reported to
-              status.fail(), to affect all listening LinkageUnits, not just
+              to its set of waiting units, so errors must be reported to
+              status.fail(), to affect all waiting LinkageUnits, not just
               unit.
             */
             status = new ModuleStatus;
-            $ArrayPush(status.listeners, unit);
+            $ArrayPush(status.unitsWaitingForCompile, unit);
             $MapSet(this.@loading, normalized, status);
 
             let address, type;
@@ -1365,6 +1391,8 @@ module "js/loaders" {
 
         /* Loader hooks ******************************************************/
 
+        // TODO these methods need to check the this argument carefully.
+
         /*
           For each import() call or import-declaration, the Loader first calls
           loader.normalize(name, options) passing the module name as passed to
@@ -1509,6 +1537,8 @@ module "js/loaders" {
           implemented as a single fetch hook rather than cooperating resolve
           and fetch hooks. (jorendorff is skeptical, 2013 April 26. Discussion in
           <https://github.com/jorendorff/js-loaders/issues/5>.)
+
+          type is tentatively removed.
         */
         fetch(address, fulfill, fail, done, options) {
             // See comment in resolve() above.
@@ -1657,14 +1687,17 @@ module "js/loaders" {
 
       1. Loading: Source is not available yet.
 
-         TODO: this should be called "fetching".
+      TODO: this should be called "fetching".
 
           .status === "loading"
-          .listeners is an Array of LinkageUnits
+          .unitsWaitingForCompile is an Array of LinkageUnits
 
-      2. Waiting: Source is available and has been "translated"; dependencies have
-      been identified. But the module hasn't been linked or executed yet. We are
-      waiting for dependencies.
+      This state ends when the source is retrieved, translated, and
+      successfully compiled.
+
+      2. Waiting: Source is available and has been "translated"; syntax has
+      been checked; dependencies have been identified. But the module hasn't
+      been linked or executed yet. We are waiting for dependencies.
 
       This pseudo-implementation treats the Module object as already existing at
       this point (except for factory-made modules). But it has not been linked and
@@ -1703,7 +1736,7 @@ module "js/loaders" {
         */
         constructor() {
             this.status = "loading";
-            this.listeners = [];
+            this.unitsWaitingForCompile = [];
             this.module = null;
             this.factory = null;
             this.dependencies = null;
@@ -1727,7 +1760,7 @@ module "js/loaders" {
             $Assert(mod === null || fac === null);
 
             this.status = "waiting";
-            this.listeners = undefined;
+            this.unitsWaitingForCompile = undefined;
             this.module = mod;
             this.factory = fac;
             this.dependencies = dependencyNames;
@@ -1789,40 +1822,59 @@ module "js/loaders" {
         }
 
         /*
-          P2 ISSUE: ERROR HANDLING. Suppose I do
-              loader.evalAsync('import "x"; import "y";')
-          and partway through the process of loading the many dependencies
-          of "x" and "y", something fails. Now what?
+          Error handling.
 
-          Proposal: Every error that can occur throughout the process (see
-          exhaustive list in the next comment, below) is related to some
-          specific Module (in loader.@modules) or in-flight ModuleStatus (in
-          loader.@loading). When an error occurs:
+          Every error that can occur throughout the process (with one
+          exception; see exhaustive list in the next comment, below) is related
+          to either a specific in-flight ModuleStatus (in loader.@loading) or a
+          specific LinkageUnit.
 
-           1. Find the set of LinkageUnits that needed that module, the one
-              that triggered the error.  We are going to fail all these
-              LinkageUnits.
+          When such an error occurs:
 
-           2. Find all in-flight modules (in loader.@loading) that are not
-              needed by any LinkageUnit other than those found in step 1.
-              (Note that this may or may not include the module that triggered
-              the error, because that module may or may not be in-flight; it
-              might have thrown while loading or while executing.)  Mark these
-              in-flight modules dead and remove them from loader.@loading.  If
-              any are in "loading" state, neuter the fetch hook's
-              fulfill/reject/skip callbacks so that they become no-ops.
+           1. Compute the set F of LinkageUnits we are going to fail, as
+              follows:
 
-              P3 ISSUE: In Loader.prototype.@failLinkageUnits, there's no
-              efficient way to find stranded in-flight modules. We can mark and
-              sweep, if the Loader has a list of all in-flight LinkageUnits
-              (the ones that aren't failing).
+                * If the error is related to a single LinkageUnit (that is, it
+                  is a link error or an execution error in a module or script),
+                  let F = a set containing just that LinkageUnit.
 
-           3. Call the fail hooks for each LinkageUnit found in step 1.
+                * If the error is related to an in-flight ModuleStatus (that
+                  is, it has to do with a hook throwing, returning an invalid
+                  value, calling a fulfill callback inorrectly, or calling the
+                  reject callback), let F = the set of LinkageUnits that needed
+                  that module.
+
+           2. Let M = the set of all in-flight modules (in loader.@loading)
+              that are not needed by any LinkageUnit other than those in F.
+
+              P3 ISSUE: I don't think there's an efficient way to compute M. We
+              can mark and sweep, which is linear in the total amount of
+              in-flight stuff, and this is the current plan.
+
+           3. TODO revise this super-hand-wavy pseudo-formal spec:
+
+              Silently try linking all these remaining modules in M.  If any
+              have link errors, or have dependencies (transitively) that have
+              link errors, or have dependencies that aren't compiled yet, or
+              have dependencies that are neither in M nor in the registry,
+              throw those away; but no exception is thrown, nor error reported
+              anywhere, for link errors in this stage.  Commit those that do
+              link successfully to the registry. (They'll execute on demand
+              later.  This whole step is just using the registry as a cache.)
+
+           4. Remove all other in-flight modules found in step 2 from
+              loader.@loading.  If any are in "loading" state, neuter the fetch
+              hook's fulfill/reject/skip callbacks so that they become no-ops.
+              Cancel those fetches if possible.
+
+              P4 ISSUE: cancellation and fetch hooks
+
+           5. Call the fail hooks for each LinkageUnit in F.
 
               P5 ISSUE:  Ordering.  We can spec the order to be the order of
               the import()/load()/asyncEval() calls, wouldn't be hard.
 
-          After that, we drop the LinkageUnits and they become garbage.
+          After that, we drop the failed LinkageUnits and they become garbage.
 
           Note that any modules that are already linked and committed to
           the module registry (loader.@modules) are unaffected by the error.
@@ -1831,6 +1883,8 @@ module "js/loaders" {
         /*
           For reference, here are all the kinds of errors that can
           occur. This list is meant to be exhaustive.
+
+          Errors related to a ModuleStatus:
 
           - For each module, we call all five loader hooks, any of which
             can throw or return an invalid value.
@@ -1845,6 +1899,8 @@ module "js/loaders" {
           - We can fetch bad code and get a SyntaxError trying to compile
             it.
 
+          Errors related to a LinkageUnit:
+
           - During linking, we can find that a factory-made module is
             involved in an import cycle. This is an error.
 
@@ -1857,12 +1913,19 @@ module "js/loaders" {
             there's already an entry for any of the module names.
 
           - Execution of a module body or a script can throw.
+
+          Other:
+
+          - The fetch hook errors described above can happen when fetching
+            script code for a load() call. This happens so early that no
+            LinkageUnits and no modules are involved. We can skip the complex
+            error-handling process and just directly call the fail hook.
         */
 
         fail(exc) {
             $Assert(this.status === "loading");
             throw TODO;
-            this.loader.@failLinkageUnits(this.listeners);
+            this.loader.@failLinkageUnits(this.unitsWaitingForCompile);
         }
     }
 
