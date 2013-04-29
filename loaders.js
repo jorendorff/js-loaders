@@ -1504,6 +1504,11 @@ module "js/loaders" {
           behavior?  How exactly does the browser's resolve hook call into
           that?
 
+          P1 ISSUE: If the resolve hook returns undefined, what happens?  It
+          will be tricky not to astonish browser resolve hook authors.  Suggest
+          removing that API and requiring the hook author to call the base
+          class method (e.g. using super or Loader.prototype.resolve.call).
+
           Possible security issues related to the browser resolve hook:
 
           - Do we want loader.import(x), where x is untrusted, to be arbitrary
