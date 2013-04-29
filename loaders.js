@@ -1056,27 +1056,27 @@ module "js/loaders" {
             $ArrayPush(status.unitsWaitingForCompile, unit);
             $MapSet(this.@loading, normalized, status);
 
-            let address, type;
+            let url, type;
             try {
                 // Call the resolve hook.
                 let result = this.resolve(normalized, {referer, metadata});
 
                 // Interpret the result.
                 if (result === undefined) {
-                    address = this.@defaultResolve(normalized, referer);
+                    url = this.@defaultResolve(normalized, referer);
                     type = 'module';
                 } else if (typeof result === "string") {
-                    address = result;
+                    url = result;
                     type = 'module';
                 } else if (IsObject(result)) {
-                    // result.address must be present and must be a string.
-                    if (!("address" in result)) {
+                    // result.url must be present and must be a string.
+                    if (!("url" in result)) {
                         throw $TypeError("Object returned from loader.resolve hook " +
-                                         "must have an .address property");
+                                         "must have a .url property");
                     }
-                    address = result.address;
-                    if (typeof address !== "string") {
-                        throw $TypeError(".address property of object returned from " +
+                    url = result.url;
+                    if (typeof url !== "string") {
+                        throw $TypeError(".url property of object returned from " +
                                          "loader.resolve hook must be a string");
                     }
 
@@ -1092,7 +1092,7 @@ module "js/loaders" {
                     }
                 } else {
                     throw $TypeError("loader.resolve hook must return a " +
-                                     "string or an object with .address");
+                                     "string or an object with .url");
                 }
             } catch (exc) {
                 /*
@@ -1147,9 +1147,9 @@ module "js/loaders" {
 
             let options = {referer, metadata, normalized, type};
 
-            // Call fetch hook.
+            // Call the fetch hook.
             try {
-                this.fetch(address, fulfill, reject, done, options);
+                this.fetch(url, fulfill, reject, done, options);
             } catch (exc) {
                 status.fail(exc);
             }
@@ -1510,7 +1510,7 @@ module "js/loaders" {
         }
 
         /*
-          Asynchronously fetch the requested source from the given address
+          Asynchronously fetch the requested source from the given url
           (produced by the resolve hook).
 
           If we're fetching a script, not a module, then the skip/done callback
@@ -1540,11 +1540,11 @@ module "js/loaders" {
 
           type is tentatively removed.
         */
-        fetch(address, fulfill, fail, done, options) {
+        fetch(resolved, fulfill, fail, done, options) {
             // See comment in resolve() above.
-            address = $ToAbsoluteURL(this.@baseURL, address);
+            resolved = $ToAbsoluteURL(this.@baseURL, resolved);
 
-            return $DefaultFetch(address, fulfill, fail, options.normalized,
+            return $DefaultFetch(resolved, fulfill, fail, options.normalized,
                                  options.referer);
         }
 
