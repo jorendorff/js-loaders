@@ -549,39 +549,48 @@ module "js/loaders" {
           evaluating the script.  If an error occurs during loading, pass it to
           the fail callback.
 
-          Loader hooks: For src, only the translate hook is called.  per samth,
-          2013 April 22.  (Rationale: The normalize and resolve
-          hooks operate on module names; src doesn't have a module name. The
-          fetch hook is for loading code; we've already got the code we want to
-          execute.  And the link hook also only applies to modules.  The
-          translate hook, however, still applies.)  TODO: implement this.
-
-          Of course for modules imported by src, all the loader hooks may be
-          called.
+          Loader hooks:  For the script `src`, the normalize, resolve, fetch,
+          and link hooks are not called.  The fetch hook is for obtaining code,
+          which we already have, and the other three operate only on modules,
+          not scripts.  It is not yet decided whether the translate hook is
+          called; see the ISSUE comment on the eval method.  Of course for
+          modules imported by `src` that are not already loaded, all the loader
+          hooks can be called.
 
           The done() or fail() callback is always called in a fresh event loop
           turn.
 
-          options.url, if present, is used to determine the location of modules
-          imported by src (unless the resolve hook overrides the default
-          behavior).  That is, if options.url is present, its "parent
-          directory" overrides this.baseURL for the purposes of importing stuff
-          for this one program.
+          options.url, if present, is passed to each loader hook, for each
+          module loaded, as options.referer.url.  (The default loader hooks
+          ignore it, though.)
+
+          (options.url may also be stored in the script and used for
+          Error().fileName, Error().stack, and the debugger, and we anticipate
+          doing so via $CompileScript; but such use is non-standard.)
 
           (options.module is being specified, to serve an analogous purpose for
           normalization, but it is not implemented here. See the comment on
           eval().)
-
-          TODO: default arguments including done/fail
         */
-        evalAsync(src, done, fail, options) {
-            return this.@evalAsync(src, done, fail, options);
+        evalAsync(src,
+                  done = val => undefined,
+                  fail = exc => { throw exc; },
+                  options = undefined)
+        {
+            let url = undefined;
+            if ("url" in options) {
+                url = options.url;
+                if (url !== undefined && typeof url !== 'string')
+                    throw $TypeError("options.url must be a string or undefined");
+            }
+
+            return this.@evalAsync(src, done, fail, url);
         }
 
-        @evalAsync(src, done, fail, options) {
+        @evalAsync(src, done, fail, srcurl) {
             let script;
             try {
-                script = $CompileScript(this, code, options.url);
+                script = $CompileScript(this, code, srcurl);
             } catch (exc) {
                 AsyncCall(fail, exc);
                 return;
@@ -757,7 +766,7 @@ module "js/loaders" {
                     AsyncCall(fail, $TypeError(msg));
                 }
 
-                this.@evalAsync(src, done, fail, {url: actualAddress, metadata: metadata});
+                this.@evalAsync(src, done, fail, actualAddress);
             }
 
             function reject(exc) {
