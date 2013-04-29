@@ -904,33 +904,7 @@ module "js/loaders" {
             let normalized, metadata;
             try {
                 /*
-                  The normalize hook may return an absolute URL.
-
-                  default resolve hook: identity function?
-                  browser resolve hook:
-                  - if the front has a URL scheme, return it
-                  - otherwise add .js and prepend the base URL.
-
-                  TODO rewrite the ideas below in light of meeting
-
-                  P2 ISSUE: As currently written, the normalize hook could
-                  return an absolute URL "http://x.com/x" or a relative URL
-                  with an absolute path, like "/x". We would pass that to the
-                  resolve hook, which for an absolute URL would simply add
-                  ".js".  I don't think that's what we want.
-
-                  Proposal: In the browser's resolve hook, parse the normalized
-                  module name and fail if it doesn't match
-                  "segment(/segment)*"; where each segment is (?) an
-                  Identifier.  This would forbid "." or ":" anywhere in a
-                  segment.  Too restrictive?
-
-                  To support loading modules with non-ASCII names, the default
-                  resolve hook should encodeURI() each segment. (At least in
-                  the browser; I'm still a little fuzzy on what will be left
-                  implementation-defined.)
-
-                  P3 ISSUE: Here referer is passed to the normalize hook and
+                  P4 ISSUE: Here referer is passed to the normalize hook and
                   later it is passed to the resolve hook, and so on.  Should we
                   create a new object each time?  (I think it's OK to pass the
                   same referer object to successive hooks within a single load;
@@ -938,7 +912,6 @@ module "js/loaders" {
                   normalize() hook, since they are not abstractly all part of a
                   single load.)
                 */
-
                 let result = this.normalize(request, {referer});
 
                 /*
@@ -1444,6 +1417,9 @@ module "js/loaders" {
 
         /* Loader hooks ******************************************************/
 
+        // TODO implement the vanilla hooks and put all browser-specific
+        // behavior into a separate file.
+
         // TODO these methods need to check the this argument carefully.
 
         /*
@@ -1513,6 +1489,32 @@ module "js/loaders" {
 
           P1 ISSUE #4:  Relative module names.
           https://github.com/jorendorff/js-loaders/issues/4
+
+          TODO: Implement browser resolve hook.  We want the browser's default
+          resolve hook to handle Unicode properly.  So in the browser's resolve
+          hook, percent-encode everything that isn't a slash.
+
+          Also, the normalize hook may return an absolute URL; that is, a
+          module name may be a URL.  The browser's resolve hook specially
+          supports this case; if the argument starts with a URL scheme followed
+          by ':', it is returned unchanged; else we add ".js" and resolve
+          relative to the baseURL.
+
+          P3 ISSUE:  Is the ondemand table part of the default resolve hook's
+          behavior?  How exactly does the browser's resolve hook call into
+          that?
+
+          Possible security issues related to the browser resolve hook:
+
+          - Do we want loader.import(x), where x is untrusted, to be arbitrary
+            code execution by default?  If not, ban javascript: URLs.
+
+          - Are data: URLs a problem?
+
+          - Do we care if "." and ".." end up being sent in URL paths?  Empty
+            segments ("x//y")?  I think we should try to produce valid URLs or
+            throw, but maybe <http://foo.bar/x/y//////../../> is valid.
+
         */
         resolve(normalized, options) {
             return this.@defaultResolve(normalized, options.referer);
