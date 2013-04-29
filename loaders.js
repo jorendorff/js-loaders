@@ -718,21 +718,19 @@ module "js/loaders" {
             let metadata = {};
 
             /*
-              P2 ISSUE: FETCH HOOK AND CALLBACK MISUSE.  The fetch hook is user
-              code.  Callbacks the Loader passes to it are subject to every
-              variety of misuse.  They must cope with being called multiple
-              times (which should be a no-op, for Future compatibility) and
-              with invalid arguments.  The being called multiple times thing is
-              what this fetchCompleted flag is about.
+              Rationale for fetchCompleted: The fetch hook is user code.
+              Callbacks the Loader passes to it are subject to every variety of
+              misuse; the system must be robust against these hooks being
+              called multiple times.
 
-              RESOLVED: keep fetchCompleted but throw instead of silently
-              returning when you try to complete a fetch that's already
-              completed.
+              TODO: make sure the callbacks are also robust against invalid
+              arguments.
 
-              Rationale for fetchCompleted:  Compatibility with Futures.
-              Consquentially, a fetch hook can try two ways of fetching a file
-              asynchronously, in parallel, and just let them race; the first
-              result wins and the rest are ignored.
+              Futures treat extra resolve() calls after the first as no-ops; we
+              throw instead, per meeting 2013 April 26.
+
+              P5 ISSUE: what kind of error to throw when that happens (assuming
+              TypeError).
             */
             let fetchCompleted = false;
 
@@ -749,7 +747,7 @@ module "js/loaders" {
             */
             function fulfill(src, type, actualAddress) {
                 if (fetchCompleted)
-                    return;
+                    throw $TypeError("load() fulfill callback: fetch already completed");
                 fetchCompleted = true;
 
                 if (typeof src !== 'string') {
@@ -770,7 +768,7 @@ module "js/loaders" {
 
             function reject(exc) {
                 if (fetchCompleted)
-                    return;
+                    throw $TypeError("load() reject callback: fetch already completed");
                 fetchCompleted = true;
 
                 AsyncCall(errback, exc);
@@ -778,7 +776,7 @@ module "js/loaders" {
 
             function done() {
                 if (fetchCompleted)
-                    return;
+                    throw $TypeError("load() done callback: fetch already completed");
                 fetchCompleted = true;
 
                 /* P5 ISSUE: what kind of error to throw here. */
@@ -797,15 +795,14 @@ module "js/loaders" {
                 this.fetch(null, fulfill, reject, done, fetchOptions);
             } catch (exc) {
                 /*
-                  Call reject rather than calling the errback() callback directly.
-                  Otherwise a badly-behaved fetch hook could reject() and then
-                  throw, causing errback() to be called twice.  This way, reject()
-                  may be called twice, but it ignores the second call; see
-                  fetchCompleted above.
-
-                  TODO fix this.
+                  Some care is taken here to prevent even a badly-behaved fetch
+                  hook from causing errback() to be called twice or not to be
+                  called at all.
                 */
-                reject(exc);
+                if (fetchCompleted)
+                    AsyncCall(() => { throw exc; });
+                else
+                    reject(exc);
             }
         }
 
@@ -1156,7 +1153,7 @@ module "js/loaders" {
 
             let fulfill = (src, type, actualAddress) => {
                 if (fetchCompleted)
-                    return;
+                    throw $TypeError("fetch fulfill callback: fetch already completed");
                 fetchCompleted = true;
 
                 return this.@onFulfill(status, normalized, metadata,
@@ -1165,7 +1162,7 @@ module "js/loaders" {
 
             function reject(exc) {
                 if (fetchCompleted)
-                    return;
+                    throw $TypeError("fetch reject callback: fetch already completed");
                 fetchCompleted = true;
 
                 return status.fail(exc);
@@ -1178,7 +1175,7 @@ module "js/loaders" {
             */
             function done() {
                 if (fetchCompleted)
-                    return;
+                    throw $TypeError("fetch done callback: fetch already completed");
                 fetchCompleted = true;
 
                 let mod = $MapGet(this.@modules, normalized);
@@ -1196,7 +1193,14 @@ module "js/loaders" {
             try {
                 this.fetch(url, fulfill, reject, done, options);
             } catch (exc) {
-                status.fail(exc);
+                /*
+                  As in load(), take care that status.fail is called if the
+                  fetch hook fails, but at most once.
+                */
+                if (fetchCompleted)
+                    AsyncCall(() => { throw exc; });
+                else
+                    status.fail(exc);
             }
         }
 
