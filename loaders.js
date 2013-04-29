@@ -245,15 +245,7 @@ module "js/loaders" {
         }
 
         /*
-          P2 ISSUE:
-              System.ondemand({"all.js": ["a", "b", "c"]});
-              System.evalAsync("import 'a' as a, 'b' as b, 'c' as c;", done);
-          How do these get merged into a single load?  (In the current
-          implementation, they don't.)  I guess we need a second table of
-          in-flight script loads: @loadingModules and @loadingScripts.
-
-          RESOLVED: samth has changed the resolve hook in the google doc to
-          make sharing expressible.  per meeting, 2013 April 26.
+          TODO: doc comment here
 
           P4 ISSUE:  Proposed name for this method: addSources(sources)
         */
@@ -277,6 +269,8 @@ module "js/loaders" {
                       arbitrary code.  We want to fire all those hooks now,
                       then store the data in a safer form so user code can't
                       observe when we look at it.
+
+                      P4 ISSUE: confirm iterable vs. array.
                     */
                     let names = [];
                     for (let name of contents) {
@@ -1062,12 +1056,11 @@ module "js/loaders" {
                 let result = this.resolve(normalized, {referer, metadata});
 
                 // Interpret the result.
+                type = 'module';
                 if (result === undefined) {
                     url = this.@defaultResolve(normalized, referer);
-                    type = 'module';
                 } else if (typeof result === "string") {
                     url = result;
-                    type = 'module';
                 } else if (IsObject(result)) {
                     // result.url must be present and must be a string.
                     if (!("url" in result)) {
@@ -1080,15 +1073,56 @@ module "js/loaders" {
                                          "loader.resolve hook must be a string");
                     }
 
-                    // result.type is optional, but if present must be 'module' or 'script'.
-                    if ("type" in result) {
-                        type = result.type;
-                        if (type !== "module" && type !== "script")
-                            throw $TypeError(".type property of object returned from " +
-                                             "loader.resolve hook must be either 'module' " +
-                                             "or 'script'");
-                    } else {
-                        type = "module";
+                    /*
+                      result.other is optional, but if present must be an
+                      iterable object, a collection of module names. It
+                      indicates that the resource at result.url is a script
+                      containing those modules.  (The module we're loading,
+                      named by normalized, may be present in result.other or
+                      not.)
+
+                      This means the loader can merge the following imports in
+                      a single load:
+
+                          import "a" as a, "b" as b;
+
+                      if it knows in advance a URL that contains module
+                      declarations for both "a" and "b".
+                    */
+                    if ("other" in result) {
+                        let other = result.other;
+                        if (!IsObject(other)) {
+                            throw $TypeError(
+                                ".other property of object returned from " +
+                                "loader.resolve hook must be an object");
+                        }
+
+                        /* P4 ISSUE: confirm iterable rather than array */
+                        let names = [...other];
+
+                        for (let i = 0; i < names.length; i++) {
+                            let name = names[i];
+                            if (typeof name !== 'string')
+                                throw $TypeError("module names must be strings");
+                            if (name !== normalized &&
+                                ($MapHas(this.@modules, name)
+                                 || $MapHas(this.@loading, name))) {
+                                throw $TypeError(
+                                    "loader.resolve hook claims module \"" +
+                                    name + "\" is at <" + url + "> but " +
+                                    "it is already loaded");
+                            }
+                            $ArrayPush(names, name);
+                        }
+
+                        /*
+                          Record a load in progress for all other modules
+                          defined in the same script.
+                        */
+                        for (let i = 0; i < names.length; i++)
+                            $MapSet(this.@loading, names[i], status);
+
+                        type = 'script';
                     }
                 } else {
                     throw $TypeError("loader.resolve hook must return a " +
@@ -1105,6 +1139,8 @@ module "js/loaders" {
                 status.fail(exc);
                 return;
             }
+
+            status.type = type;
 
             // Prepare to call the fetch hook.
             let fetchCompleted = false;
@@ -1145,7 +1181,7 @@ module "js/loaders" {
                 status.onEndRun(normalized, mod);
             }
 
-            let options = {referer, metadata, normalized, type};
+            let options = {referer, metadata, normalized};
 
             // Call the fetch hook.
             try {
@@ -1197,6 +1233,8 @@ module "js/loaders" {
                     plan = "factory";
                     mod = null;
                     imports = linkResult.imports;
+
+                    /* P4 issue: "iterable" vs. "array" */
                     if (imports !== undefined)
                         imports = [...imports];
                     exports = [...linkResult.exports];
