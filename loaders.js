@@ -432,17 +432,7 @@ module "js/loaders" {
           relative to that module name.  per samth, 2013 April 22.  jorendorff
           objected to this feature and it is not presently implemented.
 
-          P2 ISSUE:
-          <jorendorff> samth: so does global.eval also go through the translate hook?
-          <jorendorff> ...even direct eval?
-          <samth> jorendorff: yes
-          <samth> well, i think so
-          <samth> i seem to recall dherman disagreeing
-          (2013 April 22)
-
-          A wide-ranging discussion involving virtualization, iframes, object
-          capabilities, and intrinsics failed to reach a conclusion on this.
-          2013 April 26.
+          P2 ISSUE: #8: Does global.eval go through the translate hook?
         */
         eval(src, options) {
             // Unpack options. Only one option is supported: options.url.
@@ -1602,10 +1592,7 @@ module "js/loaders" {
           callback, like the rest of the loader, never synchronously calls a
           success or failure callback.)  Per meeting, 2013 April 26.
 
-          (P2 ISSUE:  The agreed behavior above means that fetch() can
-          synchronously call fulfill(), which can synchronously call fetch().
-          Too confusing?  Maybe fulfill should stop after compilation and
-          handle imports/linking asynchronously.)
+          P2 ISSUE: #9: synchronous calls to fulfill()
 
           TODO:  Work out any further observable implications of the above.
         */
