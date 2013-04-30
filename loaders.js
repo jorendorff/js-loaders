@@ -1418,9 +1418,11 @@ module "js/loaders" {
         /* Loader hooks ******************************************************/
 
         // TODO implement the vanilla hooks and put all browser-specific
-        // behavior into a separate file.
+        // behavior into a separate file.  (This is waiting on some
+        // clarification regarding the vanilla Loader behavior.)
 
-        // TODO these methods need to check the this argument carefully.
+        // TODO these methods need to check the this-value carefully.  How is
+        // that done in ES, anyway?
 
         /*
           For each import() call or import-declaration, the Loader first calls
@@ -1580,7 +1582,7 @@ module "js/loaders" {
           TODO: clean up that last sentence
 
           P1 ISSUE:  What is the default (non-browser)implementation?
-          reject(undefined)?
+          reject($TypeError())?
 
           When the fetch hook is called:  For all modules and scripts whose
           source is not directly provided by the caller.  It is not called for
