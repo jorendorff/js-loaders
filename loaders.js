@@ -1430,9 +1430,9 @@ module "js/loaders" {
           (In particular, modules are stored in the registry under their full
           module name.)
 
-          This hook is not called for the main script body executed by a call
-          to loader.load(), .eval(), or .evalAsync().  But it is called for all
-          imports, including imports in scripts.
+          When the normalize hook is called:  For all imports, including
+          imports in scripts.  It is not called for the main script body
+          executed by a call to loader.load(), .eval(), or .evalAsync().
 
           After calling this hook, if the full module name is in the registry,
           loading stops. Otherwise loading continues, calling the resolve()
@@ -1483,9 +1483,9 @@ module "js/loaders" {
           the module name, resolve it as a URL relative to this.@baseURL, and
           return the absolute URL.
 
-          When called:  This hook is not called for the main script body
-          executed by a call to loader.load(), .eval(), or .evalAsync().  But
-          it is called for all imports, including imports in scripts.
+          When the resolve hook is called:  For all imports, immediately after
+          the normalize hook returns successfully, unless the normalize hook
+          names a module that is already loaded or loading.
 
           P1 ISSUE #4:  Relative module names.
           https://github.com/jorendorff/js-loaders/issues/4
@@ -1579,12 +1579,15 @@ module "js/loaders" {
 
           TODO: clean up that last sentence
 
-          This hook is called for all modules and scripts whose source is not
-          directly provided by the caller.  It is not called for the script
-          bodies executed by loader.eval() and .evalAsync(), since those do not
-          need to be fetched.  loader.evalAsync() can trigger this hook, for
-          modules imported by the script.  loader.eval() is synchronous and
-          thus never triggers the fetch hook.
+          P1 ISSUE:  What is the default (non-browser)implementation?
+          reject(undefined)?
+
+          When the fetch hook is called:  For all modules and scripts whose
+          source is not directly provided by the caller.  It is not called for
+          the script bodies executed by loader.eval() and .evalAsync(), since
+          those do not need to be fetched.  loader.evalAsync() can trigger this
+          hook, for modules imported by the script.  loader.eval() is
+          synchronous and thus never triggers the fetch hook.
 
           (loader.load() does not call normalize/resolve hooks but it does call
           the fetch/translate/link hooks, per samth, 2013 April 22.)
@@ -1615,8 +1618,10 @@ module "js/loaders" {
         /*
           Optionally translate src from some other language into JS.
 
-          This hook is called for all modules and scripts.  The default
-          implementation does nothing and returns src unchanged.
+          When the translate hook is called:  For all modules and scripts.  The
+          default implementation does nothing and returns src unchanged.
+          (Note:  It is not decided whether this is called for direct eval
+          scripts; see issue on Loader.eval().)
         */
         translate(src, options) {
             return src;
@@ -1663,6 +1668,9 @@ module "js/loaders" {
               declarations can still be statically validated.
 
               P3 ISSUE: how does this work?
+
+          When the link hook is called:  Immediately after the translate hook,
+          for modules only.
 
           The default implementation does nothing and returns undefined.
         */
