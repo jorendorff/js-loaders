@@ -140,7 +140,7 @@ module "js/loaders" {
         /*
           Create a new Loader.
 
-          P3 ISSUE: Is the parent argument necessary?
+          P3 ISSUE #10: Is the parent argument necessary?
         */
         constructor(parent, options) {
             /*
@@ -252,17 +252,9 @@ module "js/loaders" {
 
           P4 ISSUE:  Proposed name for this method: addSources(sources)
 
-          P1 ISSUE: Take a good hard look at the ondemand table and see if we
-          can do without it.  It's nice, but it's kind of a lot of design work,
-          which means a lot of opportunities for us to get the API wrong.  The
-          implementation isn't pretty.  I don't think this table is something
-          third-party package managers can build on.  Maybe it can go.
+          P1 ISSUE #11:  Consider dropping ondemand table
         */
         ondemand(sources) {
-            /*
-              P3 ISSUE: Propose using the default iteration protocol for the
-              outer loop too.
-            */
             for (let [url, contents] of $PropertyIterator(sources)) {
                 if (contents === null) {
                     $MapDelete(this.@ondemand, url);
@@ -707,7 +699,7 @@ module "js/loaders" {
             }
 
             /*
-              P3 ISSUE: Check callability of callbacks here (and everywhere
+              P4 ISSUE: Check callability of callbacks here (and everywhere
               success/failure callbacks are provided)?  It would be a mercy,
               since the TypeError if they are not functions happens much later
               and with an empty stack.  But Futures don't do it.  Assuming no.
@@ -981,14 +973,7 @@ module "js/loaders" {
             // If the module has already been loaded and linked, return that.
             let m = $MapGet(this.@modules, normalized);
             if (m !== undefined) {
-                /*
-                  P3 ISSUE:  METADATA CLEANUP AND EARLY PIPELINE EXIT.  We have
-                  called the normalize hook, which may have created metadata.
-                  If so, that metadata is now dropped.  There is no per-load
-                  cleanup/dispose hook.  This is probably OK but I want to
-                  check.
-                */
-
+                // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
                 $AddForNextTurn(() => unit.onLinkedModule(m));
                 return;
             }
@@ -1037,16 +1022,9 @@ module "js/loaders" {
                 // Interpret the result.
                 type = 'module';
                 if (result === undefined) {
-                    /*
-                      P1 ISSUE:  Users overloading the System.resolve hook will
-                      find this astonishing; undefined is allowed, but instead
-                      of what they think of as "the default resolve behavior"
-                      (i.e. the browser's System.resolve) they get
-                      stripped-down ondemand-table-only behavior.  Suggest
-                      making undefined a TypeError.  Custom resolve hooks
-                      should call super.resolve if they want fallback behavior.
-                    */
-                    url = this.@defaultResolve(normalized, referer);
+                    // P1 ISSUE #13: Define behavior when the resolve hook
+                    // returns undefined.
+                    url = this.@systemDefaultResolve(normalized, referer);
                 } else if (typeof result === "string") {
                     url = result;
                 } else if (IsObject(result)) {
@@ -1195,9 +1173,8 @@ module "js/loaders" {
                                      "first argument must be a string");
                 }
                 if (type !== 'script' && type !== 'module') {
-                    throw $TypeError(
-                        "fetch hook fulfill callback: " +
-                        'second argument must be "script" or "module"');
+                    throw $TypeError("fetch hook fulfill callback: " +
+                                     'second argument must be "script" or "module"');
                 }
                 if (typeof actualAddress !== 'string') {
                     throw $TypeError("fetch hook fulfill callback: " +
@@ -1473,6 +1450,8 @@ module "js/loaders" {
           The hook may return:
 
             - undefined, to request the default behavior described below.
+              (P1 ISSUE #13: Define behavior when the resolve hook returns
+              undefined.)
 
             - a string, the resource address. In this case the resource is a
               module.
@@ -1481,58 +1460,28 @@ module "js/loaders" {
               resource address.  The object may also have a .type property,
               which if present must be either 'script' or 'module'.
 
-          Default behavior:  Consult the ondemand table. If any string value in
-          the table matches the module name, return the key. If any array value
-          in the table contains an element that matches the module name, return
-          {address: key, type: "script"}.  Otherwise, add ".js" to the end of
-          the module name, resolve it as a URL relative to this.@baseURL, and
-          return the absolute URL.
+          Default behavior:  Consult the ondemand table.  If any string value in
+          the table matches the module name, return the key.  If any array
+          value in the table contains an element that matches the module name,
+          return {address: key, type: "script"}.  Otherwise, return the full
+          module name unchanged.  (But the brower's resolve hook is different;
+          see System.resolve below.)
 
           When the resolve hook is called:  For all imports, immediately after
           the normalize hook returns successfully, unless the normalize hook
           names a module that is already loaded or loading.
 
           P1 ISSUE #4:  Relative module names.
-          https://github.com/jorendorff/js-loaders/issues/4
 
-          TODO: Implement browser resolve hook.  We want the browser's default
-          resolve hook to handle Unicode properly.  So in the browser's resolve
-          hook, percent-encode everything that isn't a slash.
-
-          Also, the normalize hook may return an absolute URL; that is, a
-          module name may be a URL.  The browser's resolve hook specially
-          supports this case; if the argument starts with a URL scheme followed
-          by ':', it is returned unchanged; else we add ".js" and resolve
-          relative to the baseURL.
-
-          P1 ISSUE: If the resolve hook returns undefined, what happens?  It
-          will be tricky not to astonish browser resolve hook authors.  Suggest
-          removing that API and requiring the hook author to call the base
-          class method (e.g. using super or Loader.prototype.resolve.call).
-
-          Possible security issues related to the browser resolve hook:
-
-          - Do we want loader.import(x), where x is untrusted, to be arbitrary
-            code execution by default?  If not, ban javascript: URLs.
-
-          - Are data: URLs a problem?
-
-          - Do we care if "." and ".." end up being sent in URL paths?  Empty
-            segments ("x//y")?  I think we should try to produce valid URLs or
-            throw, but maybe <http://foo.bar/x/y//////../../> is valid.
-
+          P1 ISSUE #14:  Define how the ondemand table gets consulted.
         */
         resolve(normalized, options) {
-            return this.@defaultResolve(normalized, options.referer);
+            var address = this.@ondemandTableLookup(normalized, options.referer);
+            return address === undefined ? normalized : address;
         }
 
-        @defaultResolve(normalized, referer) {
+        @ondemandTableLookup(normalized, referer) {
             /*
-              P1 ISSUE:  Is the ondemand table part of the default resolve hook's
-              behavior?  How exactly does the browser's resolve hook call into
-              that?
-
-              The code below assumes yes.
             */
             if (this.@locations === undefined) {
                 /*
@@ -1588,7 +1537,7 @@ module "js/loaders" {
           TODO:  Work out any further observable implications of the above.
         */
         fetch(resolved, fulfill, reject, done, options) {
-            // P1 ISSUE:  What is the default (non-browser) implementation?
+            // P1 ISSUE #15:  Define behavior here.
             $AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
         }
 
@@ -1616,14 +1565,11 @@ module "js/loaders" {
               The module bodies will then be executed on demand; see
               @ensureModuleExecuted.
 
-              P3 ISSUE: I can't remember what we decided about link errors and
-              whether a module can be left in loader.@loading afterwards.
-
            2. The hook may return a full Module instance object. The loader
               then simply adds that module to the registry.
-
-              P3 ISSUE: But it is an error if there's already a module with that
-              full name in the registry, right?
+ 
+              P3 ISSUE #17: Timing in this case.
+              P3 ISSUE #18: link hook returning a Module vs. loader.set().
 
            3. The hook may return a factory object which the loader will use to
               create the module and link it with its clients and dependencies.
@@ -1639,12 +1585,12 @@ module "js/loaders" {
               executed during the linking process.  First all of its
               dependencies are executed and linked, and then passed to the
               relevant execute function.  Then the resulting module is linked
-              iwth the downstream dependencies.  This requires incremental
+              with the downstream dependencies.  This requires incremental
               linking when such modules are present, but it ensures that
               modules implemented with standard source-level module
               declarations can still be statically validated.
 
-              P3 ISSUE: how does this work?
+              P3 ISSUE #19: how does this work?
 
           When the link hook is called:  Immediately after the translate hook,
           for modules only.
@@ -1900,9 +1846,7 @@ module "js/loaders" {
            2. Let M = the set of all in-flight modules (in loader.@loading)
               that are not needed by any LinkageUnit other than those in F.
 
-              P3 ISSUE: I don't think there's an efficient way to compute M. We
-              can mark and sweep, which is linear in the total amount of
-              in-flight stuff, and this is the current plan.
+              P3 ISSUE #20: Can the set M be computed efficiently?
 
            3. TODO revise this super-hand-wavy pseudo-formal spec:
 
@@ -2011,13 +1955,15 @@ module "js/loaders" {
 
     /* Browser loader hooks **************************************************/
 
-    /* P3 ISSUE: Determine whether this is a subclass or what. */
+    /* P3 ISSUE #21: Determine whether this is a subclass or what. */
+
     // TODO move this behavior into a separate file.
 
     var System = new Loader;
 
     /*
-      P1 ISSUE:  Make sure hierarchical module names are sufficient for packages.
+      P1 ISSUE #22:  Make sure hierarchical module names are sufficient for
+      packages.
 
       Normalize relative module names based on the referring module's name.
 
@@ -2026,8 +1972,8 @@ module "js/loaders" {
       The syntax for a module name in the browser is:
 
           module_name = segments
-                      / dot slash segments
-                      / (dot dot slash)+ segments
+                      | dot slash segments
+                      | (dot dot slash)+ segments
 
           segments = segment (slash segment)*
 
@@ -2044,14 +1990,15 @@ module "js/loaders" {
           "../floods"    means  "bacon/floods"
           "../../other"  means  "bacon/other"
 
-      P4 ISSUE Excess ".." entries are silently discarded. Error instead?
-          "../../../../../overboard" means "overboard"
+      P2 ISSUE #23: Define syntactic details:
 
-      P4 ISSUE The following is totally speculative.
+      Excess ".." entries are silently discarded. Error instead?
+          "../../../../../overboard" means "overboard"
 
       Unlike URLs, relative module names may not begin with "/", may not
       contain empty segments, may only contain "." and ".." segments at the
-      beginning, and may not end with "." or "..".
+      beginning, may not contain multiple "." segments, and may not end with
+      "." or "..".
     */
     System.normalize = function normalize(name, options) {
         var segments = $StringSplit(name, "/");
@@ -2103,8 +2050,40 @@ module "js/loaders" {
         return rest;
     };
 
+    /*
+      Browser system resolve hook.
+
+      If there is a relevant entry in the ondemand table, return the
+      appropriate result, like Loader.prototype.resolve().  Otherwise,
+      percent-encode each segment of the module name, add ".js" to the last
+      segment, resolve that relative to this.@baseURL, and return the resolved
+      URL.
+
+      TODO: Implement percent-encoding.
+
+      Also, the normalize hook may return an absolute URL; that is, a module
+      name may be a URL.  The browser's resolve hook specially supports this
+      case; if the argument starts with a URL scheme followed by ':', it is
+      returned unchanged; else we add ".js" and resolve relative to the
+      baseURL.
+
+      TODO: Implement that, or whatever special syntax es-discuss settles on
+      for URLs.
+
+      P5 SECURITY ISSUE: Possible security issues related to the browser
+      resolve hook:
+
+      - Do we want loader.import(x), where x is untrusted, to be arbitrary
+        code execution by default?  If not, ban javascript: URLs.
+
+      - Are data: URLs a problem?
+
+      - Do we care if "." and ".." end up being sent in URL paths?  Empty
+        segments ("x//y")?  I think we should try to produce valid URLs or
+        throw, but maybe <http://foo.bar/x/y//////../../> is valid.
+     */
     System.resolve = function resolve(normalized, referer) {
-        let address = this.@defaultResolve(normalized, referer);
+        let address = this.@ondemandTableLookup(normalized, referer);
         if (address !== undefined) {
             // Relative URLs in the ondemand table are resolved relative to
             // the baseURL, per samth 2013 April 26.
@@ -2133,6 +2112,10 @@ module "js/loaders" {
         */
         return $ToAbsoluteURL(this.@baseURL, normalized + ".js");
     };
+
+    // @systemDefaultResolve is used when a resolve hook returns undefined.
+    // P1 ISSUE #13 proposes removing this feature.
+    Loader.prototype.@systemDefaultResolve = System.resolve;
 
     System.fetch = function fetch(resolved, fulfill, reject, done, options) {
         // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
