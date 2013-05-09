@@ -62,7 +62,6 @@ module "js/loaders" {
         $ReportUncaughtException,
         $AddForNextTurn,
         $ToAbsoluteURL,
-        $DefaultFetch,
         $Assert,
 
         // Capabilities that JS provides, but via methods that other code could
@@ -70,6 +69,7 @@ module "js/loaders" {
         $ToString,      // $ToString(v) === ES ToString algorithm ~= ("" + v)
         $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
         $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
+        $StringSplit,   // $StringSplit(s, delim) ~= s.split(delim)
         $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
         $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
         $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
@@ -125,10 +125,10 @@ module "js/loaders" {
 
       Loader hooks. The import process can be customized by assigning to (or
       subclassing and overriding) any number of the five loader hooks:
-          normalize(name) - From a relative module name, determine the full
-              module name.
+          normalize(name) - From a possibly relative module name, determine the
+              full module name.
           resolve(fullName, options) - Given a full module name, determine the
-              URL to load and whether we're loading a module or a script.
+              URL to load and whether we're loading a script or a module.
           fetch(url, fulfill, reject, skip, options) - Load a script or module
               from the given URL.
           translate(src, options) - Optionally translate a script or module
@@ -139,6 +139,8 @@ module "js/loaders" {
     export class Loader {
         /*
           Create a new Loader.
+
+          P3 ISSUE: Is the parent argument necessary?
         */
         constructor(parent, options) {
             /*
@@ -249,6 +251,12 @@ module "js/loaders" {
           TODO: doc comment here
 
           P4 ISSUE:  Proposed name for this method: addSources(sources)
+
+          P1 ISSUE: Take a good hard look at the ondemand table and see if we
+          can do without it.  It's nice, but it's kind of a lot of design work,
+          which means a lot of opportunities for us to get the API wrong.  The
+          implementation isn't pretty.  I don't think this table is something
+          third-party package managers can build on.  Maybe it can go.
         */
         ondemand(sources) {
             /*
@@ -1029,6 +1037,15 @@ module "js/loaders" {
                 // Interpret the result.
                 type = 'module';
                 if (result === undefined) {
+                    /*
+                      P1 ISSUE:  Users overloading the System.resolve hook will
+                      find this astonishing; undefined is allowed, but instead
+                      of what they think of as "the default resolve behavior"
+                      (i.e. the browser's System.resolve) they get
+                      stripped-down ondemand-table-only behavior.  Suggest
+                      making undefined a TypeError.  Custom resolve hooks
+                      should call super.resolve if they want fallback behavior.
+                    */
                     url = this.@defaultResolve(normalized, referer);
                 } else if (typeof result === "string") {
                     url = result;
@@ -1407,12 +1424,8 @@ module "js/loaders" {
 
         /* Loader hooks ******************************************************/
 
-        // TODO implement the vanilla hooks and put all browser-specific
-        // behavior into a separate file.  (This is waiting on some
-        // clarification regarding the vanilla Loader behavior.)
-
-        // TODO these methods need to check the this-value carefully.  How is
-        // that done in ES, anyway?
+        // TODO these methods need to check the this-value carefully.  This can
+        // be done with a private symbol.
 
         /*
           For each import() call or import-declaration, the Loader first calls
@@ -1492,10 +1505,6 @@ module "js/loaders" {
           by ':', it is returned unchanged; else we add ".js" and resolve
           relative to the baseURL.
 
-          P1 ISSUE:  Is the ondemand table part of the default resolve hook's
-          behavior?  How exactly does the browser's resolve hook call into
-          that?
-
           P1 ISSUE: If the resolve hook returns undefined, what happens?  It
           will be tricky not to astonish browser resolve hook authors.  Suggest
           removing that API and requiring the hook author to call the base
@@ -1518,6 +1527,13 @@ module "js/loaders" {
         }
 
         @defaultResolve(normalized, referer) {
+            /*
+              P1 ISSUE:  Is the ondemand table part of the default resolve hook's
+              behavior?  How exactly does the browser's resolve hook call into
+              that?
+
+              The code below assumes yes.
+            */
             if (this.@locations === undefined) {
                 /*
                   P5 ISSUE: module names can appear in multiple values in the
@@ -1536,29 +1552,7 @@ module "js/loaders" {
                 }
                 this.@locations = locations;
             }
-
-            let address = $MapGet(this.@locations, normalized);
-            if (address !== undefined) {
-                // Relative URLs in the ondemand table are resolved relative to
-                // the baseURL, per samth 2013 April 26.
-                address = $ToAbsoluteURL(this.@baseURL, address);
-                if (typeof $MapGet(this.@ondemand, address) === 'object')
-                    return {address, type: "script"};
-                return address;
-            }
-
-            // Yes, really add ".js" here, per samth 2013 April 22.
-            address = normalized + ".js";
-
-            /*
-              Both the resolve() method and the fetch() method call
-              $ToAbsoluteURL on the address, per samth 2013 April 22.
-
-              Rationale:  The default resolve behavior should try to return an
-              absolute URL.  If the user overrides it to return a relative URL,
-              the default fetch behavior should cope with that.
-            */
-            return $ToAbsoluteURL(this.@baseURL, address);
+            return $MapGet(this.@locations, normalized);
         }
 
         /*
@@ -1570,9 +1564,6 @@ module "js/loaders" {
           callback.
 
           TODO: clean up that last sentence
-
-          P1 ISSUE:  What is the default (non-browser)implementation?
-          reject($TypeError())?
 
           When the fetch hook is called:  For all modules and scripts whose
           source is not directly provided by the caller.  It is not called for
@@ -1597,11 +1588,8 @@ module "js/loaders" {
           TODO:  Work out any further observable implications of the above.
         */
         fetch(resolved, fulfill, reject, done, options) {
-            // See comment in resolve() above.
-            resolved = $ToAbsoluteURL(this.@baseURL, resolved);
-
-            return $DefaultFetch(resolved, fulfill, reject, options.normalized,
-                                 options.referer);
+            // P1 ISSUE:  What is the default (non-browser) implementation?
+            $AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
         }
 
         /*
@@ -2019,4 +2007,139 @@ module "js/loaders" {
     function AsyncCall(fn, ...args) {
         $AddForNextTurn(() => fn(...args));
     }
+
+
+    /* Browser loader hooks **************************************************/
+
+    /* P3 ISSUE: Determine whether this is a subclass or what. */
+    // TODO move this behavior into a separate file.
+
+    var System = new Loader;
+
+    /*
+      P1 ISSUE:  Make sure hierarchical module names are sufficient for packages.
+
+      Normalize relative module names based on the referring module's name.
+
+      Relative module names are handy for imports within a package.
+
+      The syntax for a module name in the browser is:
+
+          module_name = segments
+                      / dot slash segments
+                      / (dot dot slash)+ segments
+
+          segments = segment (slash segment)*
+
+          segment = a nonempty sequence of non-slash characters, but not "." or ".."
+          dot = an ASCII period, "."
+          slash = an ASCII forward slash, "/"
+
+      This is not meant to duplicate every crazy trick that relative URI
+      references can do, although "." and ".." are treated about the same way
+      here as they are in URIs (and filenames generally).
+
+      Examples: In module "bacon/streams/basic",
+          "./advanced"   means  "bacon/streams/advanced"
+          "../floods"    means  "bacon/floods"
+          "../../other"  means  "bacon/other"
+
+      P4 ISSUE Excess ".." entries are silently discarded. Error instead?
+          "../../../../../overboard" means "overboard"
+
+      P4 ISSUE The following is totally speculative.
+
+      Unlike URLs, relative module names may not begin with "/", may not
+      contain empty segments, may only contain "." and ".." segments at the
+      beginning, and may not end with "." or "..".
+    */
+    System.normalize = function normalize(name, options) {
+        var segments = $StringSplit(name, "/");
+
+        // A module's name cannot be the empty string.
+        if (segments.length == 0)
+            throw $TypeError("missing module name");
+
+        // Check for leading dots indicating a relative module name.
+        var i = 0;  // current read position within segments
+        var rel;    // true if this is a relative module name
+        var dotdots = 0; // number of ".." segments scanned
+        if (segments[0] == '.') {
+            i++;
+            if (i === segments.length)
+                throw $TypeError("illegal module name: \"" + name + "\"");
+            rel = true;
+        } else {
+            while (segments[i] == '..') {
+                i++;
+                if (i === segments.length)
+                    throw $TypeError("illegal module name: \"" + name + "\"");
+            }
+            rel = (i !== 0);
+            dotdots = i;
+        }
+
+        // Empty segments are not allowed.
+        // "." and ".." are allowed only at the start of a relative name.
+        for (var j = i; j < segments.length; j++) {
+            if (segments[j] === "" || segments[j] == "." || segments[j] == "..")
+                throw $TypeError("illegal module name");
+        }
+
+        if (!rel)
+            return name;
+
+        // Build a full module name from the relative name.
+        var rest = '';
+        function append(s) {
+            rest = (rest === "") ? s : rest + "/" + s;
+        }
+        var base = $StringSplit(options.referer.name, "/");
+        var stop = base.length - 1 - dotdots;  // This can be negative.
+        for (var j = 0; j < stop; j++)  // Treat negative `stop` same as 0.
+            append(base[j]);
+        for (; i < segments.length; i++)
+            append(segments[i]);
+        return rest;
+    };
+
+    System.resolve = function resolve(normalized, referer) {
+        let address = this.@defaultResolve(normalized, referer);
+        if (address !== undefined) {
+            // Relative URLs in the ondemand table are resolved relative to
+            // the baseURL, per samth 2013 April 26.
+            address = $ToAbsoluteURL(this.@baseURL, address);
+            if (typeof $MapGet(this.@ondemand, address) === 'object')
+                return {address, type: "script"};
+            return address;
+        }
+
+        /*
+          Add ".js" here, per samth 2013 April 22.  Rationale:  It would be
+          unhelpful to make everyone remove the file extensions from all their
+          scripts.  It would be even worse to make the file extension part of
+          every module name, because want module names should be simple strings
+          like "jquery" and should not contain particles that only make sense
+          for a particular kind of resolve/load mechanism.  That is, the
+          default resolve hook should not be privileged! It's honestly not
+          designed to do everything users will want. and it is expected that many projects will
+          use a package loader in practice.
+
+          Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
+          address, per samth 2013 April 22.  Rationale:  The default resolve
+          behavior should try to return an absolute URL.  If the user overrides
+          it to return a relative URL, the default fetch behavior should cope
+          with that.
+        */
+        return $ToAbsoluteURL(this.@baseURL, normalized + ".js");
+    };
+
+    System.fetch = function fetch(resolved, fulfill, reject, done, options) {
+        // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
+        // address. See comment in System.resolve above.
+        resolved = $ToAbsoluteURL(this.@baseURL, resolved);
+
+        return TODO(resolved, fulfill, reject, options.normalized,
+                    options.referer);
+    };
 }
