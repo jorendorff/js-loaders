@@ -71,6 +71,7 @@ module "js/loaders" {
         $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
         $StringSplit,   // $StringSplit(s, delim) ~= s.split(delim)
         $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
+        $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
         $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
         $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
         $SetNew,        // $SetNew() ~= new Set
@@ -82,7 +83,6 @@ module "js/loaders" {
         $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
         $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
         $MapIterator,   // $MapIterator(map) ~= map[@@iterator]()
-        $PropertyIterator, // $PropertyIterator(obj) ~= default for-of iteration behavior???
         $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
 
         // Modules
@@ -255,7 +255,10 @@ module "js/loaders" {
           P1 ISSUE #11:  Consider dropping ondemand table
         */
         ondemand(sources) {
-            for (let [url, contents] of $PropertyIterator(sources)) {
+            let keys = $ObjectKeys(sources);
+            for (let i = 0; i < keys.length; i++) {
+                let url = keys[i];
+                let contents = sources[url];
                 if (contents === null) {
                     $MapDelete(this.@ondemand, url);
                 } else if (typeof contents === 'string') {
