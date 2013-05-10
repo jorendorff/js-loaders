@@ -62,6 +62,7 @@ module "js/loaders" {
         $ReportUncaughtException,
         $AddForNextTurn,
         $ToAbsoluteURL,
+        $FetchTextFromURL,
         $Assert,
 
         // Capabilities that JS provides, but via methods that other code could
@@ -743,17 +744,13 @@ module "js/loaders" {
               Note that the fetch hook may call fulfill() and the other hooks
               synchronously; see comment on fetch().
             */
-            function fulfill(src, type, actualAddress) {
+            function fulfill(src, actualAddress) {
                 if (fetchCompleted)
                     throw $TypeError("load() fulfill callback: fetch already completed");
                 fetchCompleted = true;
 
                 if (typeof src !== 'string') {
                     let msg = "load() fulfill callback: first argument must be a string";
-                    AsyncCall(errback, $TypeError(msg));
-                }
-                if (type !== 'script') {
-                    let msg = "load() fulfill callback: second argument must be 'script'";
                     AsyncCall(errback, $TypeError(msg));
                 }
                 if (typeof actualAddress !== 'string') {
@@ -1114,7 +1111,7 @@ module "js/loaders" {
             // Prepare to call the fetch hook.
             let fetchCompleted = false;
 
-            let fulfill = (src, type, actualAddress) => {
+            let fulfill = (src, actualAddress) => {
                 if (fetchCompleted)
                     throw $TypeError("fetch fulfill callback: fetch already completed");
                 fetchCompleted = true;
@@ -1541,7 +1538,7 @@ module "js/loaders" {
         */
         fetch(resolved, fulfill, reject, done, options) {
             // P1 ISSUE #15:  Define behavior here.
-            $AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
+            AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
         }
 
         /*
@@ -2120,12 +2117,13 @@ module "js/loaders" {
     // P1 ISSUE #13 proposes removing this feature.
     Loader.prototype.@systemDefaultResolve = System.resolve;
 
-    System.fetch = function fetch(resolved, fulfill, reject, done, options) {
+    System.fetch = function fetch(address, fulfill, reject, done, options) {
         // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
         // address. See comment in System.resolve above.
-        resolved = $ToAbsoluteURL(this.@baseURL, resolved);
+        address = $ToAbsoluteURL(this.@baseURL, address);
 
-        return TODO(resolved, fulfill, reject, options.normalized,
-                    options.referer);
+        $FetchTextFromURL(address,
+                          (text, actualURL) => AsyncCall(fulfill, text, actualURL),
+                          error => AsyncCall(reject, error));
     };
 }
