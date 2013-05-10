@@ -729,9 +729,6 @@ module "js/loaders" {
               misuse; the system must be robust against these hooks being
               called multiple times.
 
-              TODO: make sure the callbacks are also robust against invalid
-              arguments.
-
               Futures treat extra resolve() calls after the first as no-ops; we
               throw instead, per meeting 2013 April 26.
 
@@ -1116,8 +1113,8 @@ module "js/loaders" {
                     throw $TypeError("fetch fulfill callback: fetch already completed");
                 fetchCompleted = true;
 
-                return this.@onFulfill(status, normalized, metadata,
-                                       src, type, actualAddress);
+                return this.@onFulfill(status, normalized, metadata, type,
+                                       src, actualAddress);
             }
 
             function reject(exc) {
@@ -1164,7 +1161,7 @@ module "js/loaders" {
             }
         }
 
-        @onFulfill(status, normalized, metadata, src, type, actualAddress) {
+        @onFulfill(status, normalized, metadata, type, src, actualAddress) {
             let plan, mod, imports, exports, execute;
             try {
                 // Check arguments to fulfill hook.
@@ -1172,13 +1169,9 @@ module "js/loaders" {
                     throw $TypeError("fetch hook fulfill callback: " +
                                      "first argument must be a string");
                 }
-                if (type !== 'script' && type !== 'module') {
-                    throw $TypeError("fetch hook fulfill callback: " +
-                                     'second argument must be "script" or "module"');
-                }
                 if (typeof actualAddress !== 'string') {
                     throw $TypeError("fetch hook fulfill callback: " +
-                                     "third argument must be a string");
+                                     "second argument must be a string");
                 }
 
                 // Call translate and link hooks.
@@ -1190,8 +1183,12 @@ module "js/loaders" {
                 // Interpret linkResult.  See comment on the link() method.
                 if (linkResult === undefined) {
                     plan = "default";
-                    // TODO: cope if type == 'script'
-                    mod = $CompileModule(this, src, actualAddress);
+                    if (type === 'script') {
+                        let script = $CompileScript(this, src, actualAddress);
+                        TODO();
+                    } else {
+                        mod = $CompileModule(this, src, actualAddress);
+                    }
                 } else if (!IsObject(linkResult)) {
                     throw $TypeError("link hook must return an object or undefined");
                 } else if ($IsModule(linkResult)) {
