@@ -1183,6 +1183,8 @@ module "js/loaders" {
 
                 // Call translate and link hooks.
                 src = this.translate(src, {normalized, actualAddress, metadata, type});
+                if (typeof src !== 'string')
+                    throw $TypeError("translate hook must return a string");
                 let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
 
                 // Interpret linkResult.  See comment on the link() method.
