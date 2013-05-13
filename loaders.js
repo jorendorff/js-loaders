@@ -1080,7 +1080,6 @@ module "js/loaders" {
                                     name + "\" is at <" + url + "> but " +
                                     "it is already loaded");
                             }
-                            $ArrayPush(names, name);
                         }
 
                         /*
@@ -1149,7 +1148,9 @@ module "js/loaders" {
                 status.onEndRun(normalized, mod);
             }
 
-            let options = {referer, metadata, normalized};
+            // P3 ISSUE: type makes sense here, yes?
+            // P3 ISSUE: what about 'other'?
+            let options = {referer, metadata, normalized, type};
 
             // Call the fetch hook.
             try {
@@ -1306,8 +1307,6 @@ module "js/loaders" {
         set(name, mod) {
             if (typeof name !== 'string')
                 throw $TypeError("module name must be a string");
-
-            // TODO: implement test for valid module full name.
 
             if (!$IsModule(mod)) {
                 /*
@@ -1512,11 +1511,19 @@ module "js/loaders" {
           Asynchronously fetch the requested source from the given url
           (produced by the resolve hook).
 
-          If we're fetching a script, not a module, then the done callback
-          should not be used.  If called, it reports an error to the reject
-          callback.
+          This is the one hook that must be overloaded in order to make the
+          import keyword work. The default implementation simply schedules a
+          call to the reject hook.
 
-          TODO: clean up that last sentence
+          The fetch hook should load the requested address and call the
+          fulfill() callback, passing two arguments: the fetched source, as a
+          string; and the actual address where it was found (after all
+          redirects), also as a string.
+
+          options.type is the string 'module' when fetching a standalone
+          module, and 'script' when fetching a script. In the latter case the
+          fetch hook should not call the done callback; it just reports an
+          error. P3 ISSUE: Have the loader pass undefined instead?
 
           When the fetch hook is called:  For all modules and scripts whose
           source is not directly provided by the caller.  It is not called for
@@ -1529,16 +1536,14 @@ module "js/loaders" {
           the fetch/translate/link hooks, per samth, 2013 April 22.)
 
           The fetch hook may call the fulfill/reject/done callback
-          synchronously rather than waiting for the next event loop turn.  The
-          fulfill hook in turn synchronously calls the translate and link
-          hooks, compiles the code, and starts loading any modules the code
-          imports that are not already loaded or loading.  (However the fulfill
-          callback, like the rest of the loader, never synchronously calls a
-          success or failure callback.)  Per meeting, 2013 April 26.
+          synchronously rather than waiting for the next event loop turn.
+          Per meeting, 2013 April 26.
 
           P2 ISSUE: #9: synchronous calls to fulfill()
 
-          TODO:  Work out any further observable implications of the above.
+          I think samth and I agree that a synchronous fulfill() callback
+          should not synchronously call translate/link hooks, much less
+          normalize/resolve/fetch hooks for dependencies. TODO: Code that up.
         */
         fetch(resolved, fulfill, reject, done, options) {
             // P1 ISSUE #15:  Define behavior here.
