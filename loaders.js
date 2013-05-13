@@ -1763,7 +1763,7 @@ module "js/loaders" {
 
             // The LinkSet, if any, whose sole purpose is to load this
             // module.  (As opposed to other LinkSets that are trying to
-            // load modules or scripts which directly or indirectly import on
+            // load modules or scripts which directly or indirectly import
             // this one.)
             this.directImportLinkSet = null;
         }
