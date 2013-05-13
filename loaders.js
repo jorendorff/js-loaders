@@ -41,7 +41,7 @@
     In addition many details of the behavior have been pinned down in IRC
     conversations with Sam Tobin-Hochstadt and David Herman.
 
-  LinkageUnit - Stores state for a particular call to loader.load(),
+  LinkSet - Stores state for a particular call to loader.load(),
     .evalAsync(), or .import().
 
   LoadTask - Stores the status of a particular module from the time we
@@ -369,9 +369,9 @@ module "js/loaders" {
               module registry (per samth, 2013 April 16) because re-loading the
               module and running it again is not likely to make things better.
 
-              Other fully linked modules in the same LinkageUnit are also left
-              in the registry (per dherman, 2013 April 18).  Some of those may
-              be unrelated to the module that threw.  Since their "has ever
+              Other fully linked modules in the same LinkSet are also left in
+              the registry (per dherman, 2013 April 18).  Some of those may be
+              unrelated to the module that threw.  Since their "has ever
               started executing" bit is not yet set, they will be executed on
               demand.  This allows unrelated modules to finish loading and
               initializing successfully, if they are needed.
@@ -646,15 +646,15 @@ module "js/loaders" {
 
             let ctn = Loader.@makeContinuation(
                 () => $EvaluateScript(script), callback, errback);
-            let unit = new LinkageUnit(this, ctn, errback);
-            unit.addScriptAndDependencies(script);
+            let linkSet = new LinkSet(this, ctn, errback);
+            linkSet.addScriptAndDependencies(script);
 
             /*
-              P4 ISSUE: EXECUTION ORDER WHEN MULTIPLE LINKAGE UNITS BECOME
-              LINKABLE AT ONCE.
+              P4 ISSUE: Execution order when multiple LinkSets become linkable
+              at once.
 
               Proposed: When a fetch fulfill callback fires and completes the
-              dependency graph of multiple linkage units at once, they are
+              dependency graph of multiple link sets at once, they are
               linked and executed in the order of the original
               load()/evalAsync() calls.
 
@@ -848,19 +848,19 @@ module "js/loaders" {
                 return callback(m);
             }
 
-            let unit = new LinkageUnit(this, success, errback);
-            this.@importFor(unit, referer, moduleName, setFullName, true);
+            let linkSet = new LinkSet(this, success, errback);
+            this.@importFor(linkSet, referer, moduleName, setFullName, true);
         }
 
         /*
           The common implementation of the import() method and the processing
           of import declarations in ES code.
 
-          unit is a LinkageUnit object. The result of loading the specified
-          module is reported to the unit via one of these callback methods:
-            unit.onLinkedModule(name, module)
-            unit.addModuleAndDependencies(normalized, loadTask)
-            unit.fail(exc)
+          linkSet is a LinkSet object. The result of loading the specified module
+          is reported to the LinkSet via one of these callback methods:
+            linkSet.onLinkedModule(name, module)
+            linkSet.addModuleAndDependencies(normalized, loadTask)
+            linkSet.fail(exc)
           These callbacks are called asynchronously, in fresh event loop turns.
 
           referer provides information about the context of the import() call
@@ -874,22 +874,22 @@ module "js/loaders" {
           setFullName is a callback used to notify the caller of the full name
           of the module being imported.  This is called with one argument, the
           module's full name, after a successful call to the normalize hook.
-          setFullName must not throw.  (Unlike everything else, setFullName
-          is called synchronously.)
+          setFullName must not throw.  (Unlike everything else, setFullName is
+          called synchronously.)
 
           If directImport is true, avoid duplicating work with any other
-          LinkageUnit also loading the same module with directImport.  This
-          flag is true only when this method is called directly from import().
-          The sole reason for this flag is to avoid having multiple import()
-          calls for the same module all do redundant incremental graph-walking
-          and normalize-hook-calling as dependencies load.  (Two such linkage
-          units always have the same dependency graph.)
+          LinkSet also loading the same module with directImport.  This flag is
+          true only when this method is called directly from import().  The
+          sole reason for this flag is to avoid having multiple import() calls
+          for the same module all do redundant incremental graph-walking and
+          normalize-hook-calling as dependencies load.  (Two such link sets
+          always have the same dependency graph.)
 
           TODO:  Suggest alternative name for referer.  It is really nothing to
           do with the nasty Referer HTTP header.  Perhaps "importContext",
           "importer", "client".
         */
-        @importFor(unit, referer, name, setFullName, directImport) {
+        @importFor(linkSet, referer, name, setFullName, directImport) {
             /*
               Call the normalize hook to get a normalized module name and
               metadata.  See the comment on normalize().
@@ -967,7 +967,7 @@ module "js/loaders" {
                 if (metadata === undefined)
                     metadata = {};
             } catch (exc) {
-                $AddForNextTurn(() => unit.fail(exc));
+                $AddForNextTurn(() => linkSet.fail(exc));
                 return;
             }
 
@@ -977,7 +977,7 @@ module "js/loaders" {
             let m = $MapGet(this.@modules, normalized);
             if (m !== undefined) {
                 // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
-                $AddForNextTurn(() => unit.onLinkedModule(m));
+                $AddForNextTurn(() => linkSet.onLinkedModule(m));
                 return;
             }
 
@@ -986,33 +986,33 @@ module "js/loaders" {
             if (loadTask !== undefined) {
                 // Merge module loads to avoid redundant work.
                 if (directImport) {
-                    let leader = loadTask.directImportLinkageUnit;
-                    if (loadTask.directImportLinkageUnit === null) {
-                        loadTask.directImportLinkageUnit = unit;
+                    let leader = loadTask.directImportLinkSet;
+                    if (loadTask.directImportLinkSet === null) {
+                        loadTask.directImportLinkSet = linkSet;
                     } else {
-                        unit.isClone = true;
+                        linkSet.isClone = true;
 
-                        // Prepend unit to the linked list of clones.
-                        unit.clone = leader.clone;
-                        leader.clone = unit;
+                        // Prepend linkSet to the linked list of clones.
+                        linkSet.clone = leader.clone;
+                        leader.clone = linkSet;
                         return;
                     }
                 }
 
-                // This module is already loading.  Hook the LinkageUnit to the
+                // This module is already loading.  Hook the LinkSet to the
                 // existing in-flight LoadTask.
-                unit.addModuleAndDependencies(normalized, loadTask);
+                linkSet.addModuleAndDependencies(normalized, loadTask);
                 return;
             }
 
             /*
               Create a LoadTask object for this module load.  Once this object
-              is in this.@loading, other LinkageUnits may add themselves to its
-              set of waiting units, so errors must be reported to
-              loadTask.fail(), to affect all waiting LinkageUnits, not just unit.
+              is in this.@loading, other LinkSets may add themselves to its
+              set of waiting link sets, so errors must be reported to
+              loadTask.fail(), to affect all waiting LinkSets, not just linkSet.
             */
             loadTask = new LoadTask;
-            $ArrayPush(loadTask.unitsWaitingForCompile, unit);
+            $ArrayPush(loadTask.linkSetsWaitingForCompile, linkSet);
             $MapSet(this.@loading, normalized, loadTask);
 
             let url, type;
@@ -1098,7 +1098,7 @@ module "js/loaders" {
                 /*
                   Implementation issue:  This isn't implemented yet, but
                   loadTask.fail() will be responsible for forwarding this error
-                  to both unit and all *other* LinkageUnits that have attached
+                  to both linkSet and all *other* LinkSets that have attached
                   to loadTask in the meantime.  It is also responsible for
                   removing loadTask itself from this.@loading.
                 */
@@ -1228,7 +1228,7 @@ module "js/loaders" {
                 throw TODO;
         }
 
-        @failLinkageUnits(units, exc) {
+        @failLinkSets(sets, exc) {
             /*
               TODO: Find stranded LoadTasks, remove them from this.@loading,
               and neuter their pending fetch() callbacks, if any (so that the
@@ -1239,11 +1239,11 @@ module "js/loaders" {
               failed.
             */
 
-            // Call LinkageUnit fail hooks.
+            // Call LinkSet fail hooks.
             // P5 ISSUE: In what order?
-            for (let i = 0; i < units.length; i++) {
-                for (let unit = units[i]; unit !== null; unit = unit.clone)
-                    AsyncCall(unit.errback, exc);
+            for (let i = 0; i < sets.length; i++) {
+                for (let ls = sets[i]; ls !== null; ls = ls.clone)
+                    AsyncCall(ls.errback, exc);
             }
         }
 
@@ -1352,8 +1352,8 @@ module "js/loaders" {
           - During load phase, whenever we find new code that imports a module,
             we first look in the registry for that module, and failing that,
             the table of in-flight loads.  If it is not in either table, we
-            start a fresh load.  There is no per-linkage-unit state to prevent
-            us from kicking off many loads for the same module during a single
+            start a fresh load.  There is no per-LinkSet state to prevent us
+            from kicking off many loads for the same module during a single
             load phase; in the case of cyclic imports, if someone keeps
             deleting the successfully-loaded modules from the registry, we
             could go on indefinitely.
@@ -1621,34 +1621,33 @@ module "js/loaders" {
       Dependencies could be initialized more eagerly, but in a less
       deterministic order. The design opts for a bit more determinism in common
       cases-- though it is easy to trigger non-determinism since multiple
-      linkage units can be in-flight at once.
+      link sets can be in-flight at once.
     */
 
 
     /*
-      A LinkageUnit implements a single call to loader.evalAsync(), .load(), or .import().
+      A LinkSet represents a call to loader.evalAsync(), .load(), or .import().
 
-      Not every call to .import() produces a new LinkageUnit; if the desired
-      module is already loading, we can simply add callbacks to the existing
-      LinkageUnit.
+      Not every call to .import() produces a new LinkSet; if the desired module
+      is already loading, we can simply add callbacks to the existing LinkSet.
     */
-    class LinkageUnit {
+    class LinkSet {
         constructor(loader, callback, errback) {
-            // TODO: make LinkageUnits not inherit from Object.prototype, for isolation;
+            // TODO: make LinkSets not inherit from Object.prototype, for isolation;
             // or else use symbols for all these. :-P
             this.loader = loader;
             this.callback = callback;
             this.errback = errback;
 
             /*
-              Another LinkageUnit that has the same job as this one; or null.
+              Another LinkSet that has the same job as this one; or null.
               The only way this can become non-null is if multiple import()
               calls for the same module are merged.  Many can be merged; it's
               a linked list.
             */
             this.clone = null;
 
-            /* True if some other unit's .clone property points to this. */
+            /* True if some other LinkSet's .clone property points to this. */
             this.isClone = false;
 
             // TODO: finish overall load state
@@ -1663,7 +1662,7 @@ module "js/loaders" {
 
             /*
               When we load a script, we add all its modules and their
-              dependencies to the same linkage unit, per samth, 2013 April 22.
+              dependencies to the same link set, per samth, 2013 April 22.
 
               Example:
                   module "A" {
@@ -1697,7 +1696,7 @@ module "js/loaders" {
       TODO: this should be called "fetching".
 
           .status === "loading"
-          .unitsWaitingForCompile is an Array of LinkageUnits
+          .linkSetsWaitingForCompile is an Array of LinkSets
 
       This state ends when the source is retrieved, translated, and
       successfully compiled.
@@ -1711,8 +1710,8 @@ module "js/loaders" {
       thus must not be exposed to script yet.
 
       The "waiting" state says nothing about the status of the dependencies; they
-      may all be "ready" and yet there may not be any LinkageUnit that's ready to
-      link and execute this module. The LinkageUnit may be waiting for unrelated
+      may all be "ready" and yet there may not be any LinkSet that's ready to
+      link and execute this module. The LinkSet may be waiting for unrelated
       dependencies to load.
 
           .status === "waiting"
@@ -1743,16 +1742,16 @@ module "js/loaders" {
         */
         constructor() {
             this.status = "loading";
-            this.unitsWaitingForCompile = [];
+            this.linkSetsWaitingForCompile = [];
             this.module = null;
             this.factory = null;
             this.dependencies = null;
 
-            // The LinkageUnit, if any, whose sole purpose is to load this
-            // module.  (As opposed to other LinkageUnits that are trying to
+            // The LinkSet, if any, whose sole purpose is to load this
+            // module.  (As opposed to other LinkSets that are trying to
             // load modules or scripts which directly or indirectly import on
             // this one.)
-            this.directImportLinkageUnit = null;
+            this.directImportLinkSet = null;
         }
 
         /*
@@ -1767,7 +1766,7 @@ module "js/loaders" {
             $Assert(mod === null || fac === null);
 
             this.status = "waiting";
-            this.unitsWaitingForCompile = undefined;
+            this.linkSetsWaitingForCompile = undefined;
             this.module = mod;
             this.factory = fac;
             this.dependencies = dependencyNames;
@@ -1834,25 +1833,25 @@ module "js/loaders" {
           Every error that can occur throughout the process (with one
           exception; see exhaustive list in the next comment, below) is related
           to either a specific in-flight LoadTask (in loader.@loading) or a
-          specific LinkageUnit.
+          specific LinkSet.
 
           When such an error occurs:
 
-           1. Compute the set F of LinkageUnits we are going to fail, as
+           1. Compute the set F of LinkSets we are going to fail, as
               follows:
 
-                * If the error is related to a single LinkageUnit (that is, it
+                * If the error is related to a single LinkSet (that is, it
                   is a link error or an execution error in a module or script),
-                  let F = a set containing just that LinkageUnit.
+                  let F = a set containing just that LinkSet.
 
                 * If the error is related to an in-flight LoadTask (that is, it
                   has to do with a hook throwing, returning an invalid value,
                   calling a fulfill callback inorrectly, or calling the reject
-                  callback), let F = the set of LinkageUnits that needed that
+                  callback), let F = the set of LinkSets that needed that
                   module.
 
            2. Let M = the set of all in-flight modules (in loader.@loading)
-              that are not needed by any LinkageUnit other than those in F.
+              that are not needed by any LinkSet other than those in F.
 
               P3 ISSUE #20: Can the set M be computed efficiently?
 
@@ -1874,12 +1873,12 @@ module "js/loaders" {
 
               P4 ISSUE: cancellation and fetch hooks
 
-           5. Call the errback hooks for each LinkageUnit in F.
+           5. Call the errback hooks for each LinkSet in F.
 
               P5 ISSUE:  Ordering.  We can spec the order to be the order of
               the import()/load()/asyncEval() calls, wouldn't be hard.
 
-          After that, we drop the failed LinkageUnits and they become garbage.
+          After that, we drop the failed LinkSets and they become garbage.
 
           Note that any modules that are already linked and committed to
           the module registry (loader.@modules) are unaffected by the error.
@@ -1904,7 +1903,7 @@ module "js/loaders" {
           - We can fetch bad code and get a SyntaxError trying to compile
             it.
 
-          Errors related to a LinkageUnit:
+          Errors related to a LinkSet:
 
           - During linking, we can find that a factory-made module is
             involved in an import cycle. This is an error.
@@ -1923,14 +1922,14 @@ module "js/loaders" {
 
           - The fetch hook errors described above can happen when fetching
             script code for a load() call. This happens so early that no
-            LinkageUnits and no modules are involved. We can skip the complex
+            LinkSets and no modules are involved. We can skip the complex
             error-handling process and just directly call the errback hook.
         */
 
         fail(exc) {
             $Assert(this.status === "loading");
             throw TODO;
-            this.loader.@failLinkageUnits(this.unitsWaitingForCompile);
+            this.loader.@failLinkSets(this.linkSetsWaitingForCompile);
         }
     }
 
