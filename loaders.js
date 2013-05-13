@@ -837,8 +837,11 @@ module "js/loaders" {
                                          "\" was deleted from the loader");
                     return errback(exc);
                 }
-                // TODO: bug here if an exception is thrown
-                Loader.@ensureModuleExecuted(m);
+                try {
+                    Loader.@ensureModuleExecuted(m);
+                } catch (exc) {
+                    return errback(exc);
+                }
                 return callback(m);
             }
 
@@ -978,8 +981,7 @@ module "js/loaders" {
             // If the module is loading, attach to the existing in-flight load.
             let status = $MapGet(this.@loading, normalized);
             if (status !== undefined) {
-                // Merge effectively identical loader.import() calls
-                // to avoid doing redundant work.
+                // Merge module loads to avoid redundant work.
                 if (directImport) {
                     let leader = status.directImportLinkageUnit;
                     if (status.directImportLinkageUnit === null) {
