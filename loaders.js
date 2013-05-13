@@ -1960,7 +1960,7 @@ module "js/loaders" {
 
     // TODO move this behavior into a separate file.
 
-    var System = new Loader;
+    export var System = new Loader;
 
     /*
       P1 ISSUE #22:  Make sure hierarchical module names are sufficient for
