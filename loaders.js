@@ -44,7 +44,7 @@
   LinkageUnit - Stores state for a particular call to loader.load(),
     .evalAsync(), or .import().
 
-  ModuleStatus - Stores the status of a particular module from the time we
+  LoadTask - Stores the status of a particular module from the time we
     first decide to load it until it is fully linked and ready to execute.
 */
 
@@ -160,8 +160,8 @@ module "js/loaders" {
             this.@modules = $MapNew();
 
             /*
-              this.@loading stores the status of modules that are loading and
-              not yet linked.  It maps module names to ModuleStatus objects.
+              this.@loading stores information about modules that are loading
+              and not yet linked.  It maps module names to LoadTask objects.
 
               This is stored in the loader so that multiple calls to
               loader.load()/.import()/.evalAsync() can cooperate to fetch what
@@ -859,7 +859,7 @@ module "js/loaders" {
           unit is a LinkageUnit object. The result of loading the specified
           module is reported to the unit via one of these callback methods:
             unit.onLinkedModule(name, module)
-            unit.addModuleAndDependencies(normalized, status)
+            unit.addModuleAndDependencies(normalized, loadTask)
             unit.fail(exc)
           These callbacks are called asynchronously, in fresh event loop turns.
 
@@ -982,13 +982,13 @@ module "js/loaders" {
             }
 
             // If the module is loading, attach to the existing in-flight load.
-            let status = $MapGet(this.@loading, normalized);
-            if (status !== undefined) {
+            let loadTask = $MapGet(this.@loading, normalized);
+            if (loadTask !== undefined) {
                 // Merge module loads to avoid redundant work.
                 if (directImport) {
-                    let leader = status.directImportLinkageUnit;
-                    if (status.directImportLinkageUnit === null) {
-                        status.directImportLinkageUnit = unit;
+                    let leader = loadTask.directImportLinkageUnit;
+                    if (loadTask.directImportLinkageUnit === null) {
+                        loadTask.directImportLinkageUnit = unit;
                     } else {
                         unit.isClone = true;
 
@@ -1000,21 +1000,20 @@ module "js/loaders" {
                 }
 
                 // This module is already loading.  Hook the LinkageUnit to the
-                // existing in-flight ModuleStatus.
-                unit.addModuleAndDependencies(normalized, status);
+                // existing in-flight LoadTask.
+                unit.addModuleAndDependencies(normalized, loadTask);
                 return;
             }
 
             /*
-              Create a ModuleStatus object for this module load.  Once this
-              object is in this.@loading, other LinkageUnits may add themselves
-              to its set of waiting units, so errors must be reported to
-              status.fail(), to affect all waiting LinkageUnits, not just
-              unit.
+              Create a LoadTask object for this module load.  Once this object
+              is in this.@loading, other LinkageUnits may add themselves to its
+              set of waiting units, so errors must be reported to
+              loadTask.fail(), to affect all waiting LinkageUnits, not just unit.
             */
-            status = new ModuleStatus;
-            $ArrayPush(status.unitsWaitingForCompile, unit);
-            $MapSet(this.@loading, normalized, status);
+            loadTask = new LoadTask;
+            $ArrayPush(loadTask.unitsWaitingForCompile, unit);
+            $MapSet(this.@loading, normalized, loadTask);
 
             let url, type;
             try {
@@ -1087,7 +1086,7 @@ module "js/loaders" {
                           defined in the same script.
                         */
                         for (let i = 0; i < names.length; i++)
-                            $MapSet(this.@loading, names[i], status);
+                            $MapSet(this.@loading, names[i], loadTask);
 
                         type = 'script';
                     }
@@ -1098,16 +1097,16 @@ module "js/loaders" {
             } catch (exc) {
                 /*
                   Implementation issue:  This isn't implemented yet, but
-                  status.fail() will be responsible for forwarding this error
+                  loadTask.fail() will be responsible for forwarding this error
                   to both unit and all *other* LinkageUnits that have attached
-                  to status in the meantime.  It is also responsible for
-                  removing status itself from this.@loading.
+                  to loadTask in the meantime.  It is also responsible for
+                  removing loadTask itself from this.@loading.
                 */
-                status.fail(exc);
+                loadTask.fail(exc);
                 return;
             }
 
-            status.type = type;
+            loadTask.type = type;
 
             // Prepare to call the fetch hook.
             let fetchCompleted = false;
@@ -1117,7 +1116,7 @@ module "js/loaders" {
                     throw $TypeError("fetch fulfill callback: fetch already completed");
                 fetchCompleted = true;
 
-                return this.@onFulfill(status, normalized, metadata, type,
+                return this.@onFulfill(loadTask, normalized, metadata, type,
                                        src, actualAddress);
             }
 
@@ -1126,7 +1125,7 @@ module "js/loaders" {
                     throw $TypeError("fetch reject callback: fetch already completed");
                 fetchCompleted = true;
 
-                return status.fail(exc);
+                return loadTask.fail(exc);
             }
 
             /*
@@ -1143,9 +1142,9 @@ module "js/loaders" {
                 if (mod === undefined) {
                     let msg = "fetch hook done() callback: " +
                         "not actually done loading \"" + normalized + "\"";
-                    status.fail($TypeError(msg));
+                    loadTask.fail($TypeError(msg));
                 }
-                status.onEndRun(normalized, mod);
+                loadTask.onEndRun(normalized, mod);
             }
 
             // P3 ISSUE: type makes sense here, yes?
@@ -1157,17 +1156,17 @@ module "js/loaders" {
                 this.fetch(url, fulfill, reject, done, options);
             } catch (exc) {
                 /*
-                  As in load(), take care that status.fail is called if the
+                  As in load(), take care that loadTask.fail is called if the
                   fetch hook fails, but at most once.
                 */
                 if (fetchCompleted)
                     AsyncCall(() => { throw exc; });
                 else
-                    status.fail(exc);
+                    loadTask.fail(exc);
             }
         }
 
-        @onFulfill(status, normalized, metadata, type, src, actualAddress) {
+        @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
             let plan, mod, imports, exports, execute;
             try {
                 // Check arguments to fulfill hook.
@@ -1218,26 +1217,26 @@ module "js/loaders" {
                     execute = linkResult.execute;
                 }
             } catch (exc) {
-                status.fail(exc);
+                loadTask.fail(exc);
             }
 
             if (plan == "default")
-                status.onModuleCompiled(normalized, mod);
+                loadTask.onModuleCompiled(normalized, mod);
             else if (plan == "done")
-                status.onEndRun(normalized, mod);
+                loadTask.onEndRun(normalized, mod);
             else  // plan == "factory"
                 throw TODO;
         }
 
         @failLinkageUnits(units, exc) {
             /*
-              TODO: Find stranded ModuleStatuses, remove them from
-              this.@loading, and neuter their pending fetch() callbacks, if any
-              (so that the translate hook is never called).
+              TODO: Find stranded LoadTasks, remove them from this.@loading,
+              and neuter their pending fetch() callbacks, if any (so that the
+              translate hook is never called).
 
-              If this failure is due to a ModuleStatus failing (e.g. a fetch
-              failing), then this step will definitely remove the ModuleStatus
-              that failed.
+              If this failure is due to a LoadTask failing (e.g. a fetch
+              failing), then this step will definitely remove the LoadTask that
+              failed.
             */
 
             // Call LinkageUnit fail hooks.
@@ -1689,7 +1688,7 @@ module "js/loaders" {
     }
 
     /*
-      A ModuleStatus object is an entry in a Loader's "loading" map.
+      A LoadTask object is an entry in a Loader's "loading" map.
 
       It is in one of three states:
 
@@ -1738,7 +1737,7 @@ module "js/loaders" {
           .module is a Module
 
     */
-    class ModuleStatus {
+    class LoadTask {
         /*
           A module entry begins in the "loading" state.
         */
@@ -1834,7 +1833,7 @@ module "js/loaders" {
 
           Every error that can occur throughout the process (with one
           exception; see exhaustive list in the next comment, below) is related
-          to either a specific in-flight ModuleStatus (in loader.@loading) or a
+          to either a specific in-flight LoadTask (in loader.@loading) or a
           specific LinkageUnit.
 
           When such an error occurs:
@@ -1846,11 +1845,11 @@ module "js/loaders" {
                   is a link error or an execution error in a module or script),
                   let F = a set containing just that LinkageUnit.
 
-                * If the error is related to an in-flight ModuleStatus (that
-                  is, it has to do with a hook throwing, returning an invalid
-                  value, calling a fulfill callback inorrectly, or calling the
-                  reject callback), let F = the set of LinkageUnits that needed
-                  that module.
+                * If the error is related to an in-flight LoadTask (that is, it
+                  has to do with a hook throwing, returning an invalid value,
+                  calling a fulfill callback inorrectly, or calling the reject
+                  callback), let F = the set of LinkageUnits that needed that
+                  module.
 
            2. Let M = the set of all in-flight modules (in loader.@loading)
               that are not needed by any LinkageUnit other than those in F.
@@ -1890,7 +1889,7 @@ module "js/loaders" {
           For reference, here are all the kinds of errors that can
           occur. This list is meant to be exhaustive.
 
-          Errors related to a ModuleStatus:
+          Errors related to a LoadTask:
 
           - For each module, we call all five loader hooks, any of which
             can throw or return an invalid value.
