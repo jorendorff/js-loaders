@@ -7,19 +7,22 @@
     - the Loader constructor;
     - .eval(src, options) and @ensureModuleExecuted;
     - .load(url, callback, errback);
+    - .evalAsync(src, callback, errback, options);
+    - .import(name, callback, errback, options);
     - .get(name), .has(name), .set(name, module), .delete(name);
-    - .ondemand(sources).
-  The following are partly implemented:
-    - .evalAsync(src, callback, errback, options)
-    - .import(name, callback, errback, options)
-  Everything else is a mess.
+    - .ondemand(sources);
+    - the loader hooks and the loading pipeline that calls them.
 
-  If you imagine loading as happening in three phases:
-    - from load()/import()/eval()/asyncEval() up to the fetch hook
-    - from the fulfill callback up to linkage
-    - executing module bodies and scripts
-  then the code here focuses on the first phase, with the easy bits of the
-  third phase implemented too.
+  These things are not implemented at all yet:
+    - dependency graph stuff;
+    - the last bit of plumbing connecting the load pipeline back to the success
+      and failure callbacks provided by load/evalAsync/import;
+    - error handling when multiple module loads are involved;
+    - linking;
+    - support for custom link hooks that create dynamic-linked ("factory-made")
+      modules;
+    - "intrinsics";
+    - probably various other odds and ends.
 
 
   *** About loaders ***********************************************************
