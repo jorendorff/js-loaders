@@ -1639,9 +1639,6 @@ module "js/loaders" {
 
     /*
       A LinkSet represents a call to loader.evalAsync(), .load(), or .import().
-
-      Not every call to .import() produces a new LinkSet; if the desired module
-      is already loading, we can simply add callbacks to the existing LinkSet.
     */
     class LinkSet {
         constructor(loader, callback, errback) {
@@ -1710,31 +1707,29 @@ module "js/loaders" {
     }
 
     /*
-      A LoadTask object is an entry in a Loader's "loading" map.
+      A LoadTask object is an entry in a Loader's .@loading map.
 
       It is in one of three states:
 
-      1. Loading: Source is not available yet.
+      1.  Fetching:  Source is not available yet.
 
-      TODO: this should be called "fetching".
-
-          .status === "loading"
+          .status === "fetching"
           .linkSetsWaitingForCompile is an Array of LinkSets
 
-      This state ends when the source is retrieved, translated, and
+      The task leaves this state when the source is retrieved, translated, and
       successfully compiled.
 
-      2. Waiting: Source is available and has been "translated"; syntax has
-      been checked; dependencies have been identified. But the module hasn't
-      been linked or executed yet. We are waiting for dependencies.
+      2.  Waiting:  Source is available and has been "translated"; syntax has
+      been checked; dependencies have been identified.  But the module hasn't
+      been linked or executed yet.  We are waiting for dependencies.
 
-      This pseudo-implementation treats the Module object as already existing at
-      this point (except for factory-made modules). But it has not been linked and
+      This implementation treats the Module object as already existing at this
+      point (except for factory-made modules).  But it has not been linked and
       thus must not be exposed to script yet.
 
       The "waiting" state says nothing about the status of the dependencies; they
       may all be "ready" and yet there may not be any LinkSet that's ready to
-      link and execute this module. The LinkSet may be waiting for unrelated
+      link and execute this module.  The LinkSet may be waiting for unrelated
       dependencies to load.
 
           .status === "waiting"
@@ -1744,27 +1739,23 @@ module "js/loaders" {
 
       Exactly one of [.module, .factory] is non-null.
 
-      TODO:  Cope with .dependencies needing to update to full names.  By the
-      time the module is linked, every element in .dependencies needs to be
-      populated with a full module name.
+      The task leaves this state when a LinkSet successfully links the module
+      and moves it into the loader's module registry.
 
-      3. Ready: The module has been linked. A Module object exists. WARNING:
-      THIS COMMENT MAY BE OBSOLETE. It may have already executed; it may
-      be executing now; but it may only have been scheduled to execute and
-      we're in the middle of executing some other module (a dependency or
-      something totally unrelated). Or the module may be factory-made in which
-      case there is nothing left to execute.
+      3.  Done:  The module has been linked and added to the loader's module
+      registry.  Its body may or may not have been executed yet (see
+      @ensureModuleExecuted).
 
-          .status === "ready"
-          .module is a Module
-
+      (TODO: this is speculation) LoadTasks that enter this state are removed
+      from the loader.@loading table and from all LinkSets; they become
+      garbage.
     */
     class LoadTask {
         /*
-          A module entry begins in the "loading" state.
+          A module entry begins in the "fetching" state.
         */
         constructor() {
-            this.status = "loading";
+            this.status = "fetching";
             this.linkSetsWaitingForCompile = [];
             this.module = null;
             this.factory = null;
@@ -1779,12 +1770,12 @@ module "js/loaders" {
 
         /*
           This is called when a module passes the last loader hook (the .link hook).
-          It transitions from "loading" to "waiting".
+          It transitions from "fetching" to "waiting".
 
           TODO: turn this into onModuleCompiled
         */
         onModuleCompiled(mod) {
-            $Assert(this.status === "loading");
+            $Assert(this.status === "fetching");
             $Assert(this.factory === null);
             $Assert(this.dependencies === null);
 
@@ -1883,7 +1874,7 @@ module "js/loaders" {
               later.  This whole step is just using the registry as a cache.)
 
            4. Remove all other in-flight modules found in step 2 from
-              loader.@loading.  If any are in "loading" state, neuter the fetch
+              loader.@loading.  If any are in "fetching" state, neuter the fetch
               hook's fulfill/reject/skip callbacks so that they become no-ops.
               Cancel those fetches if possible.
 
@@ -1943,7 +1934,7 @@ module "js/loaders" {
         */
 
         fail(exc) {
-            $Assert(this.status === "loading");
+            $Assert(this.status === "fetching");
             throw TODO;
             this.loader.@failLinkSets(this.linkSetsWaitingForCompile);
         }
