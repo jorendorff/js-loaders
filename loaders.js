@@ -123,7 +123,7 @@ module "js/loaders" {
               Loads imported modules.
 
       Each Loader has a module registry, which is a cache of already loaded and
-      linked modules.  The Loader tries to avoid downloading modules multiple
+      linked modules.  The Loader tries to avoid fetching modules multiple
       times, even when multiple load() calls need the same module before it is
       ready to be added to the registry.
 
@@ -856,12 +856,23 @@ module "js/loaders" {
           The common implementation of the import() method and the processing
           of import declarations in ES code.
 
-          linkSet is a LinkSet object. The result of loading the specified module
-          is reported to the LinkSet via one of these callback methods:
-            linkSet.onLinkedModule(name, module)
-            linkSet.addModuleAndDependencies(normalized, loadTask)
-            linkSet.fail(exc)
-          These callbacks are called asynchronously, in fresh event loop turns.
+          The outcome of loading the specified module is reported to
+          linkSet. There are several possible outcomes:
+
+          1. The normalize hook throws or returns something invalid:
+              linkSet.fail(exc)
+
+          2. The module is already in the registry:
+              linkSet.onReady(fullName, module)
+
+          3. We decide to load the module, or it's already loading and we need
+             to wait for it:
+              linkSet.addLoad(loadTask)
+             followed eventually by either linkSet.fail(exc) or
+             linkSet.onLoad(loadTask).
+
+          All these callback methods are called asynchronously, in fresh event
+          loop turns.
 
           referer provides information about the context of the import() call
           or import-declaration.  This information is passed to all the loader
@@ -977,7 +988,7 @@ module "js/loaders" {
             let m = $MapGet(this.@modules, normalized);
             if (m !== undefined) {
                 // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
-                $AddForNextTurn(() => linkSet.onLinkedModule(m));
+                $AddForNextTurn(() => linkSet.onReady(normalized, m));
                 return;
             }
 
@@ -1001,7 +1012,7 @@ module "js/loaders" {
 
                 // This module is already loading.  Hook the LinkSet to the
                 // existing in-flight LoadTask.
-                linkSet.addModuleAndDependencies(normalized, loadTask);
+                linkSet.addLoad(loadTask);
                 return;
             }
 
@@ -1013,6 +1024,7 @@ module "js/loaders" {
             */
             loadTask = new LoadTask;
             $ArrayPush(loadTask.linkSetsWaitingForCompile, linkSet);
+            linkSet.addLoad(loadTask);
             $MapSet(this.@loading, normalized, loadTask);
 
             let url, type;
@@ -1221,7 +1233,7 @@ module "js/loaders" {
             }
 
             if (plan == "default")
-                loadTask.onModuleCompiled(normalized, mod);
+                loadTask.onModuleCompiled(mod, null, null);
             else if (plan == "done")
                 loadTask.onEndRun(normalized, mod);
             else  // plan == "factory"
@@ -1639,6 +1651,8 @@ module "js/loaders" {
             this.callback = callback;
             this.errback = errback;
 
+            this.loadTasks = $SetNew();
+
             /*
               Another LinkSet that has the same job as this one; or null.
               The only way this can become non-null is if multiple import()
@@ -1653,9 +1667,18 @@ module "js/loaders" {
             // TODO: finish overall load state
         }
 
-        addModuleAndDependencies(name, modst) {
+        onReady(fullName, module) {
             // TODO
         }
+
+        addLoad(loadTask) {
+            $SetAdd(this.loadTasks, loadTask);
+        }
+
+        onLoad(loadTask) {
+            // TODO
+        }
+            
 
         addScriptAndDependencies(script) {
             // TODO
@@ -1760,22 +1783,15 @@ module "js/loaders" {
 
           TODO: turn this into onModuleCompiled
         */
-        onLoad(mod, fac, dependencyNames) {
+        onModuleCompiled(mod) {
             $Assert(this.status === "loading");
-            $Assert(mod !== null || fac !== null)
-            $Assert(mod === null || fac === null);
+            $Assert(this.factory === null);
+            $Assert(this.dependencies === null);
 
             this.status = "waiting";
-            this.linkSetsWaitingForCompile = undefined;
+            this.linkSetsWaitingForCompile = undefined;???
             this.module = mod;
-            this.factory = fac;
-            this.dependencies = dependencyNames;
         }
-
-        onModuleCompiled() {
-            throw TODO;
-        }
-
 
         /*
           Cancel this load because the fetch hook either merged it with another
