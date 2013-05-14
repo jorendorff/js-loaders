@@ -1585,168 +1585,6 @@ module "js/loaders" {
 
 
     /*
-      A LinkSet represents a call to loader.evalAsync(), .load(), or .import().
-    */
-    class LinkSet {
-        constructor(loader, callback, errback) {
-            // TODO: make LinkSets not inherit from Object.prototype, for isolation;
-            // or else use symbols for all these. :-P
-            this.loader = loader;
-            this.callback = callback;
-            this.errback = errback;
-
-            this.loads = $SetNew();
-
-            // Invariant: this.loadingCount is the number of LoadTasks in
-            // this.loads whose .status is 'loading'.
-            this.loadingCount = 0;
-
-            // TODO: finish overall load state
-        }
-
-        addLoad(loadTask) {
-            if (loadTask.status === 'failed')
-                return this.fail(loadTask.exception);
-
-            if (!$SetHas(this.loads, loadTask)) {
-                $SetAdd(this.loads, loadTask);
-                if (loadTask.status === 'loading')
-                    this.loadingCount++;
-                $ArrayPush(loadTask.linkSets, this);
-            }
-        }
-
-        /*
-          LoadTask.prototype.finish calls this after one LoadTask actually
-          finishes, and after kicking off loads for all its dependencies.
-         */
-        onLoad(loadTask) {
-            $Assert($SetHas(this.loads, loadTask));
-            $Assert(loadTask.status === 'waiting');
-            if (--this.loadingCount === 0) {
-                // Link, then schedule the callback (which actually runs the
-                // code).
-                try {
-                    this.link();
-                } catch (exc) {
-                    this.fail(exc);
-                    return;
-                }
-
-                AsyncCall(this.callback);
-            }
-        }
-
-        link() {
-            // TODO - need a starting {script, dependencyFullNames} pair.
-            let {script, dependencies} = throw TODO;
-
-            let linkedNames = [];
-            let linkedModules = [];
-            let seen = $SetNew();
-
-            // Depth-first walk of the import tree, stopping at already-linked
-            // modules.
-            function walk(task, script, deps) {
-                $SetAdd(seen, script);
-
-                // First, add all modules declared in this script.
-                var declared = $ScriptDeclaredModuleNames(script);
-                for (let i = 0; i < declared.length; i++) {
-                    let fullName = declared[i];
-                    let mod = $ScriptGetDeclaredModule(script, fullName);
-
-                    if ($MapHas(this.loader.@modules, fullName)) {
-                        throw $SyntaxError(
-                            "module \"" + fullName + "\" can't be redeclared");
-                    }
-                    if (task === undefined) {
-                        if ($MapHas(this.loader.@loading, fullName)) {
-                            throw $SyntaxError(
-                                "module \"" + fullName + "\" can't be redeclared");
-                        }
-                    } else {
-                        let current = $MapGet(this.loader.@loading, fullName);
-
-                        // These two cases can happen if a script unexpectedly
-                        // declares modules not named by resolve().other.
-                        if (current === undefined) {
-                            // Make sure no other script in the same LinkSet
-                            // declares it too.
-                            $MapSet(this.loader.@loading, fullName, this);
-                        } else if (current !== this) {
-                            throw $SyntaxError(
-                                "module \"" + fullName + "\" can't be redeclared");
-                        }
-                    }
-
-                    $ArrayPush(linkedNames, fullName);
-                    $ArrayPush(linkedModules, mod);
-                }
-
-                // Second, find modules imported by this script.
-                //
-                // The loader process is a simple parallel graph walk, so all
-                // imported modules should be loaded, but calls to Loader.set()
-                // or Loader.delete() can cause things to be missing.
-                let mods = [];
-                for (let i = 0; i < deps.length; i++) {
-                    let fullName = deps[i];
-                    let mod = $MapGet(this.loader.@modules, fullName);
-                    if (mod !== undefined) {
-                        let load = $MapGet(this.loader.@loading, fullName);
-                        if (load === undefined || load.status !== 'waiting') {
-                            throw $SyntaxError(
-                                "module \"" + fullName + "\" was deleted from the loader");
-                        }
-                        mod = $ScriptGetDeclaredModule(load.script, fullName);
-                        if (mod === undefined) {
-                            throw $SyntaxError(
-                                "module \"" + fullName + "\" was deleted from the loader");
-                        }
-                        if (!$SetHas(seen, load.script))
-                            walk(load, load.script, load.dependencies);
-                    }
-                    $ArrayPush(mods, mod);
-                }
-
-                // Finally, link the script.  This throws if the script tries
-                // to import bindings from a module that the module does not
-                // export.
-                $LinkScript(script, mods);
-            }
-
-            // Link all the scripts and modules together.  This can throw
-            // partway through.  P4 ISSUE: What happens to the already-linked
-            // modules then? They may or may not be linked to other modules
-            // that can't be recovered.
-            walk(undefined, script, dependencies);
-
-            // Move the fully linked modules from the @loading table to the
-            // @modules table.
-            for (let i = 0; i < linkedNames.length; i++) {
-                $MapDelete(this.loader.@loading, linkedNames[i]);
-                $MapSet(this.loader.@modules, linkedNames[i], linkedModules[i]);
-            }
-        }
-
-        addScriptAndDependencies(script) {
-            // TODO - this will look something like LoadTask.finish().
-        }
-
-        /*
-          Fail this LinkSet.  Detach it from all loads and schedule the error
-          callback.
-        */
-        fail(exc) {
-            let loads = $SetElements(this.loads);
-            for (let i = 0; i < loads.length; i++)
-                loads[i].onLinkSetFail(this.loader, this);
-            AsyncCall(this.errback, exc);
-        }
-    }
-
-    /*
       The goal of a LoadTask is to resolve, fetch, translate, link, and compile
       a single module (or a collection of modules that all live in the same
       script).
@@ -2044,6 +1882,168 @@ module "js/loaders" {
                 if (currentLoad === this)
                     $MapDelete(loader.@loading, this.fullName);
             }
+        }
+    }
+
+    /*
+      A LinkSet represents a call to loader.evalAsync(), .load(), or .import().
+    */
+    class LinkSet {
+        constructor(loader, callback, errback) {
+            // TODO: make LinkSets not inherit from Object.prototype, for isolation;
+            // or else use symbols for all these. :-P
+            this.loader = loader;
+            this.callback = callback;
+            this.errback = errback;
+
+            this.loads = $SetNew();
+
+            // Invariant: this.loadingCount is the number of LoadTasks in
+            // this.loads whose .status is 'loading'.
+            this.loadingCount = 0;
+
+            // TODO: finish overall load state
+        }
+
+        addLoad(loadTask) {
+            if (loadTask.status === 'failed')
+                return this.fail(loadTask.exception);
+
+            if (!$SetHas(this.loads, loadTask)) {
+                $SetAdd(this.loads, loadTask);
+                if (loadTask.status === 'loading')
+                    this.loadingCount++;
+                $ArrayPush(loadTask.linkSets, this);
+            }
+        }
+
+        /*
+          LoadTask.prototype.finish calls this after one LoadTask actually
+          finishes, and after kicking off loads for all its dependencies.
+         */
+        onLoad(loadTask) {
+            $Assert($SetHas(this.loads, loadTask));
+            $Assert(loadTask.status === 'waiting');
+            if (--this.loadingCount === 0) {
+                // Link, then schedule the callback (which actually runs the
+                // code).
+                try {
+                    this.link();
+                } catch (exc) {
+                    this.fail(exc);
+                    return;
+                }
+
+                AsyncCall(this.callback);
+            }
+        }
+
+        link() {
+            // TODO - need a starting {script, dependencyFullNames} pair.
+            let {script, dependencies} = throw TODO;
+
+            let linkedNames = [];
+            let linkedModules = [];
+            let seen = $SetNew();
+
+            // Depth-first walk of the import tree, stopping at already-linked
+            // modules.
+            function walk(task, script, deps) {
+                $SetAdd(seen, script);
+
+                // First, add all modules declared in this script.
+                var declared = $ScriptDeclaredModuleNames(script);
+                for (let i = 0; i < declared.length; i++) {
+                    let fullName = declared[i];
+                    let mod = $ScriptGetDeclaredModule(script, fullName);
+
+                    if ($MapHas(this.loader.@modules, fullName)) {
+                        throw $SyntaxError(
+                            "module \"" + fullName + "\" can't be redeclared");
+                    }
+                    if (task === undefined) {
+                        if ($MapHas(this.loader.@loading, fullName)) {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" can't be redeclared");
+                        }
+                    } else {
+                        let current = $MapGet(this.loader.@loading, fullName);
+
+                        // These two cases can happen if a script unexpectedly
+                        // declares modules not named by resolve().other.
+                        if (current === undefined) {
+                            // Make sure no other script in the same LinkSet
+                            // declares it too.
+                            $MapSet(this.loader.@loading, fullName, this);
+                        } else if (current !== this) {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" can't be redeclared");
+                        }
+                    }
+
+                    $ArrayPush(linkedNames, fullName);
+                    $ArrayPush(linkedModules, mod);
+                }
+
+                // Second, find modules imported by this script.
+                //
+                // The loader process is a simple parallel graph walk, so all
+                // imported modules should be loaded, but calls to Loader.set()
+                // or Loader.delete() can cause things to be missing.
+                let mods = [];
+                for (let i = 0; i < deps.length; i++) {
+                    let fullName = deps[i];
+                    let mod = $MapGet(this.loader.@modules, fullName);
+                    if (mod !== undefined) {
+                        let load = $MapGet(this.loader.@loading, fullName);
+                        if (load === undefined || load.status !== 'waiting') {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" was deleted from the loader");
+                        }
+                        mod = $ScriptGetDeclaredModule(load.script, fullName);
+                        if (mod === undefined) {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" was deleted from the loader");
+                        }
+                        if (!$SetHas(seen, load.script))
+                            walk(load, load.script, load.dependencies);
+                    }
+                    $ArrayPush(mods, mod);
+                }
+
+                // Finally, link the script.  This throws if the script tries
+                // to import bindings from a module that the module does not
+                // export.
+                $LinkScript(script, mods);
+            }
+
+            // Link all the scripts and modules together.  This can throw
+            // partway through.  P4 ISSUE: What happens to the already-linked
+            // modules then? They may or may not be linked to other modules
+            // that can't be recovered.
+            walk(undefined, script, dependencies);
+
+            // Move the fully linked modules from the @loading table to the
+            // @modules table.
+            for (let i = 0; i < linkedNames.length; i++) {
+                $MapDelete(this.loader.@loading, linkedNames[i]);
+                $MapSet(this.loader.@modules, linkedNames[i], linkedModules[i]);
+            }
+        }
+
+        addScriptAndDependencies(script) {
+            // TODO - this will look something like LoadTask.finish().
+        }
+
+        /*
+          Fail this LinkSet.  Detach it from all loads and schedule the error
+          callback.
+        */
+        fail(exc) {
+            let loads = $SetElements(this.loads);
+            for (let i = 0; i < loads.length; i++)
+                loads[i].onLinkSetFail(this.loader, this);
+            AsyncCall(this.errback, exc);
         }
     }
 
