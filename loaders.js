@@ -1618,7 +1618,7 @@ module "js/loaders" {
             this.loads = $SetNew();
 
             // Invariant: this.loadingCount is the number of LoadTasks in
-            // this.loads whose .status is 'fetching'.
+            // this.loads whose .status is 'loading'.
             this.loadingCount = 0;
 
             /*
@@ -1641,7 +1641,7 @@ module "js/loaders" {
 
             if (!$SetHas(this.loads, loadTask)) {
                 $SetAdd(this.loads, loadTask);
-                if (loadTask.status === 'fetching')
+                if (loadTask.status === 'loading')
                     this.loadingCount++;
                 $ArrayPush(loadTask.linkSets, this);
             }
@@ -1786,9 +1786,9 @@ module "js/loaders" {
 
       It is in one of four states:
 
-      1.  Fetching:  Source is not available yet.
+      1.  Loading:  Source is not available yet.
 
-          .status === "fetching"
+          .status === "loading"
           .linkSets is a Set of LinkSets
 
       The task leaves this state when the source is successfully compiled, or
@@ -1838,11 +1838,11 @@ module "js/loaders" {
     */
     class LoadTask {
         /*
-          A module entry begins in the "fetching" state.
+          A module entry begins in the "loading" state.
         */
         constructor(fullName) {
             this.fullName = fullName;
-            this.status = "fetching";
+            this.status = "loading";
             this.linkSets = $SetNew();
             this.module = null;
             this.factory = null;
@@ -1857,12 +1857,12 @@ module "js/loaders" {
 
         /*
           This is called when a module passes the last loader hook (the .link hook).
-          It transitions from "fetching" to "waiting".
+          It transitions from "loading" to "waiting".
 
           TODO: turn this into onModuleCompiled
         */
         onModuleCompiled(mod) {
-            $Assert(this.status === "fetching");
+            $Assert(this.status === "loading");
             $Assert(this.factory === null);
             $Assert(this.dependencies === null);
 
@@ -1885,7 +1885,7 @@ module "js/loaders" {
           it may be the result of compiling either a module or a script.
         */
         finish(loader, actualAddress, script) {
-            $Assert(this.status === 'fetching');
+            $Assert(this.status === 'loading');
 
             // TODO - For each module declared in script,
             // if the module is already in the registry
@@ -2006,7 +2006,7 @@ module "js/loaders" {
               later.  This whole step is just using the registry as a cache.)
 
            4. Remove all other in-flight modules found in step 2 from
-              loader.@loading.  If any are in "fetching" state, neuter the fetch
+              loader.@loading.  If any are in "loading" state, neuter the fetch
               hook's fulfill/reject/skip callbacks so that they become no-ops.
               Cancel those fetches if possible.
 
@@ -2075,7 +2075,7 @@ module "js/loaders" {
           Fail this load task. All LinkSets that require it also fail.
         */
         fail(exc) {
-            $Assert(this.status === "fetching");
+            $Assert(this.status === "loading");
             this.status = 'failed';
             this.exception = exc;
             let sets = $SetElements(this.linkSets);
