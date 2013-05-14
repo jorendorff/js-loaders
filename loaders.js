@@ -838,26 +838,6 @@ module "js/loaders" {
             if (result.status === 'linked')
                 return AsyncCall(success, result.module);
 
-            /*
-              Avoid duplicating work with any other import() call asking for
-              the same module directly.  The sole reason for this code is to
-              avoid having multiple import() calls for the same module all do
-              redundant incremental graph-walking and normalize-hook-calling as
-              dependencies load.  (Two such link sets always have the same
-              dependency graph.)
-            */
-            let leader = loadTask.directImportLinkSet;
-            if (leader === null) {
-                loadTask.directImportLinkSet = linkSet;
-            } else {
-                linkSet.isClone = true;
-
-                // Prepend linkSet to the linked list of clones.
-                linkSet.clone = leader.clone;
-                leader.clone = linkSet;
-                return;
-            }
-
             // The module is loading.
             function success() {
                 $Assert(typeof fullName === 'string');
@@ -1621,17 +1601,6 @@ module "js/loaders" {
             // this.loads whose .status is 'loading'.
             this.loadingCount = 0;
 
-            /*
-              Another LinkSet that has the same job as this one; or null.
-              The only way this can become non-null is if multiple import()
-              calls for the same module are merged.  Many can be merged; it's
-              a linked list.
-            */
-            this.clone = null;
-
-            /* True if some other LinkSet's .clone property points to this. */
-            this.isClone = false;
-
             // TODO: finish overall load state
         }
 
@@ -1847,12 +1816,6 @@ module "js/loaders" {
             this.module = null;
             this.factory = null;
             this.dependencies = null;
-
-            // The LinkSet, if any, whose sole purpose is to load this
-            // module.  (As opposed to other LinkSets that are trying to
-            // load modules or scripts which directly or indirectly import
-            // this one.)
-            this.directImportLinkSet = null;
         }
 
         /*
