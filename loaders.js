@@ -1695,7 +1695,7 @@ module "js/loaders" {
                     let mod = $MapGet(this.loader.@modules, fullName);
                     if (mod !== undefined) {
                         let load = $MapGet(this.loader.@loading, fullName);
-                        if (load === undefined || load.status !== 'compiled') {
+                        if (load === undefined || load.status !== 'waiting') {
                             throw $SyntaxError(
                                 "module \"" + fullName + "\" was deleted from the loader");
                         }
@@ -1819,23 +1819,6 @@ module "js/loaders" {
         }
 
         /*
-          This is called when a module passes the last loader hook (the .link hook).
-          It transitions from "loading" to "waiting".
-
-          TODO: turn this into onModuleCompiled
-        */
-        onModuleCompiled(mod) {
-            $Assert(this.status === "loading");
-            $Assert(this.factory === null);
-            $Assert(this.dependencies === null);
-
-            this.status = "waiting";
-            this.linkSets = undefined;???
-            this.module = mod;
-        }
-
-
-        /*
           The loader calls this after the last loader hook (the .link hook),
           and after the script or module's syntax has been checked.  This
           LoadTask has finished loading!  Examine the script or module for
@@ -1843,6 +1826,8 @@ module "js/loaders" {
           loading or loaded already.  Then call .onLoad on all listening
           LinkSets (see that method for the conclusion of the load/link/run
           process).
+
+          This transitions the LoadTask from 'loading' status to 'waiting'.
 
           In this implementation, script is a compiled script object;
           it may be the result of compiling either a module or a script.
