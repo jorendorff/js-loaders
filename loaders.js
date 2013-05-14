@@ -1676,14 +1676,50 @@ module "js/loaders" {
             let linkedModules = [];
             let seen = $SetNew();
 
+            // Depth-first walk of the import tree, stopping at already-linked
+            // modules.
             function walk(task, script, deps) {
                 $SetAdd(seen, script);
 
-                // TODO - for each module *declared* in script (not imported),
-                // check (again) that the module is not already in @modules
-                // and that the entry in @loading is task.  Then push
-                // the module and its name to linkedModules/linkedNames.
+                // First, add all modules declared in this script.
+                var declared = $ScriptDeclaredModuleNames(script);
+                for (let i = 0; i < declared.length; i++) {
+                    let fullName = declared[i];
+                    let mod = $ScriptGetDeclaredModule(script, fullName);
 
+                    if ($MapHas(this.loader.@modules, fullName)) {
+                        throw $SyntaxError(
+                            "module \"" + fullName + "\" can't be redeclared");
+                    }
+                    if (task === undefined) {
+                        if ($MapHas(this.loader.@loading, fullName)) {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" can't be redeclared");
+                        }
+                    } else {
+                        let current = $MapGet(this.loader.@loading, fullName);
+
+                        // These two cases can happen if a script unexpectedly
+                        // declares modules not named by resolve().other.
+                        if (current === undefined) {
+                            // Make sure no other script in the same LinkSet
+                            // declares it too.
+                            $MapSet(this.loader.@loading, fullName, this);
+                        } else if (current !== this) {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" can't be redeclared");
+                        }
+                    }
+
+                    $ArrayPush(linkedNames, fullName);
+                    $ArrayPush(linkedModules, mod);
+                }
+
+                // Second, find modules imported by this script.
+                //
+                // The loader process is a simple parallel graph walk, so all
+                // imported modules should be loaded, but calls to Loader.set()
+                // or Loader.delete() can cause things to be missing.
                 let mods = [];
                 for (let i = 0; i < deps.length; i++) {
                     let fullName = deps[i];
@@ -1705,13 +1741,24 @@ module "js/loaders" {
                     $ArrayPush(mods, mod);
                 }
 
-                $LinkScript(script, mods);  // can throw
+                // Finally, link the script.  This throws if the script tries
+                // to import bindings from a module that the module does not
+                // export.
+                $LinkScript(script, mods);
             }
 
+            // Link all the scripts and modules together.  This can throw
+            // partway through.  P4 ISSUE: What happens to the already-linked
+            // modules then? They may or may not be linked to other modules
+            // that can't be recovered.
             walk(undefined, script, dependencies);
 
-            for (let i = 0; i < linkedNames.length; i++)
-                $MapSet(this.loader.@loading, linkedNames[i], linkedModules[i]);
+            // Move the fully linked modules from the @loading table to the
+            // @modules table.
+            for (let i = 0; i < linkedNames.length; i++) {
+                $MapDelete(this.loader.@loading, linkedNames[i]);
+                $MapSet(this.loader.@modules, linkedNames[i], linkedModules[i]);
+            }
         }
 
         addScriptAndDependencies(script) {
@@ -1903,31 +1950,6 @@ module "js/loaders" {
         */
         onEndRun(name, mod) {
             throw TODO;
-        }
-
-        /*
-          This is called when a non-factory-made ES6 module has been linked to its
-          dependencies.  The module transitions from "waiting" to "ready" and
-          becomes visible via loader.get().
-
-          The module has not necessarily executed yet, so all its fields may be
-          uninitialized. In fact, while the module itself is linked, it may be
-          linked (directly or indirectly) to one or more modules that are not yet
-          linked!  This means that even though onLink() makes the Module visible,
-          it is still unsafe to expose the Module to scripts.  Callers must
-          therefore take care not to allow any user code to execute until all
-          transitive dependencies have been linked.
-
-          XXX TODO: This is stupid; I can do an extra loop over the array of
-          pending modules to avoid ever being in this ridiculous unsafe state.
-        */
-        onLink() {
-            $Assert(this.status === "waiting");
-            $Assert(this.module !== null);
-            $Assert(this.factory === null);
-            this.status = "ready";
-            this.factory = undefined;
-            this.dependencies = null;
         }
 
         /*
