@@ -91,7 +91,6 @@ module "js/loaders" {
 
         // Modules
         $CompileModule,
-        $LinkModule,
         $ModuleGetLinkedModules,
         $ModuleHasExecuted,
         $ModuleSetExecuted,
@@ -102,6 +101,7 @@ module "js/loaders" {
         $LinkScript,
         $EvaluateScript,
         $ScriptDeclaredModuleNames,  // array of strings
+        $ScriptGetDeclaredModule,  // (script, name) -> Module
         $ScriptImports,  // array of pairs, see comment in Loader.eval()
 
         // Globals
@@ -1657,10 +1657,61 @@ module "js/loaders" {
             if (--this.loadingCount === 0) {
                 // Link, then schedule the callback (which actually runs the
                 // code).
-                throw TODO;
+                try {
+                    this.link();
+                } catch (exc) {
+                    this.fail(exc);
+                    return;
+                }
 
                 AsyncCall(this.callback);
             }
+        }
+
+        link() {
+            // TODO - need a starting {script, dependencyFullNames} pair.
+            let {script, dependencies} = throw TODO;
+
+            let linkedNames = [];
+            let linkedModules = [];
+            let seen = $SetNew();
+
+            function walk(task, script, deps) {
+                $SetAdd(seen, script);
+
+                // TODO - for each module *declared* in script (not imported),
+                // check (again) that the module is not already in @modules
+                // and that the entry in @loading is task.  Then push
+                // the module and its name to linkedModules/linkedNames.
+
+                let mods = [];
+                for (let i = 0; i < deps.length; i++) {
+                    let fullName = deps[i];
+                    let mod = $MapGet(this.loader.@modules, fullName);
+                    if (mod !== undefined) {
+                        let load = $MapGet(this.loader.@loading, fullName);
+                        if (load === undefined || load.status !== 'compiled') {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" was deleted from the loader");
+                        }
+                        mod = $ScriptGetDeclaredModule(load.script, fullName);
+                        if (mod === undefined) {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" was deleted from the loader");
+                        }
+                        if (!$SetHas(seen, load.script))
+                            walk(load, load.script, load.dependencies);
+                    }
+                    $ArrayPush(mods, mod);
+                }
+
+                $LinkScript(script, mods);  // can throw
+            }
+
+            walk(undefined, script, dependencies);
+
+            for (let i = 0; i < linkedNames.length; i++)
+                $MapSet(this.loader.@loading, linkedNames[i], linkedModules[i]);
         }
 
         addScriptAndDependencies(script) {
@@ -1788,6 +1839,12 @@ module "js/loaders" {
         */
         finish(loader, actualAddress, script) {
             $Assert(this.status === 'fetching');
+
+            // TODO - For each module declared in script,
+            // if the module is already in the registry
+            // or already in .@loading under a different task,
+            // fail.
+
             let pairs = $ScriptImports(script);
             let fullNames = [];
             let sets = this.linkSets;
