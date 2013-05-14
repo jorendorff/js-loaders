@@ -88,6 +88,7 @@ module "js/loaders" {
         $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
         $MapIterator,   // $MapIterator(map) ~= map[@@iterator]()
         $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
+        $SyntaxError,   // $SyntaxError(msg) ~= new SyntaxError(msg)
 
         // Modules
         $CompileModule,
@@ -486,7 +487,7 @@ module "js/loaders" {
                       not really syntax errors per se.  Reusing it seems
                       better than inventing a new Error subclass.
                     */
-                    throw new SyntaxError("module not loaded: " + name);
+                    throw $SyntaxError("module not loaded: " + name);
                 }
                 $ArrayPush(modules, m);
             }
@@ -621,6 +622,11 @@ module "js/loaders" {
         */
         @checkModuleDeclarations(methodName, script) {
             let names = $ScriptDeclaredModuleNames(script);
+
+            // TODO - bug here:  To serve the purpose, this must add entries to
+            // this.@loading.  Also it can be unified with very similar code in
+            // LoadTask.finish() and LinkSet.link().
+
             for (let i = 0; i < names.length; i++) {
                 let name = names[i];
                 if ($MapHas(this.@modules, name)
@@ -1673,10 +1679,22 @@ module "js/loaders" {
         finish(loader, actualAddress, script) {
             $Assert(this.status === 'loading');
 
-            // TODO - For each module declared in script,
-            // if the module is already in the registry
-            // or already in .@loading under a different task,
-            // fail.
+            // Check for module redeclaration.
+            let declared = $ScriptDeclaredModuleNames(script);
+            for (let i = 0; i < declared.length; i++) {
+                let fullName = declared[i];
+                if ($MapHas(this.loader.@modules, fullName)) {
+                    throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                                       "which is already loaded");
+                }
+                let currentTask = $MapGet(this.loader.@loading, fullName);
+                if (currentTask === undefined) {
+                    $MapSet(this.loader.@loading, fullName, this);
+                } else if (currentTask !== this) {
+                    throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                                       "which is already loading");
+                }
+            }
 
             let pairs = $ScriptImports(script);
             let fullNames = [];
@@ -1951,7 +1969,7 @@ module "js/loaders" {
             function walk(task, script, deps) {
                 $SetAdd(seen, script);
 
-                // First, add all modules declared in this script.
+                // First, note all modules declared in this script.
                 var declared = $ScriptDeclaredModuleNames(script);
                 for (let i = 0; i < declared.length; i++) {
                     let fullName = declared[i];
@@ -1959,12 +1977,14 @@ module "js/loaders" {
 
                     if ($MapHas(this.loader.@modules, fullName)) {
                         throw $SyntaxError(
-                            "module \"" + fullName + "\" can't be redeclared");
+                            "script declares module \"" + fullName + "\", " +
+                            "which is already loaded");
                     }
                     if (task === undefined) {
                         if ($MapHas(this.loader.@loading, fullName)) {
                             throw $SyntaxError(
-                                "module \"" + fullName + "\" can't be redeclared");
+                                "script declares module \"" + fullName + "\", " +
+                                "which is already loading");
                         }
                     } else {
                         let current = $MapGet(this.loader.@loading, fullName);
@@ -1977,7 +1997,8 @@ module "js/loaders" {
                             $MapSet(this.loader.@loading, fullName, this);
                         } else if (current !== this) {
                             throw $SyntaxError(
-                                "module \"" + fullName + "\" can't be redeclared");
+                                "script declares module \"" + fullName + "\", " +
+                                "which is already loading");
                         }
                     }
 
