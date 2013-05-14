@@ -102,7 +102,7 @@ module "js/loaders" {
         $LinkScript,
         $EvaluateScript,
         $ScriptDeclaredModuleNames,  // array of strings
-        $ScriptImportedModuleNames,  // See comment in Loader.eval()
+        $ScriptImports,  // array of pairs, see comment in Loader.eval()
 
         // Globals
         $DefineBuiltins
@@ -454,8 +454,7 @@ module "js/loaders" {
             this.@checkModuleDeclarations("eval", script);
 
             /*
-              $ScriptImportedModuleNames returns an array of [client, request]
-              pairs.
+              $ScriptImports returns an array of [client, request] pairs.
 
               client tells where the import appears. It is the full name of the
               enclosing module, or null for toplevel imports.
@@ -463,7 +462,7 @@ module "js/loaders" {
               request is the name being imported.  It is not necessarily a full
               name, so we call the normalize hook below.
             */
-            let pairs = $ScriptImportedModuleNames(script);
+            let pairs = $ScriptImports(script);
 
             /*
               Linking logically precedes execution, so the code below has two
@@ -829,18 +828,46 @@ module "js/loaders" {
             }
             let referer = {name, url};
 
-            let fullName;
-            let setFullName = normalized => { fullName = normalized; };
+            let result;
+            try {
+                result = this.@import(referer, moduleName);
+            } catch (exc) {
+                return AsyncCall(errback, exc);
+            }
 
+            if (result.status === 'linked')
+                return AsyncCall(success, result.module);
+
+            /*
+              Avoid duplicating work with any other import() call asking for
+              the same module directly.  The sole reason for this code is to
+              avoid having multiple import() calls for the same module all do
+              redundant incremental graph-walking and normalize-hook-calling as
+              dependencies load.  (Two such link sets always have the same
+              dependency graph.)
+            */
+            let leader = loadTask.directImportLinkSet;
+            if (leader === null) {
+                loadTask.directImportLinkSet = linkSet;
+            } else {
+                linkSet.isClone = true;
+
+                // Prepend linkSet to the linked list of clones.
+                linkSet.clone = leader.clone;
+                leader.clone = linkSet;
+                return;
+            }
+
+            // The module is loading.
             function success() {
                 $Assert(typeof fullName === 'string');
+                let fullName = loadTask.fullName;
                 let m = $MapGet(self.@modules, fullName);
-                if (m === undefined) {
-                    let exc = $TypeError("import(): module \"" + fullName +
-                                         "\" was deleted from the loader");
-                    return errback(exc);
-                }
                 try {
+                    if (m === undefined) {
+                        throw $TypeError("import(): module \"" + fullName +
+                                         "\" was deleted from the loader");
+                    }
                     Loader.@ensureModuleExecuted(m);
                 } catch (exc) {
                     return errback(exc);
@@ -849,30 +876,27 @@ module "js/loaders" {
             }
 
             let linkSet = new LinkSet(this, success, errback);
-            this.@importFor(linkSet, referer, moduleName, setFullName, true);
+            linkSet.addLoad(loadTask);
         }
 
         /*
           The common implementation of the import() method and the processing
           of import declarations in ES code.
 
-          The outcome of loading the specified module is reported to
-          linkSet. There are several possible outcomes:
+          There are several possible outcomes:
 
-          1. The normalize hook throws or returns something invalid:
-              linkSet.fail(exc)
+          1.  Getting this.normalize throws, or the normalize hook isn't
+              callable, or it throws an exception, or it returns an invalid
+              value.  In these cases, @import throws.
 
-          2. The module is already in the registry:
-              linkSet.onReady(fullName, module)
+          2.  The normalize hook returns the name of a module that is already
+              in the registry.  @import returns an object with these properties:
+              {status: 'linked',
+               module: (the Module object),
+               fullName: (the normalized name)}.
 
-          3. We decide to load the module, or it's already loading and we need
-             to wait for it:
-              linkSet.addLoad(loadTask)
-             followed eventually by either linkSet.fail(exc) or
-             linkSet.onLoad(loadTask).
-
-          All these callback methods are called asynchronously, in fresh event
-          loop turns.
+          3.  In all other cases, either a new LoadTask is started or we can
+              join one already in flight.  @import returns the LoadTask.
 
           referer provides information about the context of the import() call
           or import-declaration.  This information is passed to all the loader
@@ -882,31 +906,19 @@ module "js/loaders" {
           appears in the import-declaration or as the argument to
           loader.import().
 
-          setFullName is a callback used to notify the caller of the full name
-          of the module being imported.  This is called with one argument, the
-          module's full name, after a successful call to the normalize hook.
-          setFullName must not throw.  (Unlike everything else, setFullName is
-          called synchronously.)
-
-          If directImport is true, avoid duplicating work with any other
-          LinkSet also loading the same module with directImport.  This flag is
-          true only when this method is called directly from import().  The
-          sole reason for this flag is to avoid having multiple import() calls
-          for the same module all do redundant incremental graph-walking and
-          normalize-hook-calling as dependencies load.  (Two such link sets
-          always have the same dependency graph.)
-
           TODO:  Suggest alternative name for referer.  It is really nothing to
           do with the nasty Referer HTTP header.  Perhaps "importContext",
           "importer", "client".
         */
-        @importFor(linkSet, referer, name, setFullName, directImport) {
+        @import(referer, name) {
             /*
               Call the normalize hook to get a normalized module name and
               metadata.  See the comment on normalize().
+
+              Errors that happen during this step propagate to the caller.
             */
             let normalized, metadata;
-            try {
+            {
                 /*
                   P4 ISSUE: Here referer is passed to the normalize hook and
                   later it is passed to the resolve hook, and so on.  Should we
@@ -925,11 +937,12 @@ module "js/loaders" {
                   .normalized property whose value is a string.  Otherwise a
                   TypeError is thrown.  per samth, 2013 April 22.
                 */
-                metadata = undefined;
                 if (result === undefined) {
                     normalized = request;
+                    metadata = {};
                 } else if (typeof result === "string") {
                     normalized = result;
+                    metadata = {};
                 } else if (!IsObject(result)) {
                     /*
                       The result is null, a boolean, a number, or (if symbols
@@ -974,57 +987,28 @@ module "js/loaders" {
 
                     metadata = result.metadata;  // can throw
                 }
-
-                if (metadata === undefined)
-                    metadata = {};
-            } catch (exc) {
-                $AddForNextTurn(() => linkSet.fail(exc));
-                return;
             }
 
-            setFullName(normalized);
+            // From this point @import cannot throw.
 
             // If the module has already been loaded and linked, return that.
-            let m = $MapGet(this.@modules, normalized);
-            if (m !== undefined) {
+            let module = $MapGet(this.@modules, normalized);
+            if (module !== undefined) {
                 // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
-                $AddForNextTurn(() => linkSet.onReady(normalized, m));
-                return;
+                return {status: 'linked', module, fullName};
             }
 
             // If the module is loading, attach to the existing in-flight load.
             let loadTask = $MapGet(this.@loading, normalized);
-            if (loadTask !== undefined) {
-                // Merge module loads to avoid redundant work.
-                if (directImport) {
-                    let leader = loadTask.directImportLinkSet;
-                    if (loadTask.directImportLinkSet === null) {
-                        loadTask.directImportLinkSet = linkSet;
-                    } else {
-                        linkSet.isClone = true;
-
-                        // Prepend linkSet to the linked list of clones.
-                        linkSet.clone = leader.clone;
-                        leader.clone = linkSet;
-                        return;
-                    }
-                }
-
-                // This module is already loading.  Hook the LinkSet to the
-                // existing in-flight LoadTask.
-                linkSet.addLoad(loadTask);
-                return;
-            }
+            if (loadTask !== undefined)
+                return loadTask;
 
             /*
               Create a LoadTask object for this module load.  Once this object
-              is in this.@loading, other LinkSets may add themselves to its
-              set of waiting link sets, so errors must be reported to
-              loadTask.fail(), to affect all waiting LinkSets, not just linkSet.
+              is in this.@loading, LinkSets may add themselves to its set of
+              waiting link sets. Errors must be reported to loadTask.fail().
             */
-            loadTask = new LoadTask;
-            $ArrayPush(loadTask.linkSetsWaitingForCompile, linkSet);
-            linkSet.addLoad(loadTask);
+            loadTask = new LoadTask(normalized);
             $MapSet(this.@loading, normalized, loadTask);
 
             let url, type;
@@ -1110,26 +1094,27 @@ module "js/loaders" {
                 /*
                   Implementation issue:  This isn't implemented yet, but
                   loadTask.fail() will be responsible for forwarding this error
-                  to both linkSet and all *other* LinkSets that have attached
-                  to loadTask in the meantime.  It is also responsible for
-                  removing loadTask itself from this.@loading.
+                  to all LinkSets that have attached to loadTask in the
+                  meantime.  It is also responsible for removing loadTask
+                  itself from this.@loading.
                 */
                 loadTask.fail(exc);
-                return;
+                return loadTask;
             }
 
             loadTask.type = type;
 
             // Prepare to call the fetch hook.
             let fetchCompleted = false;
+            let thisLoader = this;
 
-            let fulfill = (src, actualAddress) => {
+            function fulfill(src, actualAddress) {
                 if (fetchCompleted)
                     throw $TypeError("fetch fulfill callback: fetch already completed");
                 fetchCompleted = true;
 
-                return this.@onFulfill(loadTask, normalized, metadata, type,
-                                       src, actualAddress);
+                return thisLoader.@onFulfill(loadTask, normalized, metadata, type,
+                                             src, actualAddress);
             }
 
             function reject(exc) {
@@ -1230,33 +1215,15 @@ module "js/loaders" {
                 }
             } catch (exc) {
                 loadTask.fail(exc);
+                return;
             }
 
             if (plan == "default")
-                loadTask.onModuleCompiled(mod, null, null);
+                loadTask.finish(this, actualAddress, mod);
             else if (plan == "done")
                 loadTask.onEndRun(normalized, mod);
             else  // plan == "factory"
                 throw TODO;
-        }
-
-        @failLinkSets(sets, exc) {
-            /*
-              TODO: Find stranded LoadTasks, remove them from this.@loading,
-              and neuter their pending fetch() callbacks, if any (so that the
-              translate hook is never called).
-
-              If this failure is due to a LoadTask failing (e.g. a fetch
-              failing), then this step will definitely remove the LoadTask that
-              failed.
-            */
-
-            // Call LinkSet fail hooks.
-            // P5 ISSUE: In what order?
-            for (let i = 0; i < sets.length; i++) {
-                for (let ls = sets[i]; ls !== null; ls = ls.clone)
-                    AsyncCall(ls.errback, exc);
-            }
         }
 
         /* Module registry ***************************************************/
@@ -1648,7 +1615,11 @@ module "js/loaders" {
             this.callback = callback;
             this.errback = errback;
 
-            this.loadTasks = $SetNew();
+            this.loads = $SetNew();
+
+            // Invariant: this.loadingCount is the number of LoadTasks in
+            // this.loads whose .status is 'fetching'.
+            this.loadingCount = 0;
 
             /*
               Another LinkSet that has the same job as this one; or null.
@@ -1664,60 +1635,72 @@ module "js/loaders" {
             // TODO: finish overall load state
         }
 
-        onReady(fullName, module) {
-            // TODO
-        }
-
         addLoad(loadTask) {
-            $SetAdd(this.loadTasks, loadTask);
+            if (loadTask.status === 'failed')
+                return this.fail(loadTask.exception);
+
+            if (!$SetHas(this.loads, loadTask)) {
+                $SetAdd(this.loads, loadTask);
+                if (loadTask.status === 'fetching')
+                    this.loadingCount++;
+                $ArrayPush(loadTask.linkSets, this);
+            }
         }
 
+        /*
+          LoadTask.prototype.finish calls this after one LoadTask actually
+          finishes, and after kicking off loads for all its dependencies.
+         */
         onLoad(loadTask) {
-            // TODO
+            $Assert($SetHas(this.loads, loadTask));
+            $Assert(loadTask.status === 'waiting');
+            if (--this.loadingCount === 0) {
+                // Link, then schedule the callback (which actually runs the
+                // code).
+                throw TODO;
+
+                AsyncCall(this.callback);
+            }
         }
-            
 
         addScriptAndDependencies(script) {
-            // TODO
-
-            /*
-              When we load a script, we add all its modules and their
-              dependencies to the same link set, per samth, 2013 April 22.
-
-              Example:
-                  module "A" {
-                      import "B" as B;
-                      B.hello();
-                  }
-                  alert("got here");
-
-              Note that toplevel does not import "A", so the body of "A" will
-              not execute, and we will not call B.hello().  Nevertheless, we
-              load "B.js" before executing the script.
-            */
+            // TODO - this will look something like LoadTask.finish().
         }
 
-        onLinkedModule(mod) {
-            // TODO
-        }
-
+        /*
+          Fail this LinkSet.  Detach it from all loads and schedule the error
+          callback.
+        */
         fail(exc) {
-            // TODO
+            let loads = $SetElements(this.loads);
+            for (let i = 0; i < loads.length; i++)
+                loads[i].onLinkSetFail(this.loader, this);
+            AsyncCall(this.errback, exc);
         }
     }
 
     /*
-      A LoadTask object is an entry in a Loader's .@loading map.
+      The goal of a LoadTask is to resolve, fetch, translate, link, and compile
+      a single module (or a collection of modules that all live in the same
+      script).
 
-      It is in one of three states:
+      LoadTask objects are the values in a Loader's .@loading map.
+
+      It is in one of four states:
 
       1.  Fetching:  Source is not available yet.
 
           .status === "fetching"
-          .linkSetsWaitingForCompile is an Array of LinkSets
+          .linkSets is a Set of LinkSets
 
-      The task leaves this state when the source is retrieved, translated, and
-      successfully compiled.
+      The task leaves this state when the source is successfully compiled, or
+      an error causes the load to fail.
+
+      LoadTasks in this state are associated with one or more LinkSets in a
+      many-to-many relation. This implementation stores both directions of the
+      relation: loadTask.linkSets is the Set of all LinkSets that require
+      loadTask and linkSet.loads is the Set of all loadTasks that linkSet
+      requires.
 
       2.  Waiting:  Source is available and has been "translated"; syntax has
       been checked; dependencies have been identified.  But the module hasn't
@@ -1749,14 +1732,20 @@ module "js/loaders" {
       (TODO: this is speculation) LoadTasks that enter this state are removed
       from the loader.@loading table and from all LinkSets; they become
       garbage.
+
+      4.  Failed:  The load failed. The task never leaves this state.
+
+          .status === 'failed'
+          .exception is an exception value
     */
     class LoadTask {
         /*
           A module entry begins in the "fetching" state.
         */
-        constructor() {
+        constructor(fullName) {
+            this.fullName = fullName;
             this.status = "fetching";
-            this.linkSetsWaitingForCompile = [];
+            this.linkSets = $SetNew();
             this.module = null;
             this.factory = null;
             this.dependencies = null;
@@ -1780,8 +1769,72 @@ module "js/loaders" {
             $Assert(this.dependencies === null);
 
             this.status = "waiting";
-            this.linkSetsWaitingForCompile = undefined;???
+            this.linkSets = undefined;???
             this.module = mod;
+        }
+
+
+        /*
+          The loader calls this after the last loader hook (the .link hook),
+          and after the script or module's syntax has been checked.  This
+          LoadTask has finished loading!  Examine the script or module for
+          import statements and start loading any dependencies that are not
+          loading or loaded already.  Then call .onLoad on all listening
+          LinkSets (see that method for the conclusion of the load/link/run
+          process).
+
+          In this implementation, script is a compiled script object;
+          it may be the result of compiling either a module or a script.
+        */
+        finish(loader, actualAddress, script) {
+            $Assert(this.status === 'fetching');
+            let pairs = $ScriptImports(script);
+            let fullNames = [];
+            let sets = this.linkSets;
+
+            /*
+              When we load a script, we add all its modules and their
+              dependencies to the same link set, per samth, 2013 April 22.
+
+              Example:
+                  module "A" {
+                      import "B" as B;
+                      B.hello();
+                  }
+                  alert("got here");
+
+              Note that toplevel does not import "A", so the body of "A"
+              will not execute, and we will not call B.hello().
+              Nevertheless, we load "B.js" before executing the script.
+            */
+            for (let i = 0; i < pairs.length; i++) {
+                let [client, request] = pairs[i];
+                let referer = {name: client, url: actualAddress};
+                let result;
+                try {
+                    result = loader.@import(referer, request);
+                } catch (exc) {
+                    return this.fail(exc);
+                }
+                fullNames[i] = result.fullName;
+
+                /*
+                  Add the LoadTask `result` to each LinkSet even if it is
+                  done loading, because the association keeps `result`
+                  alive (LoadTasks are reference-counted; see
+                  onLinkSetFail).
+                */
+                if (result.status !== 'linked') {
+                    $Assert($MapGet(loader.@loading, result.fullName), result);
+                    for (let j = 0; j < sets.length; j++)
+                        sets[j].addLoad(result);
+                }
+            }
+
+            this.status = 'waiting';
+            this.dependencies = fullNames;
+            for (let i = 0; i < sets.length; i++)
+                sets[i].onLoad(this);
         }
 
         /*
@@ -1789,7 +1842,7 @@ module "js/loaders" {
           fetch or used loader.eval() or loader.set() to put a finished module
           into the registry.
 
-          (Used by the done() callback in Loader.@importFor().)
+          (Used by the done() callback in Loader.@import().)
         */
         onEndRun(name, mod) {
             throw TODO;
@@ -1838,9 +1891,9 @@ module "js/loaders" {
           Error handling.
 
           Every error that can occur throughout the process (with one
-          exception; see exhaustive list in the next comment, below) is related
-          to either a specific in-flight LoadTask (in loader.@loading) or a
-          specific LinkSet.
+          exception; see exhaustive list in the next comment, below XXX TODO
+          update this comment) is related to either a specific in-flight
+          LoadTask (in loader.@loading) or a specific LinkSet.
 
           When such an error occurs:
 
@@ -1927,16 +1980,43 @@ module "js/loaders" {
 
           Other:
 
+          - The normalize hook throws or returns an invalid value.  This
+            happens so early in the load process that there is no LoadTask yet.
+            We can directly call the errback hook.  TODO see if this really fits
+            in here...
+
           - The fetch hook errors described above can happen when fetching
-            script code for a load() call. This happens so early that no
-            LinkSets and no modules are involved. We can skip the complex
-            error-handling process and just directly call the errback hook.
+            script code for a load() call. Again, this happens very early in
+            the process; no LinkSets and no modules are involved. We can skip
+            the complex error-handling process and just directly call the
+            errback hook.
         */
 
+        /*
+          Fail this load task. All LinkSets that require it also fail.
+        */
         fail(exc) {
             $Assert(this.status === "fetching");
-            throw TODO;
-            this.loader.@failLinkSets(this.linkSetsWaitingForCompile);
+            this.status = 'failed';
+            this.exception = exc;
+            let sets = $SetElements(this.linkSets);
+            for (let i = 0; i < sets.length; i++)
+                sets[i].fail(exc);
+            $Assert($SetSize(sets) === 0);
+        }
+
+        /*
+          This is called when a LinkSet associated with this load fails.
+          If this load is not needed by any surviving LinkSet, drop it.
+        */
+        onLinkSetFail(loader, linkSet) {
+            $Assert($SetHas(this.linkSets, linkSet));
+            $SetDelete(this.linkSets, linkSet);
+            if ($SetSize(this.linkSets) === 0) {
+                let currentLoad = $MapGet(loader.@loading, this.fullName);
+                if (currentLoad === this)
+                    $MapDelete(loader.@loading, this.fullName);
+            }
         }
     }
 
