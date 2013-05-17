@@ -258,7 +258,7 @@ export class Loader {
             let contents = sources[url];
             if (contents === null) {
                 $MapDelete(this.@ondemand, url);
-            } else if (typeof contents === 'string') {
+            } else if (typeof contents === "string") {
                 $MapSet(this.@ondemand, url, contents);
             } else {
                 /*
@@ -275,7 +275,7 @@ export class Loader {
                 */
                 let names = [];
                 for (let name of contents) {
-                    if (typeof name !== 'string')
+                    if (typeof name !== "string")
                         throw $TypeError("ondemand: module names must be strings");
                     $ArrayPush(names, name);
                 }
@@ -484,7 +484,7 @@ export class Loader {
         let url = this.@baseURL;  // P4 ISSUE: is baseURL the right default?
         if (options !== undefined && "url" in options) {
             url = options.url;
-            if (typeof url !== 'string')
+            if (typeof url !== "string")
                 throw $TypeError("eval: options.url must be a string");
         }
 
@@ -630,7 +630,7 @@ export class Loader {
         let url = undefined;
         if ("url" in options) {
             url = options.url;
-            if (url !== undefined && typeof url !== 'string')
+            if (url !== undefined && typeof url !== "string")
                 throw $TypeError("options.url must be a string or undefined");
         }
 
@@ -723,7 +723,7 @@ export class Loader {
         if (options !== undefined && "url" in options) {
             let url = options.url;
             if (url !== undefined) {
-                if (typeof url !== 'string') {
+                if (typeof url !== "string") {
                     let msg = "load: options.url must be a string or undefined";
                     AsyncCall(errback, $TypeError(msg));
                     return;
@@ -738,9 +738,9 @@ export class Loader {
           since the TypeError if they are not functions happens much later
           and with an empty stack.  But Futures don't do it.  Assuming no.
 
-          if (typeof callback !== 'function')
+          if (typeof callback !== "function")
               throw $TypeError("Loader.load: callback must be a function");
-          if (typeof errback !== 'function')
+          if (typeof errback !== "function")
               throw $TypeError("Loader.load: error callback must be a function");
         */
 
@@ -781,11 +781,11 @@ export class Loader {
                 throw $TypeError("load() fulfill callback: fetch already completed");
             fetchCompleted = true;
 
-            if (typeof src !== 'string') {
+            if (typeof src !== "string") {
                 let msg = "load() fulfill callback: first argument must be a string";
                 AsyncCall(errback, $TypeError(msg));
             }
-            if (typeof actualAddress !== 'string') {
+            if (typeof actualAddress !== "string") {
                 let msg = "load() fulfill callback: third argument must be a string";
                 AsyncCall(errback, $TypeError(msg));
             }
@@ -815,7 +815,7 @@ export class Loader {
             referer: referer,
             metadata: metadata,
             normalized: null,
-            type: 'script'
+            type: "script"
         };
 
         try {
@@ -850,12 +850,12 @@ export class Loader {
         if (options !== undefined) {
             if ("module" in options) {
                 name = options.module;
-                if (typeof name !== 'string')
+                if (typeof name !== "string")
                     throw $TypeError("import: options.module must be a string");
             }
             if ("url" in options) {
                 url = options.url;
-                if (typeof url !== 'string')
+                if (typeof url !== "string")
                     throw $TypeError("import: options.url must be a string");
             }
         }
@@ -1027,7 +1027,7 @@ export class Loader {
             let result = this.resolve(normalized, {referer, metadata});
 
             // Interpret the result.
-            type = 'module';
+            type = "module";
             if (typeof result === "string") {
                 url = result;
             } else if (IsObject(result)) {
@@ -1071,7 +1071,7 @@ export class Loader {
 
                     for (let i = 0; i < names.length; i++) {
                         let name = names[i];
-                        if (typeof name !== 'string')
+                        if (typeof name !== "string")
                             throw $TypeError("module names must be strings");
                         if (name !== normalized &&
                             ($MapHas(this.@modules, name)
@@ -1095,7 +1095,7 @@ export class Loader {
                         }
                     }
 
-                    type = 'script';
+                    type = "script";
                 }
             } else {
                 throw $TypeError("loader.resolve hook must return a " +
@@ -1156,7 +1156,7 @@ export class Loader {
         }
 
         // P3 ISSUE: type makes sense here, yes?
-        // P3 ISSUE: what about 'extra'?
+        // P3 ISSUE: what about "extra"?
         let options = {referer, metadata, normalized, type};
 
         // Call the fetch hook.
@@ -1179,18 +1179,18 @@ export class Loader {
     @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
         try {
             // Check arguments to fulfill hook.
-            if (typeof src !== 'string') {
+            if (typeof src !== "string") {
                 throw $TypeError("fetch hook fulfill callback: " +
                                  "first argument must be a string");
             }
-            if (typeof actualAddress !== 'string') {
+            if (typeof actualAddress !== "string") {
                 throw $TypeError("fetch hook fulfill callback: " +
                                  "second argument must be a string");
             }
 
             // Call translate and link hooks.
             src = this.translate(src, {normalized, actualAddress, metadata, type});
-            if (typeof src !== 'string')
+            if (typeof src !== "string")
                 throw $TypeError("translate hook must return a string");
             let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
 
@@ -1243,7 +1243,7 @@ export class Loader {
       undefined.  per samth, 2013 April 22.
     */
     get(name) {
-        if (typeof name !== 'string')
+        if (typeof name !== "string")
             throw $TypeError("module name must be a string");
 
         let m = $MapGet(this.@modules, name);
@@ -1261,7 +1261,7 @@ export class Loader {
       return false.
     */
     has(name) {
-        if (typeof name !== 'string')
+        if (typeof name !== "string")
             throw $TypeError("module name must be a string");
 
         return $MapHas(this.@modules, name);
@@ -1283,7 +1283,7 @@ export class Loader {
       Return this loader.
     */
     set(name, mod) {
-        if (typeof name !== 'string')
+        if (typeof name !== "string")
             throw $TypeError("module name must be a string");
 
         if (!$IsModule(mod)) {
@@ -1439,7 +1439,7 @@ export class Loader {
 
         - an object that has a .address property which is a string, the
           resource address.  The object may also have a .type property,
-          which if present must be either 'script' or 'module'.
+          which if present must be either "script" or "module".
 
       Default behavior:  Consult the ondemand table.  If any string value in
       the table matches the module name, return the key.  If any array
@@ -1498,8 +1498,8 @@ export class Loader {
       string; and the actual address where it was found (after all
       redirects), also as a string.
 
-      options.type is the string 'module' when fetching a standalone
-      module, and 'script' when fetching a script. In the latter case the
+      options.type is the string "module" when fetching a standalone
+      module, and "script" when fetching a script. In the latter case the
       fetch hook should not call the done callback; it just reports an
       error. P3 ISSUE: Have the loader pass undefined instead?
 
@@ -1661,7 +1661,7 @@ export class Loader {
 
   4.  Failed:  The load failed. The task never leaves this state.
 
-      .status === 'failed'
+      .status === "failed"
       .exception is an exception value
 */
 class LoadTask {
@@ -1691,14 +1691,14 @@ class LoadTask {
       3. Call .onLoad on any listening LinkSets (see that method for the
       conclusion of the load/link/run process).
 
-      On success, this transitions the LoadTask from 'loading' status to
-      'loaded'.
+      On success, this transitions the LoadTask from "loading" status to
+      "loaded".
 
       In this implementation, `script` is a compiled script object
       representing the result of compiling either a module or a script.
     */
     finish(loader, actualAddress, script) {
-        $Assert(this.status === 'loading');
+        $Assert(this.status === "loading");
 
         loader.@checkModuleDeclarations(script, this);
 
@@ -1748,7 +1748,7 @@ class LoadTask {
             }
         }
 
-        this.status = 'loaded';
+        this.status = "loaded";
         this.dependencies = fullNames;
         for (let i = 0; i < sets.length; i++)
             sets[i].onLoad(this);
@@ -1875,7 +1875,7 @@ class LoadTask {
     */
     fail(exc) {
         $Assert(this.status === "loading");
-        this.status = 'failed';
+        this.status = "failed";
         this.exception = exc;
         let sets = $SetElements(this.linkSets);
         for (let i = 0; i < sets.length; i++)
@@ -1915,18 +1915,18 @@ class LinkSet {
         this.loads = $SetNew();
 
         // Invariant: this.loadingCount is the number of LoadTasks in
-        // this.loads whose .status is 'loading'.
+        // this.loads whose .status is "loading".
         this.loadingCount = 0;
 
         // TODO: finish overall load state
     }
 
     addLoad(loadTask) {
-        if (loadTask.status === 'failed')
+        if (loadTask.status === "failed")
             return this.fail(loadTask.exception);
 
         if (!$SetHas(this.loads, loadTask)) {
-            if (loadTask.status === 'loading')
+            if (loadTask.status === "loading")
                 this.loadingCount++;
             $SetAdd(this.loads, loadTask);
             $SetAdd(loadTask.linkSets, this);
@@ -1939,7 +1939,7 @@ class LinkSet {
      */
     onLoad(loadTask) {
         $Assert($SetHas(this.loads, loadTask));
-        $Assert(loadTask.status === 'loaded');
+        $Assert(loadTask.status === "loaded");
         if (--this.loadingCount === 0) {
             // Link, then schedule the callback (which actually runs the
             // code).
@@ -2016,7 +2016,7 @@ class LinkSet {
                 let mod = $MapGet(this.loader.@modules, fullName);
                 if (mod !== undefined) {
                     let load = $MapGet(this.loader.@loading, fullName);
-                    if (load === undefined || load.status !== 'loaded') {
+                    if (load === undefined || load.status !== "loaded") {
                         throw $SyntaxError(
                             "module \"" + fullName + "\" was deleted from the loader");
                     }
