@@ -4,6 +4,8 @@
 
 /* P3 ISSUE #21: Determine whether this is a subclass or what. */
 
+/* TODO: add url() support */
+
 import {
     // Embedding features
     $QueueTask,

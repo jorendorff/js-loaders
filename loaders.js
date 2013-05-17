@@ -47,12 +47,9 @@
 
   LoadTask - Stores the status of a particular module from the time we
     first decide to load it until it is fully linked and ready to execute.
-*/
 
-/*
+
   TODO: Look up how "intrinsics" work and wire that through everything.
-
-  TODO: add url() support
 
   TODO: implement #3, #14, #24
 */
