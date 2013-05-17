@@ -1628,7 +1628,7 @@ export class Loader {
   loadTask and linkSet.loads is the Set of all loadTasks that linkSet
   requires.
 
-  2.  Waiting:  Source is available and has been "translated"; syntax has
+  2.  Loaded:  Source is available and has been "translated"; syntax has
   been checked; dependencies have been identified.  But the module hasn't
   been linked or executed yet.  We are waiting for dependencies.
 
@@ -1636,12 +1636,12 @@ export class Loader {
   point (except for factory-made modules).  But it has not been linked and
   thus must not be exposed to script yet.
 
-  The "waiting" state says nothing about the status of the dependencies; they
-  may all be "ready" and yet there may not be any LinkSet that's ready to
-  link and execute this module.  The LinkSet may be waiting for unrelated
-  dependencies to load.
+  The "loaded" state says nothing about the status of the dependencies; they
+  may all be linked and executed and yet there may not be any LinkSet that's
+  ready to link and execute this module.  The LinkSet may be waiting for
+  unrelated dependencies to load.
 
-      .status === "waiting"
+      .status === "loaded"
       .script is a script or null
       .factory is a callable object or null
       .dependencies is an Array of strings (full module names)
@@ -1675,7 +1675,7 @@ class LoadTask {
             this.status = "loading";
             this.script = null;
         } else {
-            this.status = "waiting";
+            this.status = "loaded";
             this.script = script;
         }
         this.factory = null;
@@ -1692,7 +1692,7 @@ class LoadTask {
       conclusion of the load/link/run process).
 
       On success, this transitions the LoadTask from 'loading' status to
-      'waiting'.
+      'loaded'.
 
       In this implementation, `script` is a compiled script object
       representing the result of compiling either a module or a script.
@@ -1748,7 +1748,7 @@ class LoadTask {
             }
         }
 
-        this.status = 'waiting';
+        this.status = 'loaded';
         this.dependencies = fullNames;
         for (let i = 0; i < sets.length; i++)
             sets[i].onLoad(this);
@@ -1939,7 +1939,7 @@ class LinkSet {
      */
     onLoad(loadTask) {
         $Assert($SetHas(this.loads, loadTask));
-        $Assert(loadTask.status === 'waiting');
+        $Assert(loadTask.status === 'loaded');
         if (--this.loadingCount === 0) {
             // Link, then schedule the callback (which actually runs the
             // code).
@@ -2016,7 +2016,7 @@ class LinkSet {
                 let mod = $MapGet(this.loader.@modules, fullName);
                 if (mod !== undefined) {
                     let load = $MapGet(this.loader.@loading, fullName);
-                    if (load === undefined || load.status !== 'waiting') {
+                    if (load === undefined || load.status !== 'loaded') {
                         throw $SyntaxError(
                             "module \"" + fullName + "\" was deleted from the loader");
                     }
