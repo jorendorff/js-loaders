@@ -57,11 +57,6 @@
   TODO: implement #3, #13, #14, #24
 */
 
-/*
-  evalAsync, import, load, and the fetch hook all use callbacks.  They are
-  designed to be upwards-compatible to Futures.  per samth, 2013 April 22.
-*/
-
 "use strict";
 
 module "js/loaders" {
@@ -508,7 +503,12 @@ module "js/loaders" {
             */
             $LinkScript(script, modules);
 
-            /* XXX TODO - need to commit modules declared in script to the registry here */
+            /* Commit declared modules to the registry. */
+            let declared = $ScriptDeclaredModuleNames(script);
+            for (let i = 0; i < declared.length; i++) {
+                let name = declared[i];
+                $MapSet(this.@modules, name, $ScriptGetDeclaredModule(script, name));
+            }
 
             /*
               Second loop:  Execute any module bodies that have not been
@@ -577,6 +577,10 @@ module "js/loaders" {
           called; see the ISSUE comment on the eval method.  Of course for
           modules imported by `src` that are not already loaded, all the loader
           hooks can be called.
+
+          Future directions:  evalAsync, import, load, and the fetch hook all
+          take callbacks and currently return undefined.  They are designed to be
+          upwards-compatible to Futures.  per samth, 2013 April 22.
         */
         evalAsync(src,
                   callback = value => undefined,
