@@ -255,8 +255,6 @@ module "js/loaders" {
           TODO: doc comment here
 
           P4 ISSUE:  Proposed name for this method: addSources(sources)
-
-          P1 ISSUE #11:  Consider dropping ondemand table
         */
         ondemand(sources) {
             let keys = $ObjectKeys(sources);
