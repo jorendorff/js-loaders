@@ -392,6 +392,15 @@ module "js/loaders" {
             */
             let seen = $SetNew();
 
+            // ISSUE: per dherman May 16-17, if module "A" imports module "B"
+            // and "B" is declared in a script along with other modules, "A"
+            // waits until all modules in that script have executed, and the
+            // script itself has executed. It is as if the executesAfter edge
+            // from "A" to "B" has been replaced with an edge from "A" to the
+            // script and from the script to "B". But I think this screws up
+            // the order too much (never mind how complicated the code gets)
+            // and we should probably just ditch scripts containing module
+            // declarations.
             function walk(m) {
                 $SetAdd(seen, m);
 
