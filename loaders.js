@@ -239,8 +239,6 @@ module "js/loaders" {
         /*
           Return the loader's strictness setting. If true, all code loaded by
           this loader is treated as strict-mode code.
-
-          TODO: pass this to $Compile
         */
         get strict() {
             return this.@strict;
@@ -457,7 +455,7 @@ module "js/loaders" {
                     throw $TypeError("eval: options.url must be a string");
             }
 
-            let script = $Compile(this, src, null, url);
+            let script = $Compile(this, src, null, url, this.@strict);
             this.@checkModuleDeclarations("eval", script);
 
             /*
@@ -633,7 +631,7 @@ module "js/loaders" {
             // Compile and check the script.
             let script;
             try {
-                script = $Compile(this, code, null, srcurl);
+                script = $Compile(this, code, null, srcurl, this.@strict);
                 this.@checkModuleDeclarations("evalAsync", script);
             } catch (exc) {
                 AsyncCall(errback, exc);
@@ -1191,7 +1189,7 @@ module "js/loaders" {
 
                 // Interpret linkResult.  See comment on the link() method.
                 if (linkResult === undefined) {
-                    let script = $Compile(this, src, normalized, actualAddress);
+                    let script = $Compile(this, src, normalized, actualAddress, this.@strict);
                     loadTask.finish(this, actualAddress, script);
                 } else if (!IsObject(linkResult)) {
                     throw $TypeError("link hook must return an object or undefined");
