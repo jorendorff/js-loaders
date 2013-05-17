@@ -410,6 +410,42 @@ module "js/loaders" {
         }
 
         /*
+          Check to see if script declares any modules that are already loaded
+          or loading.  If so, throw a SyntaxError.  If not, add entries to the
+          @loading map for each declared module.
+
+          Rationale: Consider two evalAsync calls.
+
+              System.evalAsync('module "x" { import "y" as y; }', ok, err);
+              System.evalAsync('module "x" { import "z" as z; }', ok, err);
+
+          It seemed perverse to let them race trying to load "y" and "z" after
+          we know one of the two module "x" declarations must fail.  Instead,
+          the second evalAsync fails immediately.  Per meeting, 2013 April 26.
+        */
+        @checkModuleDeclarations(script, loadTask) {
+            // TODO - Unify this with very similar code in LoadTask.finish()
+            // and LinkSet.link().
+            let declared = $ScriptDeclaredModuleNames(script);
+            for (let i = 0; i < declared.length; i++) {
+                let fullName = declared[i];
+                if ($MapHas(this.@modules, fullName)) {
+                    throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                                       "which is already loaded");
+                }
+                let pendingLoad = $MapGet(this.@loading, fullName);
+                if (pendingLoad === undefined) {
+                    if (loadTask === null)
+                        loadTask = new LoadTask(declared, script);
+                    $MapSet(this.@loading, fullName, loadTask);
+                } else if (pendingLoad !== loadTask) {
+                    throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                                       "which is already loading");
+                }
+            }
+        }
+
+        /*
           Execute the program src.
 
           src may import modules, but if it imports a module that is not
@@ -449,7 +485,7 @@ module "js/loaders" {
             }
 
             let script = $Compile(this, src, null, url, this.@strict);
-            this.@checkModuleDeclarations("eval", script);
+            this.@checkModuleDeclarations(script, null);
 
             /*
               $ScriptImports returns an array of [client, request] pairs.
@@ -504,8 +540,10 @@ module "js/loaders" {
             /* Commit declared modules to the registry. */
             let declared = $ScriptDeclaredModuleNames(script);
             for (let i = 0; i < declared.length; i++) {
-                let name = declared[i];
-                $MapSet(this.@modules, name, $ScriptGetDeclaredModule(script, name));
+                let fullName = declared[i];
+                let m = $ScriptGetDeclaredModule(script, fullName);
+                $MapDelete(this.@loading, fullName);
+                $MapSet(this.@modules, fullName, m);
             }
 
             /*
@@ -596,40 +634,6 @@ module "js/loaders" {
         }
 
         /*
-          Throw a SyntaxError if `src` declares a module that we are
-          already loading.
-
-          Rationale: Consider two evalAsync calls.
-
-              System.evalAsync('module "x" { import "y" as y; }', ok, err);
-              System.evalAsync('module "x" { import "z" as z; }', ok, err);
-
-          It seemed perverse to let them race trying to load "y" and "z"
-          after we know one of the two module "x" declarations must
-          fail.  Instead, the second evalAsync fails immediately, passing a
-          SyntaxError to the error callback in the next event loop turn.
-          Per meeting, 2013 April 26.
-        */
-        @checkModuleDeclarations(methodName, script) {
-            let names = $ScriptDeclaredModuleNames(script);
-
-            // TODO - bug here:  To serve the purpose, this must add entries to
-            // this.@loading.  Also it can be unified with very similar code in
-            // LoadTask.finish() and LinkSet.link().
-
-            for (let i = 0; i < names.length; i++) {
-                let name = names[i];
-                if ($MapHas(this.@modules, name)
-                    || $MapHas(this.@loading, name))
-                {
-                    throw $SyntaxError(
-                        methodName + ": script declares module \"" + name +
-                        "\", which is already loaded or loading");
-                }
-            }
-        }
-
-        /*
           Shared implementation of evalAsync() and the post-fetch part of
           load().
         */
@@ -638,7 +642,7 @@ module "js/loaders" {
             let script;
             try {
                 script = $Compile(this, code, null, srcurl, this.@strict);
-                this.@checkModuleDeclarations("evalAsync", script);
+                this.@checkModuleDeclarations(script, null);
             } catch (exc) {
                 AsyncCall(errback, exc);
                 return;
@@ -705,10 +709,10 @@ module "js/loaders" {
 
               1. Call the fetch hook to load the script from the given url.
 
-              2. Once we get the source code, pass it to asyncEval() which does
-                 the rest.  (Implementation issue: This reuse causes a single
-                 extra turn of the event loop which we could eliminate; not
-                 sure how visible it would be from a spec perspective.)
+              2. Once we get the source code, pass it to @evalAsync() which
+                 does the rest.  (Implementation issue: This reuse causes a
+                 single extra turn of the event loop which we could eliminate;
+                 not sure how visible it would be from a spec perspective.)
             */
 
             let referer = null;
@@ -854,27 +858,27 @@ module "js/loaders" {
             let referer = {name, url};
 
             // this.@import starts us along the pipeline.
-            let result;
+            let fullName;
             try {
-                result = this.@import(referer, moduleName);
+                fullName = this.@import(referer, moduleName);
             } catch (exc) {
-                return AsyncCall(errback, exc);
+                AsyncCall(errback, exc);
+                return;
             }
 
-            if (result.status === 'linked') {
+            let m = $MapGet(this.@modules, fullName);
+            if (m !== undefined) {
                 // We already had this module in the registry.
-                AsyncCall(success, result.module);
+                AsyncCall(success, m);
             } else {
-                // `result` is a LoadTask.  The module is now loading.  When it
-                // loads, it may need to be linked against other modules, so
-                // put it in a LinkSet.
+                // The module is now loading.  When it loads, it may have more
+                // imports, requiring further loads, so put it in a LinkSet.
+                let load = $MapGet(this.@loading, fullName);
                 let linkSet = new LinkSet(this, success, errback);
-                linkSet.addLoad(result);
+                linkSet.addLoad(load);
             }
 
             function success() {
-                $Assert(typeof fullName === 'string');
-                let fullName = loadTask.fullName;
                 let m = $MapGet(self.@modules, fullName); // TODO: file an issue; David wants to get rid of this
                 try {
                     if (m === undefined) {
@@ -900,13 +904,10 @@ module "js/loaders" {
               value.  In these cases, @import throws.
 
           2.  The normalize hook returns the name of a module that is already
-              in the registry.  @import returns an object with these properties:
-              {status: 'linked',
-               module: (the Module object),
-               fullName: (the normalized name)}.
+              in the registry.  @import returns the normalized name.
 
           3.  In all other cases, either a new LoadTask is started or we can
-              join one already in flight.  @import returns the LoadTask.
+              join one already in flight.  @import returns the normalized name.
 
           referer provides information about the context of the import() call
           or import-declaration.  This information is passed to all the loader
@@ -998,24 +999,22 @@ module "js/loaders" {
 
             // From this point @import cannot throw.
 
-            // If the module has already been loaded and linked, return that.
-            let module = $MapGet(this.@modules, normalized);
-            if (module !== undefined) {
+            // If the module has already been loaded and linked, we are done.
+            if ($MapHas(this.@modules, normalized)) {
                 // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
-                return {status: 'linked', module, fullName};
+                return normalized;
             }
 
-            // If the module is loading, attach to the existing in-flight load.
-            let loadTask = $MapGet(this.@loading, normalized);
-            if (loadTask !== undefined)
-                return loadTask;
+            // If the module is already loading, we are done.
+            if ($MapHas(this.@loading, normalized))
+                return normalized;
 
             /*
               Create a LoadTask object for this module load.  Once this object
               is in this.@loading, LinkSets may add themselves to its set of
               waiting link sets. Errors must be reported to loadTask.fail().
             */
-            loadTask = new LoadTask(normalized);
+            let loadTask = new LoadTask([normalized]);
             $MapSet(this.@loading, normalized, loadTask);
 
             let url, type;
@@ -1084,8 +1083,13 @@ module "js/loaders" {
                           Record a load in progress for all other modules
                           defined in the same script.
                         */
-                        for (let i = 0; i < names.length; i++)
-                            $MapSet(this.@loading, names[i], loadTask);
+                        for (let i = 0; i < names.length; i++) {
+                            let fullName = names[i];
+                            if (fullName !== normalized) {
+                                ???;
+                                $MapSet(this.@loading, fullName, loadTask);
+                            }
+                        }
 
                         type = 'script';
                     }
@@ -1102,7 +1106,7 @@ module "js/loaders" {
                   itself from this.@loading.
                 */
                 loadTask.fail(exc);
-                return loadTask;
+                return normalized;
             }
 
             loadTask.type = type;
@@ -1164,6 +1168,8 @@ module "js/loaders" {
                 else
                     loadTask.fail(exc);
             }
+
+            return normalized;
         }
 
         @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
@@ -1632,11 +1638,11 @@ module "js/loaders" {
       dependencies to load.
 
           .status === "waiting"
-          .module is a Module or null
+          .script is a script or null
           .factory is a callable object or null
           .dependencies is an Array of strings (full module names)
 
-      Exactly one of [.module, .factory] is non-null.
+      Exactly one of [.script, .factory] is non-null.
 
       The task leaves this state when a LinkSet successfully links the module
       and moves it into the loader's module registry.
@@ -1658,48 +1664,39 @@ module "js/loaders" {
         /*
           A module entry begins in the "loading" state.
         */
-        constructor(fullName) {
-            this.fullName = fullName;
-            this.status = "loading";
+        constructor(fullNames, script=null) {
+            this.fullNames = fullNames;
             this.linkSets = $SetNew();
-            this.module = null;
+            if (module === null) {
+                this.status = "loading";
+                this.script = null;
+            } else {
+                this.status = "waiting";
+                this.script = script;
+            }
             this.factory = null;
             this.dependencies = null;
         }
 
         /*
           The loader calls this after the last loader hook (the .link hook),
-          and after the script or module's syntax has been checked.  This
-          LoadTask has finished loading!  Examine the script or module for
-          import statements and start loading any dependencies that are not
-          loading or loaded already.  Then call .onLoad on all listening
-          LinkSets (see that method for the conclusion of the load/link/run
-          process).
+          and after the script or module's syntax has been checked.
 
-          This transitions the LoadTask from 'loading' status to 'waiting'.
+          1. Process module declarations.
+          2. Process imports. This may trigger additional loads.
+          3. Call .onLoad on any listening LinkSets (see that method for the
+          conclusion of the load/link/run process).
 
-          In this implementation, script is a compiled script object;
-          it may be the result of compiling either a module or a script.
+          On success, this transitions the LoadTask from 'loading' status to
+          'waiting'.
+
+          In this implementation, `script` is a compiled script object
+          representing the result of compiling either a module or a script.
         */
         finish(loader, actualAddress, script) {
             $Assert(this.status === 'loading');
 
-            // Check for module redeclaration.
-            let declared = $ScriptDeclaredModuleNames(script);
-            for (let i = 0; i < declared.length; i++) {
-                let fullName = declared[i];
-                if ($MapHas(this.loader.@modules, fullName)) {
-                    throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                                       "which is already loaded");
-                }
-                let currentTask = $MapGet(this.loader.@loading, fullName);
-                if (currentTask === undefined) {
-                    $MapSet(this.loader.@loading, fullName, this);
-                } else if (currentTask !== this) {
-                    throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                                       "which is already loading");
-                }
-            }
+            loader.@checkModuleDeclarations(script, this);
 
             let pairs = $ScriptImports(script);
             let fullNames = [];
@@ -1725,26 +1722,25 @@ module "js/loaders" {
             for (let i = 0; i < pairs.length; i++) {
                 let [client, request] = pairs[i];
                 let referer = {name: client, url: actualAddress};
-                let result;
+                let fullName;
                 try {
-                    result = loader.@import(referer, request);
+                    fullName = loader.@import(referer, request);
                 } catch (exc) {
                     return this.fail(exc);
                 }
-                fullNames[i] = result.fullName;
+                fullNames[i] = fullName;
 
-                /*
-                  Add the LoadTask `result` to each LinkSet even if it is
-                  done loading, because the association keeps `result`
-                  alive (LoadTasks are reference-counted; see
-                  onLinkSetFail).
+                if (!$MapHas(this.@modules, fullName)) {
+                    /*
+                      Add the new LoadTask to each LinkSet even if it is done
+                      loading, because the association keeps the LoadTask alive
+                      (LoadTasks are reference-counted; see onLinkSetFail).
 
-                  ISSUE: whether to keep a copy
-                */
-                if (result.status !== 'linked') {
-                    $Assert($MapGet(loader.@loading, result.fullName), result);
+                      ISSUE: whether to keep a copy
+                    */
+                    let load = $MapGet(this.@loading, fullName);
                     for (let j = 0; j < sets.length; j++)
-                        sets[j].addLoad(result);
+                        sets[j].addLoad(load);
                 }
             }
 
@@ -1763,20 +1759,6 @@ module "js/loaders" {
         */
         onEndRun(name, mod) {
             throw TODO;
-        }
-
-        /*
-          This is called when the factory is called and successfully returns a
-          Module object.
-        */
-        onManufacture(mod) {
-            $Assert(this.status === "waiting");
-            $Assert(this.module === null);
-            $Assert(this.factory !== null);
-            this.status = "ready";
-            this.module = mod;
-            this.factory = null;
-            this.dependencies = null;
         }
 
         /*
@@ -1905,9 +1887,12 @@ module "js/loaders" {
             $Assert($SetHas(this.linkSets, linkSet));
             $SetDelete(this.linkSets, linkSet);
             if ($SetSize(this.linkSets) === 0) {
-                let currentLoad = $MapGet(loader.@loading, this.fullName);
-                if (currentLoad === this)
-                    $MapDelete(loader.@loading, this.fullName);
+                for (let i = 0; i < this.fullNames.length; i++) {
+                    let fullName = this.fullNames[i];
+                    let currentLoad = $MapGet(loader.@loading, fullName);
+                    if (currentLoad === this)
+                        $MapDelete(loader.@loading, fullName);
+                }
             }
         }
     }
@@ -1979,7 +1964,7 @@ module "js/loaders" {
                 $SetAdd(seen, script);
 
                 // First, note all modules declared in this script.
-                var declared = $ScriptDeclaredModuleNames(script);
+                let declared = $ScriptDeclaredModuleNames(script);
                 for (let i = 0; i < declared.length; i++) {
                     let fullName = declared[i];
                     let mod = $ScriptGetDeclaredModule(script, fullName);
@@ -2017,9 +2002,10 @@ module "js/loaders" {
 
                 // Second, find modules imported by this script.
                 //
-                // The loader process is a simple parallel graph walk, so all
-                // imported modules should be loaded, but calls to Loader.set()
-                // or Loader.delete() can cause things to be missing.
+                // The loader process walks the whole graph, so all imported
+                // modules should be loaded, but it is an asynchronous process.
+                // Intervening calls to Loader.set() or Loader.delete() can
+                // cause things to be missing.
                 let mods = [];
                 for (let i = 0; i < deps.length; i++) {
                     let fullName = deps[i];
