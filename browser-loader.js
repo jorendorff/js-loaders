@@ -1,5 +1,7 @@
 /* browser-loader.js - Define browser loader hooks. */
 
+"use strict";
+
 /* P3 ISSUE #21: Determine whether this is a subclass or what. */
 
 import {
