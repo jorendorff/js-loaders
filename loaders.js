@@ -484,7 +484,10 @@ module "js/loaders" {
 
                 let m = $MapGet(this.@modules, name);
                 if (m === undefined) {
-                    /* XXX TODO - this module might be declared in the script; don't throw yet! */
+                    // The module is not in the registry. Perhaps it is
+                    // declared in this script.
+                    m = $ScriptGetDeclaredModule(script, name);
+
                     /*
                       Rationale for throwing a SyntaxError: SyntaxError is
                       already used for a few conditions that can be detected
@@ -492,7 +495,8 @@ module "js/loaders" {
                       not really syntax errors per se.  Reusing it seems
                       better than inventing a new Error subclass.
                     */
-                    throw $SyntaxError("eval: module not loaded: " + name);
+                    if (m === undefined)
+                        throw $SyntaxError("eval: module not loaded: " + name);
                 }
                 $ArrayPush(modules, m);
             }
