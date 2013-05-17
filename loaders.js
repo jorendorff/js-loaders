@@ -54,7 +54,7 @@
 
   TODO: add url() support
 
-  TODO: implement #3, #13, #14, #24
+  TODO: implement #3, #14, #24
 */
 
 "use strict";
@@ -945,14 +945,11 @@ module "js/loaders" {
                 /*
                   Interpret the value returned by the normalize hook.
 
-                  It must be undefined, a string, or an object with a
-                  .normalized property whose value is a string.  Otherwise a
-                  TypeError is thrown.  per samth, 2013 April 22.
+                  It must a string or an object with a .normalized property
+                  whose value is a string.  Otherwise a TypeError is thrown.
+                  per samth, 2013 April 22, and issue #13.
                 */
-                if (result === undefined) {
-                    normalized = request;
-                    metadata = {};
-                } else if (typeof result === "string") {
+                if (typeof result === "string") {
                     normalized = result;
                     metadata = {};
                 } else if (!IsObject(result)) {
@@ -1030,13 +1027,7 @@ module "js/loaders" {
 
                 // Interpret the result.
                 type = 'module';
-                if (result === undefined) {
-                    // P1 ISSUE #13: Define behavior when the resolve hook
-                    // returns undefined.  (David agrees we should probably get
-                    // rid of this case. Simple vs. easy.)
-
-                    url = this.@systemDefaultResolve(normalized, referer);
-                } else if (typeof result === "string") {
+                if (typeof result === "string") {
                     url = result;
                 } else if (IsObject(result)) {
                     // result.url must be present and must be a string.
