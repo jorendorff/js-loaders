@@ -11,17 +11,18 @@
     - .import(name, callback, errback, options);
     - .get(name), .has(name), .set(name, module), .delete(name);
     - .ondemand(sources);
-    - the loader hooks and the loading pipeline that calls them.
+    - the loader hooks and the loading pipeline that calls them;
+    - dependency graph stuff;
+    - linking.
 
   These things are not implemented at all yet:
-    - dependency graph stuff;
     - the last bit of plumbing connecting the load pipeline back to the success
       and failure callbacks provided by load/evalAsync/import;
     - error handling when multiple module loads are involved;
-    - linking;
     - support for custom link hooks that create dynamic-linked ("factory-made")
       modules;
-    - "intrinsics";
+    - the fetch hook's done() callback;
+    - intrinsics;
     - probably various other odds and ends.
 
 
@@ -50,6 +51,10 @@
 
 /*
   TODO: Look up how "intrinsics" work and wire that through everything.
+
+  TODO: add url() support
+
+  TODO: implement #3, #13, #14, #24
 */
 
 /*
@@ -63,7 +68,7 @@ module "js/loaders" {
     import {
         // Embedding features
         $ReportUncaughtException,
-        $AddForNextTurn,
+        $QueueTask,
         $ToAbsoluteURL,
         $FetchTextFromURL,
         $Assert,
@@ -91,14 +96,13 @@ module "js/loaders" {
         $SyntaxError,   // $SyntaxError(msg) ~= new SyntaxError(msg)
 
         // Modules
-        $CompileModule,
         $ModuleGetLinkedModules,
         $ModuleHasExecuted,
         $ModuleSetExecuted,
         $ExecuteModuleBody,
 
         // Scripts
-        $CompileScript,
+        $Compile,
         $LinkScript,
         $EvaluateScript,
         $ScriptDeclaredModuleNames,  // array of strings
@@ -235,6 +239,8 @@ module "js/loaders" {
         /*
           Return the loader's strictness setting. If true, all code loaded by
           this loader is treated as strict-mode code.
+
+          TODO: pass this to $Compile
         */
         get strict() {
             return this.@strict;
@@ -444,14 +450,14 @@ module "js/loaders" {
         */
         eval(src, options) {
             // Unpack options. Only one option is supported: options.url.
-            let url = this.@baseURL;
+            let url = this.@baseURL;  // P4 ISSUE: is baseURL the right default?
             if (options !== undefined && "url" in options) {
                 url = options.url;
                 if (typeof url !== 'string')
                     throw $TypeError("eval: options.url must be a string");
             }
 
-            let script = $CompileScript(this, src, url);
+            let script = $Compile(this, src, null, url);
             this.@checkModuleDeclarations("eval", script);
 
             /*
@@ -480,6 +486,7 @@ module "js/loaders" {
 
                 let m = $MapGet(this.@modules, name);
                 if (m === undefined) {
+                    /* XXX TODO - this module might be declared in the script; don't throw yet! */
                     /*
                       Rationale for throwing a SyntaxError: SyntaxError is
                       already used for a few conditions that can be detected
@@ -487,7 +494,7 @@ module "js/loaders" {
                       not really syntax errors per se.  Reusing it seems
                       better than inventing a new Error subclass.
                     */
-                    throw $SyntaxError("module not loaded: " + name);
+                    throw $SyntaxError("eval: module not loaded: " + name);
                 }
                 $ArrayPush(modules, m);
             }
@@ -498,6 +505,8 @@ module "js/loaders" {
               before dependencies are executed below.
             */
             $LinkScript(script, modules);
+
+            /* XXX TODO - need to commit modules declared in script to the registry here */
 
             /*
               Second loop:  Execute any module bodies that have not been
@@ -511,30 +520,6 @@ module "js/loaders" {
                 Loader.@ensureModuleExecuted(modules[i]);
 
             return $EvaluateScript(script);
-        }
-
-        /*
-          Create a callback which calls work(), then either passes its return
-          value to the given `callback` (on success) or passes the exception to
-          the error callback, `errback` (on exception).
-        */
-        static @makeContinuation(work, callback, errback) {
-            return () => {
-                /*
-                  Tail calls would probably be equivalent to AsyncCall,
-                  depending on the exact semantics of $AddForNextTurn.
-                  This is meant as a reference implementation, so we just
-                  literal-mindedly do what the spec is expected to say.
-                */
-                let result;
-                try {
-                    result = work();
-                } catch (exc) {
-                    AsyncCall(errback, exc);
-                    return;
-                }
-                AsyncCall(callback, result);
-            };
         }
 
         /*
@@ -576,7 +561,8 @@ module "js/loaders" {
 
           (options.url may also be stored in the script and used for
           Error().fileName, Error().stack, and the debugger, and we anticipate
-          doing so via $CompileScript; but such use is non-standard.)
+          doing so via $Compile; but such use is outside the scope of the
+          language standard.)
 
           (options.module is being specified, to serve an analogous purpose for
           normalization, but it is not implemented here. See the comment on
@@ -639,20 +625,44 @@ module "js/loaders" {
             }
         }
 
+        /*
+          Shared implementation of evalAsync() and the post-fetch part of
+          load().
+        */
         @evalAsync(src, callback, errback, srcurl) {
+            // Compile and check the script.
             let script;
             try {
-                script = $CompileScript(this, code, srcurl);
+                script = $Compile(this, code, null, srcurl);
                 this.@checkModuleDeclarations("evalAsync", script);
             } catch (exc) {
                 AsyncCall(errback, exc);
                 return;
             }
 
-            let ctn = Loader.@makeContinuation(
-                () => $EvaluateScript(script), callback, errback);
-            let linkSet = new LinkSet(this, ctn, errback);
-            linkSet.addScriptAndDependencies(script);
+            // Arrange for any dependencies to be loaded and linked with
+            // script.  Once the script is linked, the LinkSet will call the
+            // run() function below.
+            let linkSet = new LinkSet(this, run, errback);
+            linkSet.addScriptAndDependencies(script); // XXX TODO
+
+            function run() {
+                /*
+                  Tail calls would be equivalent to AsyncCall, except for
+                  possibly some imponderable timing details.  This is meant as
+                  a reference implementation, so we just literal-mindedly do
+                  what the spec is expected to say.
+                */
+                let result;
+                try {
+                    // XXX TODO ensure all modules executed
+                    result = $EvaluateScript(script);
+                } catch (exc) {
+                    AsyncCall(errback, exc);
+                    return;
+                }
+                AsyncCall(callback, result);
+            }
 
             /*
               P4 ISSUE: Execution order when multiple LinkSets become linkable
@@ -728,6 +738,11 @@ module "js/loaders" {
               scripts.  But we do want load() to use the fetch hook, which
               means we must come up with a metadata value of some kind
               (this is ordinarily the normalize hook's responsibility).
+
+              `metadata` is created using the intrinsics of the enclosing
+              loader class, not the Loader's intrinsics, because it is for the
+              loader hooks to use. It is never exposed to code loaded by this
+              Loader.
             */
             let metadata = {};
 
@@ -834,6 +849,7 @@ module "js/loaders" {
             }
             let referer = {name, url};
 
+            // this.@import starts us along the pipeline.
             let result;
             try {
                 result = this.@import(referer, moduleName);
@@ -841,14 +857,21 @@ module "js/loaders" {
                 return AsyncCall(errback, exc);
             }
 
-            if (result.status === 'linked')
-                return AsyncCall(success, result.module);
+            if (result.status === 'linked') {
+                // We already had this module in the registry.
+                AsyncCall(success, result.module);
+            } else {
+                // `result` is a LoadTask.  The module is now loading.  When it
+                // loads, it may need to be linked against other modules, so
+                // put it in a LinkSet.
+                let linkSet = new LinkSet(this, success, errback);
+                linkSet.addLoad(result);
+            }
 
-            // The module is loading.
             function success() {
                 $Assert(typeof fullName === 'string');
                 let fullName = loadTask.fullName;
-                let m = $MapGet(self.@modules, fullName);
+                let m = $MapGet(self.@modules, fullName); // TODO: file an issue; David wants to get rid of this
                 try {
                     if (m === undefined) {
                         throw $TypeError("import(): module \"" + fullName +
@@ -860,9 +883,6 @@ module "js/loaders" {
                 }
                 return callback(m);
             }
-
-            let linkSet = new LinkSet(this, success, errback);
-            linkSet.addLoad(loadTask);
         }
 
         /*
@@ -1006,7 +1026,9 @@ module "js/loaders" {
                 type = 'module';
                 if (result === undefined) {
                     // P1 ISSUE #13: Define behavior when the resolve hook
-                    // returns undefined.
+                    // returns undefined.  (David agrees we should probably get
+                    // rid of this case. Simple vs. easy.)
+
                     url = this.@systemDefaultResolve(normalized, referer);
                 } else if (typeof result === "string") {
                     url = result;
@@ -1023,11 +1045,11 @@ module "js/loaders" {
                     }
 
                     /*
-                      result.other is optional, but if present must be an
+                      result.extra is optional, but if present must be an
                       iterable object, a collection of module names. It
                       indicates that the resource at result.url is a script
                       containing those modules.  (The module we're loading,
-                      named by normalized, may be present in result.other or
+                      named by normalized, may be present in result.extra or
                       not.)
 
                       This means the loader can merge the following imports in
@@ -1038,16 +1060,16 @@ module "js/loaders" {
                       if it knows in advance a URL that contains module
                       declarations for both "a" and "b".
                     */
-                    if ("other" in result) {
-                        let other = result.other;
-                        if (!IsObject(other)) {
+                    if ("extra" in result) {
+                        let extra = result.extra;
+                        if (!IsObject(extra)) {
                             throw $TypeError(
-                                ".other property of object returned from " +
+                                ".extra property of object returned from " +
                                 "loader.resolve hook must be an object");
                         }
 
                         /* P4 ISSUE: confirm iterable rather than array */
-                        let names = [...other];
+                        let names = [...extra];
 
                         for (let i = 0; i < names.length; i++) {
                             let name = names[i];
@@ -1131,7 +1153,7 @@ module "js/loaders" {
             }
 
             // P3 ISSUE: type makes sense here, yes?
-            // P3 ISSUE: what about 'other'?
+            // P3 ISSUE: what about 'extra'?
             let options = {referer, metadata, normalized, type};
 
             // Call the fetch hook.
@@ -1150,7 +1172,6 @@ module "js/loaders" {
         }
 
         @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
-            let plan, mod, imports, exports, execute;
             try {
                 // Check arguments to fulfill hook.
                 if (typeof src !== 'string') {
@@ -1170,13 +1191,8 @@ module "js/loaders" {
 
                 // Interpret linkResult.  See comment on the link() method.
                 if (linkResult === undefined) {
-                    plan = "default";
-                    if (type === 'script') {
-                        let script = $CompileScript(this, src, actualAddress);
-                        TODO();
-                    } else {
-                        mod = $CompileModule(this, src, actualAddress);
-                    }
+                    let script = $Compile(this, src, normalized, actualAddress);
+                    loadTask.finish(this, actualAddress, script);
                 } else if (!IsObject(linkResult)) {
                     throw $TypeError("link hook must return an object or undefined");
                 } else if ($IsModule(linkResult)) {
@@ -1185,31 +1201,24 @@ module "js/loaders" {
                                          "but a module with that name is already " +
                                          "in the registry");
                     }
-                    plan = "done";
-                    mod = linkResult;
+                    let mod = linkResult;
                     $MapSet(this.@modules, normalized, mod);
+                    loadTask.onEndRun(normalized, mod);
                 } else {
-                    plan = "factory";
-                    mod = null;
-                    imports = linkResult.imports;
+                    let mod = null;
+                    let imports = linkResult.imports;
 
                     /* P4 issue: "iterable" vs. "array" */
                     if (imports !== undefined)
                         imports = [...imports];
-                    exports = [...linkResult.exports];
-                    execute = linkResult.execute;
+                    let exports = [...linkResult.exports];
+                    let execute = linkResult.execute;
+
+                    throw TODO;
                 }
             } catch (exc) {
                 loadTask.fail(exc);
-                return;
             }
-
-            if (plan == "default")
-                loadTask.finish(this, actualAddress, mod);
-            else if (plan == "done")
-                loadTask.onEndRun(normalized, mod);
-            else  // plan == "factory"
-                throw TODO;
         }
 
         /* Module registry ***************************************************/
@@ -1508,9 +1517,10 @@ module "js/loaders" {
           I think samth and I agree that a synchronous fulfill() callback
           should not synchronously call translate/link hooks, much less
           normalize/resolve/fetch hooks for dependencies. TODO: Code that up.
+
+          TODO: comment default behavior
         */
         fetch(resolved, fulfill, reject, done, options) {
-            // P1 ISSUE #15:  Define behavior here.
             AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
         }
 
@@ -1704,6 +1714,8 @@ module "js/loaders" {
               When we load a script, we add all its modules and their
               dependencies to the same link set, per samth, 2013 April 22.
 
+              TODO: implement that for the declared modules
+
               Example:
                   module "A" {
                       import "B" as B;
@@ -1731,6 +1743,8 @@ module "js/loaders" {
                   done loading, because the association keeps `result`
                   alive (LoadTasks are reference-counted; see
                   onLinkSetFail).
+
+                  ISSUE: whether to keep a copy
                 */
                 if (result.status !== 'linked') {
                     $Assert($MapGet(loader.@loading, result.fullName), result);
@@ -1928,10 +1942,10 @@ module "js/loaders" {
                 return this.fail(loadTask.exception);
 
             if (!$SetHas(this.loads, loadTask)) {
-                $SetAdd(this.loads, loadTask);
                 if (loadTask.status === 'loading')
                     this.loadingCount++;
-                $ArrayPush(loadTask.linkSets, this);
+                $SetAdd(this.loads, loadTask);
+                $SetAdd(loadTask.linkSets, this);
             }
         }
 
@@ -2091,7 +2105,7 @@ module "js/loaders" {
       the spec requires that those always be called from an empty stack.)
     */
     function AsyncCall(fn, ...args) {
-        $AddForNextTurn(() => fn(...args));
+        $QueueTask(() => fn(...args));
     }
 
 
