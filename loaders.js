@@ -1,59 +1,57 @@
-/*
-  loaders.js - pseudo-implementation of proposed ES6 module loaders
-
-  *** Current status **********************************************************
-
-  This is currently extremely incomplete.  The following are in decent shape:
-    - the Loader constructor;
-    - .eval(src, options);
-    - .load(url, callback, errback);
-    - .evalAsync(src, callback, errback, options);
-    - .import(name, callback, errback, options);
-    - .get(name), .has(name), .set(name, module), .delete(name);
-    - .ondemand(sources);
-    - the loader hooks and the loading pipeline that calls them;
-    - execution order;
-    - dependency loading;
-    - linking.
-
-  These things are not implemented at all yet:
-    - the last bit of plumbing connecting the load pipeline back to the success
-      and failure callbacks provided by load/evalAsync/import;
-    - error handling when multiple module loads are involved;
-    - support for custom link hooks that create dynamic-linked ("factory-made")
-      modules;
-    - the fetch hook's done() callback;
-    - intrinsics;
-    - probably various other odds and ends.
-
-
-  *** About loaders ***********************************************************
-
-  The module loader is implemented in three classes, only one of which is
-  ever visible to scripts.
-
-  Loader - The public class.  Its API is standard-track, but no detailed
-    specification text has been written yet.  This implementation uses the
-    following documents as a starting point:
-
-    https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#
-
-    https://gist.github.com/wycats/51c96e3adcdb3a68cbc3
-
-    In addition many details of the behavior have been pinned down in IRC
-    conversations with Sam Tobin-Hochstadt and David Herman.
-
-  LinkSet - Stores state for a particular call to loader.load(),
-    .evalAsync(), or .import().
-
-  LoadTask - Stores the status of a particular module from the time we
-    first decide to load it until it is fully linked and ready to execute.
-
-
-  TODO: Look up how "intrinsics" work and wire that through everything.
-
-  TODO: implement #3, #14, #24
-*/
+// # loaders.js - pseudo-implementation of proposed ES6 module loaders
+//
+// ## Current status
+//
+// This is currently extremely incomplete.  The following are in decent shape:
+//   - the Loader constructor;
+//   - .eval(src, options);
+//   - .load(url, callback, errback);
+//   - .evalAsync(src, callback, errback, options);
+//   - .import(name, callback, errback, options);
+//   - .get(name), .has(name), .set(name, module), .delete(name);
+//   - .ondemand(sources);
+//   - the loader hooks and the loading pipeline that calls them;
+//   - execution order;
+//   - dependency loading;
+//   - linking.
+//
+// These things are not implemented at all yet:
+//   - the last bit of plumbing connecting the load pipeline back to the success
+//     and failure callbacks provided by load/evalAsync/import;
+//   - error handling when multiple module loads are involved;
+//   - support for custom link hooks that create dynamic-linked ("factory-made")
+//     modules;
+//   - the fetch hook's done() callback;
+//   - intrinsics;
+//   - probably various other odds and ends.
+//
+//
+// *** About loaders ***********************************************************
+//
+// The module loader is implemented in three classes, only one of which is
+// ever visible to scripts.
+//
+// Loader - The public class.  Its API is standard-track, but no detailed
+//   specification text has been written yet.  This implementation uses the
+//   following documents as a starting point:
+//
+//   https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#
+//
+//   https://gist.github.com/wycats/51c96e3adcdb3a68cbc3
+//
+//   In addition many details of the behavior have been pinned down in IRC
+//   conversations with Sam Tobin-Hochstadt and David Herman.
+//
+// LinkSet - Stores state for a particular call to loader.load(),
+//   .evalAsync(), or .import().
+//
+// LoadTask - Stores the status of a particular module from the time we
+//   first decide to load it until it is fully linked and ready to execute.
+//
+//
+// TODO: Look up how "intrinsics" work and wire that through everything.
+//
+// TODO: implement #3, #14, #24
 
 "use strict";
 
@@ -103,68 +101,64 @@ import {
     $DefineBuiltins
 } from "implementation-intrinsics";
 
-/*
-  A Loader is responsible for asynchronously finding, fetching, linking,
-  and running modules and scripts.
-
-  The major methods are:
-      eval(src) - Synchronously run some code. Never loads modules,
-          but src may import already-loaded modules.
-      import(moduleName) - Asynchronously load a module and its
-          dependencies.
-      evalAsync(src, callback, errback) - Asynchronously run some code.
-          Loads imported modules.
-      load(url, callback, errback) - Asynchronously load and run a script.
-          Loads imported modules.
-
-  Each Loader has a module registry, which is a cache of already loaded and
-  linked modules.  The Loader tries to avoid fetching modules multiple
-  times, even when multiple load() calls need the same module before it is
-  ready to be added to the registry.
-
-  Loader hooks. The import process can be customized by assigning to (or
-  subclassing and overriding) any number of the five loader hooks:
-      normalize(name) - From a possibly relative module name, determine the
-          full module name.
-      resolve(fullName, options) - Given a full module name, determine the
-          URL to load and whether we're loading a script or a module.
-      fetch(url, fulfill, reject, skip, options) - Load a script or module
-          from the given URL.
-      translate(src, options) - Optionally translate a script or module
-          from some other language to JS.
-      link(src, options) - Determine dependencies of a module; optionally
-          convert an AMD/npm/other module to an ES Module object.
-*/
+// A Loader is responsible for asynchronously finding, fetching, linking,
+// and running modules and scripts.
+//
+// The major methods are:
+//     eval(src) - Synchronously run some code. Never loads modules,
+//         but src may import already-loaded modules.
+//     import(moduleName) - Asynchronously load a module and its
+//         dependencies.
+//     evalAsync(src, callback, errback) - Asynchronously run some code.
+//         Loads imported modules.
+//     load(url, callback, errback) - Asynchronously load and run a script.
+//         Loads imported modules.
+//
+// Each Loader has a module registry, which is a cache of already loaded and
+// linked modules.  The Loader tries to avoid fetching modules multiple
+// times, even when multiple load() calls need the same module before it is
+// ready to be added to the registry.
+//
+// Loader hooks. The import process can be customized by assigning to (or
+// subclassing and overriding) any number of the five loader hooks:
+//     normalize(name) - From a possibly relative module name, determine the
+//         full module name.
+//     resolve(fullName, options) - Given a full module name, determine the
+//         URL to load and whether we're loading a script or a module.
+//     fetch(url, fulfill, reject, skip, options) - Load a script or module
+//         from the given URL.
+//     translate(src, options) - Optionally translate a script or module
+//         from some other language to JS.
+//     link(src, options) - Determine dependencies of a module; optionally
+//         convert an AMD/npm/other module to an ES Module object.
+//
 export class Loader {
-    /*
-      Create a new Loader.
-
-      P3 ISSUE #10: Is the parent argument necessary?
-    */
+    // Create a new Loader.
+    //
+    // P3 ISSUE #10: Is the parent argument necessary?
+    //
     constructor(parent, options) {
-        /*
-          this.@modules is the module registry.  It maps full module names
-          to Module objects.
-
-          This map only ever contains Module objects that have been fully
-          linked.  However it can contain modules whose bodies have not yet
-          started to execute.  Except in the case of cyclic imports, such
-          modules are not exposed to user code without first calling
-          Loader.@ensureExecuted().
-        */
+        // this.@modules is the module registry.  It maps full module names
+        // to Module objects.
+        //
+        // This map only ever contains Module objects that have been fully
+        // linked.  However it can contain modules whose bodies have not yet
+        // started to execute.  Except in the case of cyclic imports, such
+        // modules are not exposed to user code without first calling
+        // Loader.@ensureExecuted().
+        //
         this.@modules = $MapNew();
 
-        /*
-          this.@loading stores information about modules that are loading
-          and not yet linked.  It maps module names to LoadTask objects.
-
-          This is stored in the loader so that multiple calls to
-          loader.load()/.import()/.evalAsync() can cooperate to fetch what
-          they need only once.
-        */
+        // this.@loading stores information about modules that are loading
+        // and not yet linked.  It maps module names to LoadTask objects.
+        //
+        // This is stored in the loader so that multiple calls to
+        // loader.load()/.import()/.evalAsync() can cooperate to fetch what
+        // they need only once.
+        //
         this.@loading = $MapNew();
 
-        /* Various options. */
+        // Various options.
         this.@global = options.global;  // P4 ISSUE: ToObject here?
         this.@strict = ToBoolean(options.strict);
         this.@baseURL = $ToString(options.baseURL);
