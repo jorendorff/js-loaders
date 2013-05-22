@@ -23,6 +23,22 @@
 // This system takes those things into account.
 //
 //
+// ## References
+//
+// The loader proposal is standard-track, but no detailed specification text
+// has been written yet.  This implementation uses these two documents as a
+// starting point:
+//
+//   * [ES6 Modules](https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#)
+//     (Google docs) by Sam Tobin-HochStadt and David Herman
+//
+//   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
+//      by Yehuda Katz
+//
+// In addition many details of the behavior have been pinned down in IRC
+// conversations with Sam and David.
+//
+//
 // ## Current status
 //
 // This implementation of ES6 modules is incomplete and untested.  Some parts
@@ -50,21 +66,6 @@
 //   * intrinsics;
 //   * probably various other odds and ends.
 //
-//
-// ## References
-//
-// The loader proposal is standard-track, but no detailed specification text
-// has been written yet.  This implementation uses these two documents as a
-// starting point:
-//
-//   * [ES6 Modules](https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#)
-//     (Google docs) by Sam Tobin-HochStadt and David Herman
-//
-//   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
-//      by Yehuda Katz
-//
-// In addition many details of the behavior have been pinned down in IRC
-// conversations with Sam and David.
 //
 // TODO: Implement #14, #24.
 
