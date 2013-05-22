@@ -1982,10 +1982,6 @@ class LinkSet {
         }
     }
 
-    addScriptAndDependencies(script) {
-        // TODO - this will look something like LoadTask.finish().
-    }
-
     /*
       Fail this LinkSet.  Detach it from all loads and schedule the error
       callback.
