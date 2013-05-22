@@ -246,11 +246,11 @@ export class Loader {
     //     script.  Loads imported modules.
     //
 
-    // Check to see if script declares any modules that are already loaded
-    // or loading.  If so, throw a SyntaxError.  If not, add entries to the
-    // @loading map for each declared module.
+    // **`@checkModuleDeclartions`** - Check to see if script declares any
+    // modules that are already loaded or loading.  If so, throw a SyntaxError.
+    // If not, add entries to the @loading map for each declared module.
     //
-    // Rationale: Consider two evalAsync calls.
+    // *Rationale:* Consider two evalAsync calls.
     //
     //     System.evalAsync('module "x" { import "y" as y; }', ok, err);
     //     System.evalAsync('module "x" { import "z" as z; }', ok, err);
@@ -320,6 +320,9 @@ export class Loader {
         }
 
         let script = $Compile(this, src, null, url, this.@strict);
+
+        // TODO - BUG - This creates a LoadTask and stores it in @loading, but
+        // those entries are not removed if linking fails.
         this.@checkModuleDeclarations(script, null);
 
         // $ScriptImports returns an array of [client, request] pairs.
@@ -333,7 +336,7 @@ export class Loader {
         let pairs = $ScriptImports(script);
 
         // Linking precedes execution. The code below completely finishes
-        // linking `scripts` with its dependencies before executing any of them.
+        // linking `script` with its dependencies before executing any of them.
         let modules = [];
         for (let i = 0; i < pairs.length; i++) {
             let [client, request] = pairs[i];
@@ -377,62 +380,62 @@ export class Loader {
         return Loader.@ensureExecuted(script);
     }
 
-    // Asynchronously evaluate the program `src`.
+    // **`evalAsync(src, callback, errback, options)`** - Asynchronously
+    // evaluate the program `src`.
     //
-    // src may import modules that have not been loaded yet.  In that case,
+    // `src` may import modules that have not been loaded yet.  In that case,
     // load all those modules, and their imports, transitively, before
     // evaluating the script.
     //
     // On success, the result of evaluating the program is passed to
     // `callback`.
     //
-    // About callback and errback:
-    //   Loader.prototype.evalAsync(), .load(), and .import() all take two
-    //   callback arguments, callback and errback, the success and failure
-    //   callbacks respectively.
+    // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
+    // `.load()`, and `.import()` all take two callback arguments, `callback`
+    // and `errback`, the success and failure callbacks respectively.
     //
-    //   On success, these methods each schedule the success callback to be
-    //   called with a single argument (the result of the operation).
+    // On success, these methods each schedule the success callback to be
+    // called with a single argument (the result of the operation).
     //
-    //   These three methods never throw. Instead, on error, the exception
-    //   is stored until the next event loop turn and then passed to the
-    //   failure callback.
+    // These three methods never throw. Instead, on error, the exception
+    // is stored until the next event loop turn and then passed to the
+    // failure callback.
     //
-    //   Both arguments are optional.  The default success callback does
-    //   nothing.  The default failure callback throws its argument.
-    //   (Rationale:  the event loop will then treat it like any other
-    //   unhandled exception.)
+    // Both arguments are optional.  The default success callback does
+    // nothing.  The default failure callback throws its argument.
+    // (*Rationale:*  the event loop will then treat it like any other
+    // unhandled exception.)
     //
-    //   Success and failure callbacks are always called in a fresh event
-    //   loop turn.  This means they will not be called until after
-    //   evalAsync returns, and they are always called directly from the
-    //   event loop:  except in the case of nested event loops, these
-    //   callbacks are never called while user code is on the stack.
+    // Success and failure callbacks are always called in a fresh event
+    // loop turn.  This means they will not be called until after
+    // evalAsync returns, and they are always called directly from the
+    // event loop:  except in the case of nested event loops, these
+    // callbacks are never called while user code is on the stack.
     //
-    // options.url, if present, is passed to each loader hook, for each
-    // module loaded, as options.referer.url.  (The default loader hooks
-    // ignore it, though.)
+    // **Options:** `options.url`, if present, is passed to each loader hook,
+    // for each module loaded, as `options.referer.url`.  (The default loader
+    // hooks ignore it, though.)
     //
-    // (options.url may also be stored in the script and used for
-    // Error().fileName, Error().stack, and the debugger, and we anticipate
-    // doing so via $Compile; but such use is outside the scope of the
+    // (`options.url` may also be stored in the script and used for
+    // `Error().fileName`, `Error().stack`, and the debugger, and we anticipate
+    // doing so via `$Compile`; but such use is outside the scope of the
     // language standard.)
     //
-    // (options.module is being specified, to serve an analogous purpose for
+    // (`options.module` is being specified, to serve an analogous purpose for
     // normalization, but it is not implemented here. See the comment on
-    // eval().)
+    // `eval()`.)
     //
-    // Loader hooks:  For the script `src`, the normalize, resolve, fetch,
-    // and link hooks are not called.  The fetch hook is for obtaining code,
-    // which we already have, and the other three operate only on modules,
-    // not scripts.  It is not yet decided whether the translate hook is
-    // called; see the ISSUE comment on the eval method.  Of course for
-    // modules imported by `src` that are not already loaded, all the loader
-    // hooks can be called.
+    // **Loader hooks:**  For the script `src`, the `normalize`, `resolve`,
+    // `fetch`, and `link` hooks are not called.  The `fetch` hook is for
+    // obtaining code, which we already have, and the other three are relevant
+    // only for modules, not scripts.  It is not yet decided whether the
+    // `translate` hook is called; see the ISSUE comment on the `eval` method.
+    // Of course for modules imported by `src` that are not already loaded, all
+    // the loader hooks can be called.
     //
-    // Future directions:  evalAsync, import, load, and the fetch hook all
-    // take callbacks and currently return undefined.  They are designed to be
-    // upwards-compatible to Futures.  per samth, 2013 April 22.
+    // **Future directions:**  `evalAsync`, `import`, `load`, and the `fetch`
+    // hook all take callbacks and currently return `undefined`.  They are
+    // designed to be upwards-compatible to Futures.  per samth, 2013 April 22.
     //
     evalAsync(src,
               callback = value => undefined,
@@ -1565,7 +1568,7 @@ class LoadTask {
             sets[i].onLoad(this);
     }
 
-    // Error handling.
+    // ## Error handling
     //
     // Every error that can occur throughout the process (with one
     // exception; see exhaustive list in the next comment, below XXX TODO
@@ -1677,8 +1680,9 @@ class LoadTask {
         $Assert($SetSize(sets) === 0);
     }
 
-    // This is called when a LinkSet associated with this load fails.
-    // If this load is not needed by any surviving LinkSet, drop it.
+    // **`onLinkSetFail(loader, linkSet)`** - This is called when a LinkSet
+    // associated with this load fails.  If this load is not needed by any
+    // surviving LinkSet, drop it.
     onLinkSetFail(loader, linkSet) {
         $Assert($SetHas(this.linkSets, linkSet));
         $SetDelete(this.linkSets, linkSet);
@@ -1724,8 +1728,9 @@ class LinkSet {
         }
     }
 
-    // LoadTask.prototype.finish calls this after one LoadTask actually
-    // finishes, and after kicking off loads for all its dependencies.
+    // **`onLoad(loadTask)`** - LoadTask.prototype.finish calls this after one
+    // LoadTask actually finishes, and after kicking off loads for all its
+    // dependencies.
     //
     // If the LoadTask is completely satisfied (that is, all dependencies have
     // loaded) then we link the modules and fire the callback.
@@ -1761,6 +1766,10 @@ class LinkSet {
         }
     }
 
+    // **`link()`** - Link all scripts and modules in this link set to each
+    // other and to modules in the registry.  This is done in a synchronous
+    // walk of the graph.  On success, commit all the modules in this LinkSet
+    // to the loader's module registry.
     link() {
         // TODO - need a starting {script, dependencyFullNames} pair.
         let {script, dependencies} = throw TODO;
