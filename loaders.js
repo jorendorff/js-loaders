@@ -196,18 +196,17 @@ export class Loader {
           a hook takes it from the internal property.  In no circumstance
           does super work.
         */
-        var self = this;
-        function takeHook(name) {
+        let takeHook = name => {
             var hook = options[name];
             if (hook !== undefined) {
-                $ObjectDefineProperty(self, name, {
+                $ObjectDefineProperty(this, name, {
                     configurable: true,
                     enumerable: true,
                     value: hook,
                     writable: true
                 });
             }
-        }
+        };
 
         takeHook("normalize");
         takeHook("resolve");
@@ -886,8 +885,8 @@ export class Loader {
             let linkSet = new LinkSet(this, load, success, errback);
         }
 
-        function success() {
-            let m = $MapGet(self.@modules, fullName); // TODO: file an issue; David wants to get rid of this
+        let success = () => {
+            let m = $MapGet(this.@modules, fullName); // TODO: file an issue; David wants to get rid of this
             try {
                 if (m === undefined) {
                     throw $TypeError("import(): module \"" + fullName +
@@ -898,7 +897,7 @@ export class Loader {
                 return errback(exc);
             }
             return callback(m);
-        }
+        };
     }
 
     /*
