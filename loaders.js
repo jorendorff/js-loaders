@@ -52,14 +52,11 @@
 //   * probably various other odds and ends.
 //
 //
-// ## About loaders
+// ## References
 //
-// The module loader is implemented in three classes, only one of which is
-// ever visible to scripts.
-//
-// **`Loader`** - The public class.  Its API is standard-track, but no detailed
-// specification text has been written yet.  This implementation uses these
-// two documents as a starting point:
+// The loader proposal is standard-track, but no detailed specification text
+// has been written yet.  This implementation uses these two documents as a
+// starting point:
 //
 //   * [ES6 Modules](https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#)
 //     (Google docs) by Sam Tobin-HochStadt and David Herman
@@ -69,16 +66,6 @@
 //
 // In addition many details of the behavior have been pinned down in IRC
 // conversations with Sam and David.
-//
-// **`LinkSet`** - Stores state for a particular call to `loader.load()`,
-// `.evalAsync()`, or `.import()`.
-//
-// **`LoadTask`** - Stores the status of a particular module from the time we
-// first decide to load it until it is fully linked and ready to execute.
-//
-// TODO: Support for **globals** and **intrinsics** are proposed that will
-// allow loaders to isolate the code they load from everything else. This
-// support is not implemented at all yet.
 //
 // TODO: Implement #3, #14, #24.
 
