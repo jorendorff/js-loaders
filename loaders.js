@@ -1,29 +1,55 @@
 // # loaders.js - ES6 module loaders illustrated
 //
+// This is a sample implementation of the ES6 module loader.  It implements the
+// proposal in terms of ES6 plus a few primitives meant to be exposed by the
+// implementation.
+//
+//
+// ## Why JS is different
+//
+// Most module systems assume access to a fast filesystem. They use blocking
+// I/O. They search many directories looking for files.
+//
+// Obviously that won't fly on the Web. We need a module system that works
+// asynchronously.
+//
+// Things can happen in an asynchronous module system that can't happen in
+// synchronous systems.
+//
+//   * Dependencies can load in parallel.
+//   * While dependencies are loading for one script, another script can run.
+//     And that script may share dependencies with the first one.
+//
+// This system takes those things into account.
+//
+//
 // ## Current status
 //
-// This is currently extremely incomplete.  The following are in decent shape:
-//   - the Loader constructor;
-//   - .eval(src, options);
-//   - .load(url, callback, errback);
-//   - .evalAsync(src, callback, errback, options);
-//   - .import(name, callback, errback, options);
-//   - .get(name), .has(name), .set(name, module), .delete(name);
-//   - .ondemand(sources);
-//   - the loader hooks and the loading pipeline that calls them;
-//   - execution order;
-//   - dependency loading;
-//   - linking.
+// This implementation of ES6 modules is incomplete and untested.  Some parts
+// are in decent shape:
 //
-// These things are not implemented at all yet:
-//   - the last bit of plumbing connecting the load pipeline back to the success
+//   * the `Loader` constructor;
+//   * the methods for loading and running code:
+//     `eval`, `evalAsync`, `load`, and `import`;
+//   * the methods for directly accessing the module map:
+//     `get`, `has`, `set`, and `delete`;
+//   * the loader hooks and the loading pipeline that calls them;
+//   * dependency loading;
+//   * linking;
+//   * execution order;
+//   * error handling;
+//   * the browser's configuration method, `ondemand`;
+//   * the browser's custom loader hooks: `normalize`, `resolve`, and `fetch`.
+//
+// Some parts are not implemented at all yet:
+//
+//   * the last bit of plumbing connecting the load pipeline back to the success
 //     and failure callbacks provided by load/evalAsync/import;
-//   - error handling when multiple module loads are involved;
-//   - support for custom link hooks that create dynamic-linked ("factory-made")
+//   * support for custom link hooks that create dynamic-linked ("factory-made")
 //     modules;
-//   - the fetch hook's done() callback;
-//   - intrinsics;
-//   - probably various other odds and ends.
+//   * the fetch hook's `done()` callback;
+//   * intrinsics;
+//   * probably various other odds and ends.
 //
 //
 // ## About loaders
@@ -31,37 +57,75 @@
 // The module loader is implemented in three classes, only one of which is
 // ever visible to scripts.
 //
-// Loader - The public class.  Its API is standard-track, but no detailed
-//   specification text has been written yet.  This implementation uses the
-//   following documents as a starting point:
+// **`Loader`** - The public class.  Its API is standard-track, but no detailed
+// specification text has been written yet.  This implementation uses these
+// two documents as a starting point:
 //
-//   https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#
+//   * [ES6 Modules](https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#)
+//     (Google docs) by Sam Tobin-HochStadt and David Herman
 //
-//   https://gist.github.com/wycats/51c96e3adcdb3a68cbc3
+//   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
+//      by Yehuda Katz
 //
-//   In addition many details of the behavior have been pinned down in IRC
-//   conversations with Sam Tobin-Hochstadt and David Herman.
+// In addition many details of the behavior have been pinned down in IRC
+// conversations with Sam and David.
 //
-// LinkSet - Stores state for a particular call to loader.load(),
-//   .evalAsync(), or .import().
+// **`LinkSet`** - Stores state for a particular call to `loader.load()`,
+// `.evalAsync()`, or `.import()`.
 //
-// LoadTask - Stores the status of a particular module from the time we
-//   first decide to load it until it is fully linked and ready to execute.
+// **`LoadTask`** - Stores the status of a particular module from the time we
+// first decide to load it until it is fully linked and ready to execute.
 //
+// TODO: Support for **globals** and **intrinsics** are proposed that will
+// allow loaders to isolate the code they load from everything else. This
+// support is not implemented at all yet.
 //
-// TODO: Look up how "intrinsics" work and wire that through everything.
-//
-// TODO: implement #3, #14, #24
+// TODO: Implement #3, #14, #24.
 
 "use strict";
 
+
+// ## Primitives
+
+// We rely on the JavaScript implementation to provide a few primitives.
 import {
-    // Embedding features
+    // The `$QueueTask(fn)` primitive schedules a callback `fn` to be called
+    // in a subsequent event loop turn.  It is mainly used to ensure that
+    // user callbacks are called from an empty stack.
     $QueueTask,
+
+    // `$Assert(condition)` does nothing. It is called here to indicate that
+    // the given `condition` must be true.
     $Assert,
 
-    // Capabilities that JS provides, but via methods that other code could
-    // delete or replace
+    // Modules
+    $ModuleGetContainingScript,
+
+    // Scripts
+    $Compile,  // Parse a script or a module body. Returns a script.
+    $ScriptDeclaredModuleNames,  // Returns an array of strings, the modules declared in the script.
+    $ScriptGetDeclaredModule,  // (script, name) -> Module
+    $ScriptImports,  // array of pairs, see comment in Loader.eval()
+    $LinkScript,  // Link a script to the modules requested in its imports.
+
+    // Primitives that operate on both scripts and modules.
+    $CodeHasExecuted,
+    $CodeSetExecuted,
+
+    // `$CodeExecute(c)` - Execute the body of a script or module. If `c` is a
+    // module, return undefined. If it is a script, return the value of the
+    // last-executed expression statement.
+    $CodeExecute,
+    $CodeGetLinkedModules,
+
+    // Globals
+    $DefineBuiltins
+} from "implementation-intrinsics";
+
+// The remaining primitives are not very interesting. These are capabilities
+// that JS provides via builtin methods. We use primitives rather than the
+// builtin methods because user code can delete or replace the methods.
+import {
     $ToString,      // $ToString(v) === ES ToString algorithm ~= ("" + v)
     $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
     $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
@@ -73,7 +137,6 @@ import {
     $SetNew,        // $SetNew() ~= new Set
     $SetHas,        // $SetHas(set, v) ~= set.has(v)
     $SetAdd,        // $SetAdd(set, v) ~= set.add(v)
-    $SetIterable    // for (v of $SetIterable(set)) ~= for (v of set)
     $MapNew,        // $MapNew() ~= new Map
     $MapHas,        // $MapHas(map, key) ~= map.has(key)
     $MapGet,        // $MapGet(map, key) ~= map.get(key)
@@ -81,56 +144,48 @@ import {
     $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
     $MapIterator,   // $MapIterator(map) ~= map[@@iterator]()
     $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
-    $SyntaxError,   // $SyntaxError(msg) ~= new SyntaxError(msg)
-
-    // Modules and scripts
-    $CodeHasExecuted,
-    $CodeSetExecuted,
-    $CodeExecute,
-    $CodeGetLinkedModules,
-
-    // Scripts
-    $Compile,
-    $LinkScript,
-    $EvaluateScript,
-    $ScriptDeclaredModuleNames,  // array of strings
-    $ScriptGetDeclaredModule,  // (script, name) -> Module
-    $ScriptImports,  // array of pairs, see comment in Loader.eval()
-
-    // Globals
-    $DefineBuiltins
-} from "implementation-intrinsics";
+    $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
+} from "implementation-builtins";
 
 // A Loader is responsible for asynchronously finding, fetching, linking,
 // and running modules and scripts.
 //
-// The major methods are:
-//     eval(src) - Synchronously run some code. Never loads modules,
-//         but src may import already-loaded modules.
-//     import(moduleName) - Asynchronously load a module and its
-//         dependencies.
-//     evalAsync(src, callback, errback) - Asynchronously run some code.
-//         Loads imported modules.
-//     load(url, callback, errback) - Asynchronously load and run a script.
-//         Loads imported modules.
+// The major methods are for loading and runing code:
 //
-// Each Loader has a module registry, which is a cache of already loaded and
-// linked modules.  The Loader tries to avoid fetching modules multiple
-// times, even when multiple load() calls need the same module before it is
+//   * `eval(src)` - Synchronously run some code.  Never loads modules,
+//     but `src` may import already-loaded modules.
+//
+//   * `import(moduleName, callback, errback)` - Asynchronously load a module and
+//     its dependencies.
+//
+//   * `evalAsync(src, callback, errback)` - Asynchronously run some code.  Loads
+//     imported modules.
+//
+//   * `load(url, callback, errback)` - Asynchronously load and run a script.
+//     Loads imported modules.
+//
+// Each Loader has a **module registry**, which is a cache of already loaded
+// and linked modules.  The Loader tries to avoid fetching modules multiple
+// times, even when multiple `load()` calls need the same module *before* it is
 // ready to be added to the registry.
 //
-// Loader hooks. The import process can be customized by assigning to (or
+// **Loader hooks.** The import process can be customized by assigning to (or
 // subclassing and overriding) any number of the five loader hooks:
-//     normalize(name) - From a possibly relative module name, determine the
-//         full module name.
-//     resolve(fullName, options) - Given a full module name, determine the
-//         URL to load and whether we're loading a script or a module.
-//     fetch(url, fulfill, reject, skip, options) - Load a script or module
-//         from the given URL.
-//     translate(src, options) - Optionally translate a script or module
-//         from some other language to JS.
-//     link(src, options) - Determine dependencies of a module; optionally
-//         convert an AMD/npm/other module to an ES Module object.
+//
+//   * `normalize(name, options)` - From a possibly relative module name,
+//     determine the full module name.
+//
+//   * `resolve(fullName, options)` - Given a full module name, determine the URL
+//     to load and whether we're loading a script or a module.
+//
+//   * `fetch(url, fulfill, reject, skip, options)` - Load a script or module
+//     from the given URL.
+//
+//   * `translate(src, options)` - Optionally translate a script or module from
+//     some other language to JS.
+//
+//   * `link(src, options)` - Determine dependencies of a module; optionally
+//     convert an AMD/npm/other module to an ES Module object.
 //
 export class Loader {
     // Create a new Loader.
@@ -138,27 +193,30 @@ export class Loader {
     // P3 ISSUE #10: Is the parent argument necessary?
     //
     constructor(parent, options) {
-        // this.@modules is the module registry.  It maps full module names
-        // to Module objects.
+        // `this.@modules` is the module registry.  It maps full module names
+        // to `Module` objects.
         //
-        // This map only ever contains Module objects that have been fully
+        // This map only ever contains `Module` objects that have been fully
         // linked.  However it can contain modules whose bodies have not yet
         // started to execute.  Except in the case of cyclic imports, such
-        // modules are not exposed to user code without first calling
-        // Loader.@ensureExecuted().
+        // modules are not exposed to user code.  See
+        // `Loader.@ensureExecuted()`.
         //
+        // **Notation.** This weird `loader.@modules` syntax is not part of the
+        // JS language. It is only meant to indicate that the `@modules`
+        // property is private.  TODO: Replace this with a `WeakMap`.
         this.@modules = $MapNew();
 
-        // this.@loading stores information about modules that are loading
+        // `this.@loading` stores information about modules that are loading
         // and not yet linked.  It maps module names to LoadTask objects.
         //
         // This is stored in the loader so that multiple calls to
-        // loader.load()/.import()/.evalAsync() can cooperate to fetch what
+        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
         // they need only once.
         //
         this.@loading = $MapNew();
 
-        // Various options.
+        // Various configurable options.
         this.@global = options.global;  // P4 ISSUE: ToObject here?
         this.@strict = ToBoolean(options.strict);
         this.@baseURL = $ToString(options.baseURL);
@@ -168,7 +226,7 @@ export class Loader {
         // As implemented here, hooks are just ordinary properties of the
         // Loader object.  Default implementations are just ordinary methods
         // of the Loader class. Loader subclasses can add methods with the
-        // appropriate names, and use super() to invoke the base-class
+        // appropriate names, and use `super()` to invoke the base-class
         // behavior, and stuff will "just work".
         //
         // It's not clear that's the right design.  What's specified in the
@@ -201,21 +259,18 @@ export class Loader {
     // ## Configuration
 
     // Return the global object associated with this loader.
-    //
     get global() {
         return this.@global;
     }
 
     // Return the loader's strictness setting. If true, all code loaded by
     // this loader is treated as strict-mode code.
-    //
     get strict() {
         return this.@strict;
     }
 
     // Get/set the base URL this loader uses for auto-mapping module names
     // to URLs.
-    //
     get baseURL() {
         return this.@baseURL;
     }
@@ -226,133 +281,6 @@ export class Loader {
 
 
     // ## Loading and running code
-
-    // Walk the dependency graph of the module or script `start`, executing all
-    // module bodies that have not executed.
-    //
-    // `start` and its dependencies must already be linked.
-    //
-    // On success, `start` and all its dependencies, transitively, will have
-    // started to execute exactly once.  That is, the $CodeHasExecuted bit is
-    // set on all of them.
-    //
-    // Execution order:  Dependencies are executed in depth-first, left-to-right,
-    // post order, stopping at cycles.  A script that contains one or more
-    // dependencies is executed immediately after the last of the modules it
-    // declares that are in the dependency set (per dherman, 2013 May 21).
-    //
-    // Error handling:  Module bodies can throw exceptions, and they are
-    // propagated to the caller.  The $CodeHasExecuted bit remains set on a
-    // module after its body throws an exception.
-    //
-    // Purpose:  Module bodies are executed on demand, as late as possible.
-    // The loader always calls this function before returning a module to
-    // script.
-    //
-    // There is only one way a module can be exposed to script before it has
-    // executed.  In the case of an import cycle, @ensureExecuted itself exposes
-    // the modules in the cycle to scripts before they have all executed.  This
-    // is a consequence of the simple fact that we have to start somewhere: one
-    // of the modules in the cycle must run first.
-    // 
-    // P3 ISSUE: If you eval() or load() a script S that declares a module M and
-    // imports a module K, and executing K's body throws, then the next script
-    // that imports M will cause the body of S to execute. Super weird.
-    //
-    static @ensureExecuted(mod) {
-        // NOTE: A tricky test case for this code:
-        //
-        //     <script>
-        //       var ok = false;
-        //     </script>
-        //     <script>
-        //       module "x" { import "y" as y; throw fit; }
-        //       module "y" { import "x" as x; ok = true; }
-        //       import "y" as y;  // marks "x" as executed, but not "y"
-        //     </script>
-        //     <script>
-        //       import "x" as x;  // must execute "y" but not "x"
-        //       assert(ok === true);
-        //     </script>
-        //
-        // This is tricky because when we go to run the last script,
-        // module "x" is already marked as executed, but one of its
-        // dependencies, "y", isn't. We must find it anyway and execute it.
-        //
-        // Cyclic imports, combined with exceptions during module execution
-        // interrupting this algorithm, are the culprit.
-        //
-        // The remedy:  when walking the dependency graph, do not stop at
-        // already-marked-executed modules.  Implementations may optimize as
-        // noted below.
-
-        // Another test case:
-        //
-        //     var log = "";
-        //     module "x" { import "y" as y; log += "x"; }
-        //     module "y" { log += "y"; }
-        //     import "x" as x, "y" as y;
-        //     assert(log === "xy");
-
-        // Error handling:  Suppose a module is linked, we start executing
-        // its body, and that throws an exception.  We leave it in the
-        // module registry (per samth, 2013 April 16) because re-loading the
-        // module and running it again is not likely to make things better.
-        //
-        // Other fully linked modules in the same LinkSet are also left in
-        // the registry (per dherman, 2013 April 18).  Some of those may be
-        // unrelated to the module that threw.  Since their "has ever
-        // started executing" bit is not yet set, they will be executed on
-        // demand.  This allows unrelated modules to finish loading and
-        // initializing successfully, if they are needed.
-        //
-        // One consequence of this design is that while executing a module
-        // body, calling eval() or System.get() can cause other module
-        // bodies to execute.  That is, module body execution can nest.
-        // However no individual module's body will be executed more than
-        // once.
-
-        // Depth-first walk of the dependency graph, stopping at cycles, and
-        // executing each module body that has not already been executed (in
-        // post order).
-        //
-        // An implementation can optimize this by marking each module with
-        // an extra "no need to walk this subtree" bit when all
-        // dependencies, transitively, are found to have been executed.
-        //
-        let seen = $SetNew();
-        let schedule = $SetNew();
-
-        function walk(m) {
-            $SetAdd(seen, m);
-            let deps = $CodeGetLinkedModules(mod);
-            for (let i = 0; i < deps.length; i++) {
-                let dep = deps[i];
-                if (!$SetHas(seen, dep))
-                    walk(dep);
-            }
-            $SetAdd(schedule, m);
-
-            if ($IsModule(m)) {
-                // The $SetRemove call below means that if we already plan to
-                // execute this script, move it to execute after m.
-                let script = $ModuleGetContainingScript(m);
-                $SetRemove(schedule, script);
-                $SetAdd(schedule, script);
-            }
-        }
-
-        walk(start);
-
-        let result;
-        for (let c of $SetIterable(schedule)) {
-            if (!$CodeHasExecuted(c)) {
-                $CodeSetExecuted(c);
-                result = $CodeExecute(c);
-            }
-        }
-        return result;
-    }
 
     // Check to see if script declares any modules that are already loaded
     // or loading.  If so, throw a SyntaxError.  If not, add entries to the
@@ -479,13 +407,9 @@ export class Loader {
             $MapSet(this.@modules, fullName, m);
         }
 
-        // Execute any module bodies that have not been executed yet, then
-        // execute script.  Any script or module body can throw.
-        //
-        // Loader.@ensureExecuted() can execute other module bodies in the
-        // graph, to ensure that barring cycles, a module is always executed
-        // before other modules that depend on it.
-        //
+        // Execute any (directly or indirectly imported) module bodies that
+        // have not been executed yet, then execute script.  Any script or
+        // module body can throw.
         return Loader.@ensureExecuted(script);
     }
 
@@ -984,11 +908,8 @@ export class Loader {
                                  "string or an object with .url");
             }
         } catch (exc) {
-            // Implementation issue:  This isn't implemented yet, but
-            // loadTask.fail() will be responsible for forwarding this error
-            // to all LinkSets that have attached to loadTask in the
-            // meantime.  It is also responsible for removing loadTask
-            // itself from this.@loading.
+            // `loadTask` is responsible for firing error callbacks and
+            // removing itself from `this.@loading`.
             loadTask.fail(exc);
             return normalized;
         }
@@ -1100,6 +1021,136 @@ export class Loader {
         } catch (exc) {
             loadTask.fail(exc);
         }
+    }
+
+    // Walk the dependency graph of the module or script `start`, executing all
+    // module bodies that have not executed.
+    //
+    // `start` and its dependencies must already be linked.
+    //
+    // On success, `start` and all its dependencies, transitively, will have
+    // started to execute exactly once.  That is, the $CodeHasExecuted bit is
+    // set on all of them.
+    //
+    // **Purpose** - Module bodies are executed on demand, as late as possible.
+    // The loader always uses this function to execute scripts, and always
+    // calls this function before returning a module to script.
+    //
+    // **Execution order** - Modules are executed in depth-first,
+    // left-to-right, post order, stopping at cycles.  A script that contains
+    // one or more dependencies is executed immediately after the last of the
+    // modules it declares that are in the dependency set (per dherman, 2013
+    // May 21).
+    //
+    // **Error handling** - Module bodies can throw exceptions, and they are
+    // propagated to the caller.  The $CodeHasExecuted bit remains set on a
+    // module after its body throws an exception.
+    //
+    // **Not-yet-executed modules** - There is only one way a module can be
+    // exposed to script before it has executed.  In the case of an import
+    // cycle, whichever module executes first can observe the others before
+    // they have executed.  Simply put, we have to start somewhere: one of the
+    // modules in the cycle must run first.
+    //
+    // P3 ISSUE: If you `eval()` or `load()` a script S that declares a module
+    // M and imports a module K, and executing K's body throws, then the next
+    // script that imports M will cause the body of S to execute. Super weird.
+    //
+    static @ensureExecuted(mod) {
+        // NOTE: A tricky test case for this code:
+        //
+        //     <script>
+        //       var ok = false;
+        //     </script>
+        //     <script>
+        //       module "x" { import "y" as y; throw fit; }
+        //       module "y" { import "x" as x; ok = true; }
+        //       import "y" as y;  // marks "x" as executed, but not "y"
+        //     </script>
+        //     <script>
+        //       import "x" as x;  // must execute "y" but not "x"
+        //       assert(ok === true);
+        //     </script>
+        //
+        // This is tricky because when we go to run the last script,
+        // module "x" is already marked as executed, but one of its
+        // dependencies, "y", isn't. We must find it anyway and execute it.
+        //
+        // Cyclic imports, combined with exceptions during module execution
+        // interrupting this algorithm, are the culprit.
+        //
+        // The remedy:  when walking the dependency graph, do not stop at
+        // already-marked-executed modules.  Implementations may optimize as
+        // noted below.
+
+        // Another test case:
+        //
+        //     var log = "";
+        //     module "x" { import "y" as y; log += "x"; }
+        //     module "y" { log += "y"; }
+        //     import "x" as x, "y" as y;
+        //     assert(log === "xy");
+
+        // Error handling:  Suppose a module is linked, we start executing
+        // its body, and that throws an exception.  We leave it in the
+        // module registry (per samth, 2013 April 16) because re-loading the
+        // module and running it again is not likely to make things better.
+        //
+        // Other fully linked modules in the same LinkSet are also left in
+        // the registry (per dherman, 2013 April 18).  Some of those may be
+        // unrelated to the module that threw.  Since their "has ever
+        // started executing" bit is not yet set, they will be executed on
+        // demand.  This allows unrelated modules to finish loading and
+        // initializing successfully, if they are needed.
+        //
+        // One consequence of this design is that while executing a module
+        // body, calling eval() or System.get() can cause other module
+        // bodies to execute.  That is, module body execution can nest.
+        // However no individual module's body will be executed more than
+        // once.
+
+        // Depth-first walk of the dependency graph, stopping at cycles, and
+        // executing each module body that has not already been executed (in
+        // post order).
+        //
+        // An implementation can optimize this by marking each module with
+        // an extra "no need to walk this subtree" bit when all
+        // dependencies, transitively, are found to have been executed.
+        //
+        let seen = $SetNew();
+        let schedule = $SetNew();
+
+        function walk(m) {
+            $SetAdd(seen, m);
+            let deps = $CodeGetLinkedModules(mod);
+            for (let i = 0; i < deps.length; i++) {
+                let dep = deps[i];
+                if (!$SetHas(seen, dep))
+                    walk(dep);
+            }
+            $SetAdd(schedule, m);
+
+            if ($IsModule(m)) {
+                // The $SetRemove call below means that if we already plan to
+                // execute this script, move it to execute after m.
+                let script = $ModuleGetContainingScript(m);
+                $SetRemove(schedule, script);
+                $SetAdd(schedule, script);
+            }
+        }
+
+        walk(start);
+
+        let result;
+        let schedule = $SetElements(schedule);
+        for (let i = 0; i < schedule.length; i++) {
+            let c = schedule[i];
+            if (!$CodeHasExecuted(c)) {
+                $CodeSetExecuted(c);
+                result = $CodeExecute(c);
+            }
+        }
+        return result;
     }
 
 
@@ -1237,8 +1288,8 @@ export class Loader {
     }
 
     // Define all the built-in objects and functions of the ES6 standard
-    // library associated with this loader’s intrinsics as properties on
-    // obj.
+    // library associated with this loader's intrinsics as properties on
+    // `obj`.
     defineBuiltins(obj = this.@global) {
         $DefineBuiltins(obj, this);
         return obj;
@@ -1420,20 +1471,6 @@ export class Loader {
     link(src, options) {
     }
 }
-
-// Rationale for timing and grouping of dependencies: Consider
-//     loader.evalAsync('import "x" as x; import "y" as y;', f);
-//
-// We wait to execute "x" until "y" has also been fetched. Even if "x" turns
-// out to be linkable and runnable, its dependencies are all satisfied, it
-// links correctly, and it has no direct or indirect dependency on "y", we
-// still wait.
-//
-// Dependencies could be initialized more eagerly, but in a less
-// deterministic order. The design opts for a bit more determinism in common
-// cases-- though it is easy to trigger non-determinism since multiple
-// link sets can be in-flight at once.
-
 
 // The goal of a LoadTask is to resolve, fetch, translate, link, and compile
 // a single module (or a collection of modules that all live in the same
@@ -1734,7 +1771,7 @@ class LoadTask {
     }
 }
 
-// A LinkSet represents a call to loader.evalAsync(), .load(), or .import().
+// A `LinkSet` represents a call to `loader.evalAsync()`, `.load()`, or `.import()`.
 class LinkSet {
     constructor(loader, startingLoad, callback, errback) {
         // TODO: make LinkSets not inherit from Object.prototype, for isolation;
@@ -1767,6 +1804,24 @@ class LinkSet {
 
     // LoadTask.prototype.finish calls this after one LoadTask actually
     // finishes, and after kicking off loads for all its dependencies.
+    //
+    // If the LoadTask is completely satisfied (that is, all dependencies have
+    // loaded) then we link the modules and fire the callback.
+    //
+    // **Timing and grouping of dependencies.** Consider
+    //
+    //     loader.evalAsync('import "x" as x; import "y" as y;', f);
+    //
+    // We wait to execute "x" until "y" has also been fetched. Even if "x"
+    // turns out to be linkable and runnable, its dependencies are all
+    // satisfied, it links correctly, and it has no direct or indirect
+    // dependency on "y", we still wait.
+    //
+    // *Rationale:* Dependencies could be initialized more eagerly, but the
+    // order would be less deterministic. The design opts for a bit more
+    // determinism in common cases-- though it is easy to trigger
+    // non-determinism since multiple link sets can be in-flight at once.
+    //
     onLoad(loadTask) {
         $Assert($SetHas(this.loads, loadTask));
         $Assert(loadTask.status === "loaded");
