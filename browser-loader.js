@@ -17,7 +17,7 @@ import {
     $TypeError          // $TypeError(msg) ~= new TypeError(msg)
 } from "implementation-intrinsics";
 
-import { System, ondemandTableLookup } from "js/loaders";
+import { System } from "js/loaders";
 
 /*
   P1 ISSUE #22:  Make sure hierarchical module names are sufficient for
@@ -112,21 +112,98 @@ System.normalize = function normalize(name, options) {
 };
 
 /*
+  The ondemand table is a Map from urls (strings) to module contents (string or
+  Array of string). Updated by loader.ondemand().
+*/
+System.@ondemandTable = $MapNew();
+
+/*
+  Map from module names to urls, a cached index of the data in
+  this.@ondemand.
+*/
+System.@locations = undefined;
+
+/*
+  System.ondemand - Browser resolve configuration.
+
+  TODO: doc comment here
+  
+  P4 ISSUE:  Proposed name for this method: addSources(sources)
+*/
+System.ondemand = function ondemand(sources) {
+    let keys = $ObjectKeys(sources);
+    for (let i = 0; i < keys.length; i++) {
+        let url = keys[i];
+        let contents = sources[url];
+        if (contents === null) {
+            $MapDelete(this.@ondemandTable, url);
+        } else if (typeof contents === "string") {
+            $MapSet(this.@ondemandTable, url, contents);
+        } else {
+            /*
+              contents must be either null, a string, or an iterable object.
+
+              Rationale for making a copy of contents rather than
+              keeping the object around: Determinism, exposing fewer
+              implementation details.  Examining a JS object can run
+              arbitrary code.  We want to fire all those hooks now,
+              then store the data in a safer form so user code can't
+              observe when we look at it.
+
+              P4 ISSUE: confirm iterable vs. array.
+            */
+            let names = [];
+            for (let name of contents) {
+                if (typeof name !== "string")
+                    throw $TypeError("ondemand: module names must be strings");
+                $ArrayPush(names, name);
+            }
+            $MapSet(this.@ondemandTable, url, names);
+        }
+    }
+
+    // Destroy the reverse cache.
+    this.@locations = undefined;
+};
+
+function ondemandTableLookup(loader, normalized, referer) {
+    if (loader.@locations === undefined) {
+        /*
+          P5 ISSUE: module names can appear in multiple values in the
+          @ondemand table. This raises the question of ordering of
+          duplicates.
+        */
+        var locations = $MapNew();
+        for (let [url, contents] of $MapIterator(loader.@ondemand)) {
+            if (typeof contents === "string") {
+                $MapSet(locations, contents, url);
+            } else {
+                // contents is an array.
+                for (let i = 0; i < contents.length; i++)
+                    $MapSet(locations, contents[i], url);
+            }
+        }
+        loader.@locations = locations;
+    }
+
+    return $MapGet(loader.@locations, normalized);
+}
+
+/*
   Browser system resolve hook.
 
-  If there is a relevant entry in the ondemand table, return the appropriate
-  result, like Loader.prototype.resolve().  Otherwise, percent-encode each
-  segment of the module name, add ".js" to the last segment, resolve that
-  relative to this.@baseURL, and return the resolved URL.
+  Consult the ondemand table.  If any string value in the table matches the
+  module name, return the key.  If any array value in the table contains an
+  element that matches the module name, return {address: key, type: "script"}.
+  Otherwise, percent-encode each segment of the module name, add ".js" to the
+  last segment, resolve that relative to this.@baseURL, and return the resolved
+  URL.
 
-  TODO: Implement percent-encoding.
+  TODO:  Implement percent-encoding.
 
-  P5 SECURITY ISSUE: Possible security issue related to the browser
-  resolve hook:
-
-  - Do we care if "." and ".." end up being sent in URL paths?  Empty
-    segments ("x//y")?  I think we should try to produce valid URLs or
-    throw, but maybe <http://foo.bar/x/y//////../../> is valid.
+  P5 ISSUE:  Do we care if "." and ".." end up being sent in URL paths?  Empty
+  segments ("x//y")?  I think we should try to produce valid URLs or throw, but
+  maybe <http://foo.bar/x/y//////../../> is valid.
  */
 System.resolve = function resolve(normalized, referer) {
     let address = ondemandTableLookup(this, normalized, referer);
@@ -134,7 +211,7 @@ System.resolve = function resolve(normalized, referer) {
         // Relative URLs in the ondemand table are resolved relative to
         // the baseURL, per samth 2013 April 26.
         address = $ToAbsoluteURL(this.@baseURL, address);
-        if (typeof $MapGet(this.@ondemand, address) === 'object')
+        if (typeof $MapGet(this.@ondemandTable, address) === 'object')
             return {address, type: "script"};
         return address;
     }
@@ -158,10 +235,6 @@ System.resolve = function resolve(normalized, referer) {
     */
     return $ToAbsoluteURL(this.@baseURL, normalized + ".js");
 };
-
-// @systemDefaultResolve is used when a resolve hook returns undefined.
-// P1 ISSUE #13 proposes removing this feature.
-Loader.prototype.@systemDefaultResolve = System.resolve;
 
 System.fetch = function fetch(address, fulfill, reject, done, options) {
     // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the

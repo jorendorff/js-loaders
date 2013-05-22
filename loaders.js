@@ -164,18 +164,6 @@ export class Loader {
         */
         this.@loading = $MapNew();
 
-        /*
-          Map from urls (strings) to module contents (string or Array of
-          string). Updated by loader.ondemand().
-        */
-        this.@ondemand = $MapNew();
-
-        /*
-          Map from module names to urls, a cached index of the data in
-          this.@ondemand.
-        */
-        this.@locations = undefined;
-
         /* Various options. */
         this.@global = options.global;  // P4 ISSUE: ToObject here?
         this.@strict = ToBoolean(options.strict);
@@ -244,47 +232,6 @@ export class Loader {
 
     set baseURL(url) {
         this.@baseURL = $ToString(url);
-    }
-
-    /*
-      TODO: doc comment here
-
-      P4 ISSUE:  Proposed name for this method: addSources(sources)
-    */
-    ondemand(sources) {
-        let keys = $ObjectKeys(sources);
-        for (let i = 0; i < keys.length; i++) {
-            let url = keys[i];
-            let contents = sources[url];
-            if (contents === null) {
-                $MapDelete(this.@ondemand, url);
-            } else if (typeof contents === "string") {
-                $MapSet(this.@ondemand, url, contents);
-            } else {
-                /*
-                  contents must be either null, a string, or an iterable object.
-
-                  Rationale for making a copy of contents rather than
-                  keeping the object around: Determinism, exposing fewer
-                  implementation details.  Examining a JS object can run
-                  arbitrary code.  We want to fire all those hooks now,
-                  then store the data in a safer form so user code can't
-                  observe when we look at it.
-
-                  P4 ISSUE: confirm iterable vs. array.
-                */
-                let names = [];
-                for (let name of contents) {
-                    if (typeof name !== "string")
-                        throw $TypeError("ondemand: module names must be strings");
-                    $ArrayPush(names, name);
-                }
-                $MapSet(this.@ondemand, url, names);
-            }
-        }
-
-        // Destroy the reverse cache.
-        this.@locations = undefined;
     }
 
 
@@ -1444,12 +1391,9 @@ export class Loader {
           resource address.  The object may also have a .type property,
           which if present must be either "script" or "module".
 
-      Default behavior:  Consult the ondemand table.  If any string value in
-      the table matches the module name, return the key.  If any array
-      value in the table contains an element that matches the module name,
-      return {address: key, type: "script"}.  Otherwise, return the full
-      module name unchanged.  (But the brower's resolve hook is different;
-      see System.resolve below.)
+      Default behavior:  Return the module name unchanged.
+
+      (The browser's System.resolve hook is considerably more complex.)
 
       When the resolve hook is called:  For all imports, immediately after
       the normalize hook returns successfully, unless the normalize hook
@@ -1462,30 +1406,6 @@ export class Loader {
     resolve(normalized, options) {
         var address = this.@ondemandTableLookup(normalized, options.referer);
         return address === undefined ? normalized : address;
-    }
-
-    @ondemandTableLookup(normalized, referer) {
-        /*
-        */
-        if (this.@locations === undefined) {
-            /*
-              P5 ISSUE: module names can appear in multiple values in the
-              @ondemand table. This raises the question of ordering of
-              duplicates.
-            */
-            var locations = $MapNew();
-            for (let [url, contents] of $MapIterator(this.@ondemand)) {
-                if (typeof contents === "string") {
-                    $MapSet(locations, contents, url);
-                } else {
-                    // contents is an array.
-                    for (let i = 0; i < contents.length; i++)
-                        $MapSet(locations, contents[i], url);
-                }
-            }
-            this.@locations = locations;
-        }
-        return $MapGet(this.@locations, normalized);
     }
 
     /*
@@ -2105,7 +2025,3 @@ function AsyncCall(fn, ...args) {
 }
 
 export var System = new Loader;
-
-export function ondemandTableLookup(loader, normalized, referer) {
-    return loader.@ondemandTableLookup(normalized, referer);
-}
