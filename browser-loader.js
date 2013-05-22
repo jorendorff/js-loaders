@@ -225,7 +225,7 @@ System.resolve = function resolve(normalized, referer) {
     return $ToAbsoluteURL(this.@baseURL, normalized + ".js");
 };
 
-System.fetch = function fetch(address, fulfill, reject, done, options) {
+System.fetch = function fetch(address, fulfill, reject, options) {
     // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
     // address. See comment in System.resolve above.
     address = $ToAbsoluteURL(this.@baseURL, address);

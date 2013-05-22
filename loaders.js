@@ -47,7 +47,6 @@
 //     and failure callbacks provided by load/evalAsync/import;
 //   * support for custom link hooks that create dynamic-linked ("factory-made")
 //     modules;
-//   * the fetch hook's `done()` callback;
 //   * intrinsics;
 //   * probably various other odds and ends.
 //
@@ -67,7 +66,7 @@
 // In addition many details of the behavior have been pinned down in IRC
 // conversations with Sam and David.
 //
-// TODO: Implement #3, #14, #24.
+// TODO: Implement #14, #24.
 
 "use strict";
 
@@ -611,16 +610,6 @@ export class Loader {
             AsyncCall(errback, exc);
         }
 
-        function done() {
-            if (fetchCompleted)
-                throw $TypeError("load() done callback: fetch already completed");
-            fetchCompleted = true;
-
-            // P5 ISSUE: what kind of error to throw here.
-            let msg = "load(): fetch hook must not call done() callback";
-            AsyncCall(errback, $TypeError(msg));
-        }
-
         let fetchOptions = {
             referer: referer,
             metadata: metadata,
@@ -629,7 +618,7 @@ export class Loader {
         };
 
         try {
-            this.fetch(null, fulfill, reject, done, fetchOptions);
+            this.fetch(null, fulfill, reject, fetchOptions);
         } catch (exc) {
             // Some care is taken here to prevent even a badly-behaved fetch
             // hook from causing errback() to be called twice or not to be
@@ -924,30 +913,13 @@ export class Loader {
             return loadTask.fail(exc);
         }
 
-        // P1 ISSUE #3: Agree on a design for done() hook; get use
-        // cases/rationale for done() hook.
-        // https://github.com/jorendorff/js-loaders/issues/3
-        function done() {
-            if (fetchCompleted)
-                throw $TypeError("fetch done callback: fetch already completed");
-            fetchCompleted = true;
-
-            let mod = $MapGet(this.@modules, normalized);
-            if (mod === undefined) {
-                let msg = "fetch hook done() callback: " +
-                    "not actually done loading \"" + normalized + "\"";
-                loadTask.fail($TypeError(msg));
-            }
-            loadTask.onEndRun(normalized, mod);
-        }
-
         // P3 ISSUE: type makes sense here, yes?
         // P3 ISSUE: what about "extra"?
         let options = {referer, metadata, normalized, type};
 
         // Call the fetch hook.
         try {
-            this.fetch(url, fulfill, reject, done, options);
+            this.fetch(url, fulfill, reject, options);
         } catch (exc) {
             // As in load(), take care that loadTask.fail is called if the
             // fetch hook fails, but at most once.
@@ -1371,9 +1343,7 @@ export class Loader {
     // redirects), also as a string.
     //
     // options.type is the string "module" when fetching a standalone
-    // module, and "script" when fetching a script. In the latter case the
-    // fetch hook should not call the done callback; it just reports an
-    // error. P3 ISSUE: Have the loader pass undefined instead?
+    // module, and "script" when fetching a script.
     //
     // When the fetch hook is called:  For all modules and scripts whose
     // source is not directly provided by the caller.  It is not called for
@@ -1385,9 +1355,8 @@ export class Loader {
     // (loader.load() does not call normalize/resolve hooks but it does call
     // the fetch/translate/link hooks, per samth, 2013 April 22.)
     //
-    // The fetch hook may call the fulfill/reject/done callback
-    // synchronously rather than waiting for the next event loop turn.
-    // Per meeting, 2013 April 26.
+    // The fetch hook may call the fulfill/reject callback synchronously rather
+    // than waiting for the next event loop turn.  Per meeting, 2013 April 26.
     //
     // P2 ISSUE: #9: synchronous calls to fulfill()
     //
@@ -1397,7 +1366,7 @@ export class Loader {
     //
     // TODO: comment default behavior
     //
-    fetch(resolved, fulfill, reject, done, options) {
+    fetch(resolved, fulfill, reject, options) {
         AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
     }
 
@@ -1618,16 +1587,6 @@ class LoadTask {
         this.dependencies = fullNames;
         for (let i = 0; i < sets.length; i++)
             sets[i].onLoad(this);
-    }
-
-    // Cancel this load because the fetch hook either merged it with another
-    // fetch or used loader.eval() or loader.set() to put a finished module
-    // into the registry.
-    //
-    // (Used by the done() callback in Loader.@import().)
-    //
-    onEndRun(name, mod) {
-        throw TODO;
     }
 
     // Error handling.
