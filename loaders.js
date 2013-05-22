@@ -5,13 +5,14 @@
 
   This is currently extremely incomplete.  The following are in decent shape:
     - the Loader constructor;
-    - .eval(src, options) and @ensureModuleExecuted;
+    - .eval(src, options);
     - .load(url, callback, errback);
     - .evalAsync(src, callback, errback, options);
     - .import(name, callback, errback, options);
     - .get(name), .has(name), .set(name, module), .delete(name);
     - .ondemand(sources);
     - the loader hooks and the loading pipeline that calls them;
+    - execution order;
     - dependency loading;
     - linking.
 
@@ -74,6 +75,7 @@ import {
     $SetNew,        // $SetNew() ~= new Set
     $SetHas,        // $SetHas(set, v) ~= set.has(v)
     $SetAdd,        // $SetAdd(set, v) ~= set.add(v)
+    $SetIterable    // for (v of $SetIterable(set)) ~= for (v of set)
     $MapNew,        // $MapNew() ~= new Map
     $MapHas,        // $MapHas(map, key) ~= map.has(key)
     $MapGet,        // $MapGet(map, key) ~= map.get(key)
@@ -83,11 +85,11 @@ import {
     $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
     $SyntaxError,   // $SyntaxError(msg) ~= new SyntaxError(msg)
 
-    // Modules
-    $ModuleGetLinkedModules,
-    $ModuleHasExecuted,
-    $ModuleSetExecuted,
-    $ExecuteModuleBody,
+    // Modules and scripts
+    $CodeHasExecuted,
+    $CodeSetExecuted,
+    $CodeExecute,
+    $CodeGetLinkedModules,
 
     // Scripts
     $Compile,
@@ -148,7 +150,7 @@ export class Loader {
           linked.  However it can contain modules whose bodies have not yet
           started to execute.  Except in the case of cyclic imports, such
           modules are not exposed to user code without first calling
-          Loader.@ensureModuleExecuted().
+          Loader.@ensureExecuted().
         */
         this.@modules = $MapNew();
 
@@ -289,33 +291,39 @@ export class Loader {
     /* Loading and running code ******************************************/
 
     /*
-      Walk the dependency graph of the module mod, executing all module
-      bodies that have not executed.
+      Walk the dependency graph of the module or script `start`, executing all
+      module bodies that have not executed.
 
-      mod and its dependencies must already be linked.
+      `start` and its dependencies must already be linked.
 
-      On success, the module mod and all its dependencies, transitively,
-      will have started to execute exactly once.  That is, the
-      $ModuleHasExecuted bit is set on all of them.
+      On success, `start` and all its dependencies, transitively, will have
+      started to execute exactly once.  That is, the $CodeHasExecuted bit is
+      set on all of them.
 
-      Execution order:  Dependencies are executed in depth-first,
-      left-to-right, post order, stopping at cycles.
+      Execution order:  Dependencies are executed in depth-first, left-to-right,
+      post order, stopping at cycles.  A script that contains one or more
+      dependencies is executed immediately after the last of the modules it
+      declares that are in the dependency set (per dherman, 2013 May 21).
 
       Error handling:  Module bodies can throw exceptions, and they are
-      propagated to the caller.  The $ModuleHasExecuted bit remains set on
-      a module after its body throws an exception.
+      propagated to the caller.  The $CodeHasExecuted bit remains set on a
+      module after its body throws an exception.
 
       Purpose:  Module bodies are executed on demand, as late as possible.
       The loader always calls this function before returning a module to
       script.
 
       There is only one way a module can be exposed to script before it has
-      executed.  In the case of an import cycle, @ensureModuleExecuted
-      itself exposes the modules in the cycle to scripts before they have
-      all executed.  This is a consequence of the simple fact that we have
-      to start somewhere:  one of the modules in the cycle must run first.
+      executed.  In the case of an import cycle, @ensureExecuted itself exposes
+      the modules in the cycle to scripts before they have all executed.  This
+      is a consequence of the simple fact that we have to start somewhere: one
+      of the modules in the cycle must run first.
+      
+      P3 ISSUE: If you eval() or load() a script S that declares a module M and
+      imports a module K, and executing K's body throws, then the next script
+      that imports M will cause the body of S to execute. Super weird.
     */
-    static @ensureModuleExecuted(mod) {
+    static @ensureExecuted(mod) {
         /*
           NOTE: A tricky test case for this code:
 
@@ -384,30 +392,37 @@ export class Loader {
           dependencies, transitively, are found to have been executed.
         */
         let seen = $SetNew();
+        let schedule = $SetNew();
 
-        /*
-          This algorithm neglects script bodies.
-
-          Per dherman May 21, the desired semantics is that we do one pass to
-          determine which modules will execute, and in what order; then execute
-          each in turn, executing each script body immediately after the last
-          of its declared modules that are included in the execution set.
-        */
         function walk(m) {
             $SetAdd(seen, m);
-
-            let deps = $ModuleGetLinkedModules(mod);
+            let deps = $CodeGetLinkedModules(mod);
             for (let i = 0; i < deps.length; i++) {
                 let dep = deps[i];
                 if (!$SetHas(seen, dep))
                     walk(dep);
             }
+            $SetAdd(schedule, m);
 
-            if (!$ModuleHasExecuted(m))
-                $ExecuteModuleBody(m);
+            if ($IsModule(m)) {
+                // The $SetRemove call below means that if we already plan to
+                // execute this script, move it to execute after m.
+                let script = $ModuleGetContainingScript(m);
+                $SetRemove(schedule, script);
+                $SetAdd(schedule, script);
+            }
         }
 
-        walk(mod);
+        walk(start);
+
+        let result;
+        for (let c of $SetIterable(schedule)) {
+            if (!$CodeHasExecuted(c)) {
+                $CodeSetExecuted(c);
+                result = $CodeExecute(c);
+            }
+        }
+        return result;
     }
 
     /*
@@ -500,11 +515,8 @@ export class Loader {
         let pairs = $ScriptImports(script);
 
         /*
-          Linking logically precedes execution, so the code below has two
-          separate loops.  Fusing the loops would be observably different,
-          because the body of module "A" could do System.delete("B").
-
-          First loop: Look up all modules imported by src.
+          Linking precedes execution. The code below completely finishes
+          linking `scripts` with its dependencies before executing any of them.
         */
         let modules = [];
         for (let i = 0; i < pairs.length; i++) {
@@ -548,17 +560,14 @@ export class Loader {
         }
 
         /*
-          Second loop:  Execute any module bodies that have not been
-          executed yet.  Module bodies may throw.
+          Execute any module bodies that have not been executed yet, then
+          execute script.  Any script or module body can throw.
 
-          Loader.@ensureModuleExecuted() can execute other module bodies in
-          the graph, to ensure that barring cycles, a module is always
-          executed before other modules that depend on it.
+          Loader.@ensureExecuted() can execute other module bodies in the
+          graph, to ensure that barring cycles, a module is always executed
+          before other modules that depend on it.
         */
-        for (let i = 0; i < modules.length; i++)
-            Loader.@ensureModuleExecuted(modules[i]);
-
-        return $EvaluateScript(script);
+        return Loader.@ensureExecuted(script);
     }
 
     /*
@@ -664,8 +673,7 @@ export class Loader {
             */
             let result;
             try {
-                // XXX TODO ensure all modules executed
-                result = $EvaluateScript(script);
+                result = Loader.@ensureExecuted(script);
             } catch (exc) {
                 AsyncCall(errback, exc);
                 return;
@@ -885,7 +893,7 @@ export class Loader {
                     throw $TypeError("import(): module \"" + fullName +
                                      "\" was deleted from the loader");
                 }
-                Loader.@ensureModuleExecuted(m);
+                Loader.@ensureExecuted(m);
             } catch (exc) {
                 return errback(exc);
             }
@@ -1244,7 +1252,7 @@ export class Loader {
 
         let m = $MapGet(this.@modules, name);
         if (m !== undefined)
-            Loader.@ensureModuleExecuted(m);
+            Loader.@ensureExecuted(m);
         return m;
     }
 
@@ -1284,11 +1292,10 @@ export class Loader {
 
         if (!$IsModule(mod)) {
             /*
-              Rationale:  Entries in the module registry must actually be
+              Rationale: Entries in the module registry must actually be
               Modules.  We do Module-specific operations like
-              $ModuleGetLinkedModules, $ModuleHasExecuted, and
-              $ExecuteModuleBody on them.  The spec will do the same.
-              per samth, 2013 April 22.
+              $CodeGetLinkedModules, $CodeHasExecuted, and $CodeExecute on
+              them.  The spec will do the same.  per samth, 2013 April 22.
             */
             throw $TypeError("Module object required");
         }
@@ -1547,7 +1554,7 @@ export class Loader {
           finally links them as a unit and adds them to the registry.
 
           The module bodies will then be executed on demand; see
-          @ensureModuleExecuted.
+          @ensureExecuted.
 
        2. The hook may return a full Module instance object. The loader
           then simply adds that module to the registry.
@@ -1649,7 +1656,7 @@ export class Loader {
 
   3.  Done:  The module has been linked and added to the loader's module
   registry.  Its body may or may not have been executed yet (see
-  @ensureModuleExecuted).
+  @ensureExecuted).
 
   (TODO: this is speculation) LoadTasks that enter this state are removed
   from the loader.@loading table and from all LinkSets; they become
