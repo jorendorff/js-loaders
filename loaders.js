@@ -12,7 +12,7 @@
     - .get(name), .has(name), .set(name, module), .delete(name);
     - .ondemand(sources);
     - the loader hooks and the loading pipeline that calls them;
-    - dependency graph stuff;
+    - dependency loading;
     - linking.
 
   These things are not implemented at all yet:
@@ -68,6 +68,7 @@ import {
     $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
     $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
     $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
+    $IsArray,       // $IsArray(v) ~= Array.isArray(v)
     $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
     $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
     $SetNew,        // $SetNew() ~= new Set
@@ -384,6 +385,15 @@ export class Loader {
         */
         let seen = $SetNew();
 
+        /*
+          This algorithm neglects script bodies.
+
+          Per dherman May 21, the desired semantics is that we do one pass to
+          determine which modules will execute, and in what order; then execute
+          each in turn, executing each script body immediately after the last
+          of its declared modules that are included in the execution set.
+        */
+
         // ISSUE: per dherman May 16-17, if module "A" imports module "B"
         // and "B" is declared in a script along with other modules, "A"
         // waits until all modules in that script have executed, and the
@@ -652,8 +662,8 @@ export class Loader {
         // Arrange for any dependencies to be loaded and linked with
         // script.  Once the script is linked, the LinkSet will call the
         // run() function below.
-        let linkSet = new LinkSet(this, run, errback);
-        linkSet.addScriptAndDependencies(script); // XXX TODO
+        let loaded = new LoadTask(script);
+        let linkSet = new LinkSet(this, loaded, run, errback);
 
         function run() {
             /*
@@ -875,8 +885,7 @@ export class Loader {
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
             let load = $MapGet(this.@loading, fullName);
-            let linkSet = new LinkSet(this, success, errback);
-            linkSet.addLoad(load);
+            let linkSet = new LinkSet(this, load, success, errback);
         }
 
         function success() {
@@ -1663,18 +1672,25 @@ export class Loader {
 */
 class LoadTask {
     /*
-      A module entry begins in the "loading" state.
+      If the constructor argument is an array, it is the array of module names
+      that we're loading; the task begins in the "loading" state.
+
+      If the argument is a script, the task begins in the "loaded" state. This
+      happens in eval() and evalAsync(): the eval script does not need to go
+      through the "loading" part of the pipeline, but it must be linked.
     */
-    constructor(fullNames, script=null) {
+    constructor(namesOrScript) {
         this.fullNames = fullNames;
-        this.linkSets = $SetNew();
-        if (module === null) {
+        if ($IsArray(namesOrScript)) {
+            this.fullNames = namesOrScript;
             this.status = "loading";
             this.script = null;
         } else {
+            this.fullNames = $ScriptDeclaredModuleNames(script);
             this.status = "loaded";
             this.script = script;
         }
+        this.linkSets = $SetNew();
         this.factory = null;
         this.dependencies = null;
     }
@@ -1902,10 +1918,11 @@ class LoadTask {
   A LinkSet represents a call to loader.evalAsync(), .load(), or .import().
 */
 class LinkSet {
-    constructor(loader, callback, errback) {
+    constructor(loader, startingLoad, callback, errback) {
         // TODO: make LinkSets not inherit from Object.prototype, for isolation;
-        // or else use symbols for all these. :-P
+        // or else use symbols for all these; or else use define(). :-P
         this.loader = loader;
+        this.startingLoad = startingLoad;
         this.callback = callback;
         this.errback = errback;
 
@@ -1915,7 +1932,7 @@ class LinkSet {
         // this.loads whose .status is "loading".
         this.loadingCount = 0;
 
-        // TODO: finish overall load state
+        this.addLoad(startingLoad);
     }
 
     addLoad(loadTask) {
