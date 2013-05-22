@@ -627,18 +627,6 @@ export class Loader {
             }
             AsyncCall(callback, result);
         }
-
-        /*
-          P4 ISSUE: Execution order when multiple LinkSets become linkable
-          at once.
-
-          Proposed: When a fetch fulfill callback fires and completes the
-          dependency graph of multiple link sets at once, they are
-          linked and executed in the order of the original
-          load()/evalAsync() calls.
-
-          samth is unsure but thinks probably so.
-        */
     }
 
     /*
@@ -1635,6 +1623,18 @@ class LoadTask {
         let pairs = $ScriptImports(script);
         let fullNames = [];
         let sets = this.linkSets;
+
+        /*
+          P4 ISSUE: Execution order when multiple LinkSets become linkable
+          at once.
+
+          Proposed: When a fetch fulfill callback fires and completes the
+          dependency graph of multiple link sets at once, they are
+          linked and executed in the order of the original
+          load()/evalAsync() calls.
+
+          samth is unsure but thinks probably so.
+        */
 
         /*
           When we load a script, we add all its modules and their
