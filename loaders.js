@@ -137,43 +137,6 @@ import {
 // A Loader is responsible for asynchronously finding, fetching, linking,
 // and running modules and scripts.
 //
-// The major methods are for loading and runing code:
-//
-//   * `eval(src)` - Synchronously run some code.  Never loads modules,
-//     but `src` may import already-loaded modules.
-//
-//   * `import(moduleName, callback, errback)` - Asynchronously load a module and
-//     its dependencies.
-//
-//   * `evalAsync(src, callback, errback)` - Asynchronously run some code.  Loads
-//     imported modules.
-//
-//   * `load(url, callback, errback)` - Asynchronously load and run a script.
-//     Loads imported modules.
-//
-// Each Loader has a **module registry**, which is a cache of already loaded
-// and linked modules.  The Loader tries to avoid fetching modules multiple
-// times, even when multiple `load()` calls need the same module *before* it is
-// ready to be added to the registry.
-//
-// **Loader hooks.** The import process can be customized by assigning to (or
-// subclassing and overriding) any number of the five loader hooks:
-//
-//   * `normalize(name, options)` - From a possibly relative module name,
-//     determine the full module name.
-//
-//   * `resolve(fullName, options)` - Given a full module name, determine the URL
-//     to load and whether we're loading a script or a module.
-//
-//   * `fetch(url, fulfill, reject, skip, options)` - Load a script or module
-//     from the given URL.
-//
-//   * `translate(src, options)` - Optionally translate a script or module from
-//     some other language to JS.
-//
-//   * `link(src, options)` - Determine dependencies of a module; optionally
-//     convert an AMD/npm/other module to an ES Module object.
-//
 export class Loader {
     // Create a new Loader.
     //
@@ -267,6 +230,21 @@ export class Loader {
 
 
     // ## Loading and running code
+    //
+    // The major methods of `Loader` are for loading and running code:
+    //
+    //   * `eval(src)` - Synchronously run some code.  Never loads modules, but
+    //     `src` may import already-loaded modules.
+    //
+    //   * `import(moduleName, callback, errback)` - Asynchronously load a
+    //     module and its dependencies.
+    //
+    //   * `evalAsync(src, callback, errback)` - Asynchronously run some code.
+    //     Loads imported modules.
+    //
+    //   * `load(url, callback, errback)` - Asynchronously load and run a
+    //     script.  Loads imported modules.
+    //
 
     // Check to see if script declares any modules that are already loaded
     // or loading.  If so, throw a SyntaxError.  If not, add entries to the
@@ -471,9 +449,8 @@ export class Loader {
         return this.@evalAsync(src, callback, errback, url);
     }
 
-    // Shared implementation of evalAsync() and the post-fetch part of
-    // load().
-    //
+    // Shared implementation of `evalAsync()` and the post-fetch part of
+    // `load()`.
     @evalAsync(src, callback, errback, srcurl) {
         // Compile and check the script.
         let script;
@@ -1114,36 +1091,34 @@ export class Loader {
 
 
     // ## Module registry
+    //
+    // Each Loader has a **module registry**, a cache of already loaded and
+    // linked modules.  The Loader uses this map to avoid fetching modules
+    // multiple times.
 
-    // Get a module by name from this loader's module registry.
-    //
-    // If no module with the given name is in the module registry, return
-    // undefined.  The argument `name` is the full name.
-    //
-    // If the module is in the registry but has never been executed, first
-    // synchronously execute the module and any dependencies that have not
-    // been executed yet.
-    //
-    // Throw a TypeError if name is not a string. If it is a string but
-    // not a valid full name for a module (e.g. "../x" or "@@@@"), return
-    // undefined.  per samth, 2013 April 22.
+    // **`get(name)`** - Get a module by name from the registry.  The argument
+    // `name` is the full module name.
     //
     get(name) {
+        // Throw a TypeError if `name` is not a string.
         if (typeof name !== "string")
             throw $TypeError("module name must be a string");
 
         let m = $MapGet(this.@modules, name);
+
+        // If the module is in the registry but has never been executed, first
+        // synchronously execute the module and any dependencies that have not
+        // executed yet.
         if (m !== undefined)
             Loader.@ensureExecuted(m);
         return m;
     }
 
-    // Return true if a module with the given full name is in this Loader's
-    // module registry.
+    // **`has(name)`** - Return true if a module with the given full name is in
+    // this Loader's module registry.
     //
-    // This does not fire any loader hooks.  Throw a TypeError if name is not
-    // a string.  If it is a string but not a valid full name for a module,
-    // return false.
+    // This does not fire any loader hooks or execute any module code.  Throw a
+    // TypeError if `name` is not a string.
     //
     has(name) {
         if (typeof name !== "string")
@@ -1152,86 +1127,61 @@ export class Loader {
         return $MapHas(this.@modules, name);
     }
 
-    // Place a module in the module registry.
-    //
-    // If there is already a module in the registry with the given full
-    // name, replace it, but any other modules linked to that module remain
-    // linked to it. (Rationale: this is the way to monkeypatch modules
-    // provided by the browser and add features, even though every Module
-    // has a fixed set of exported names.)
-    //
-    // Throws a TypeError if name is not a string, if name is not a valid
-    // full name for a module (e.g. "../x" or "@@@@"), or if mod is not
-    // a Module object.
-    //
-    // Return this loader.
-    //
-    set(name, mod) {
+    // **`set(name, module)`** - Put a module in the module registry.
+    set(name, module) {
         if (typeof name !== "string")
             throw $TypeError("module name must be a string");
 
         // Entries in the module registry must actually be Modules.
         //
-        // Rationale:  We do Module-specific operations like
-        // $CodeGetLinkedModules, $CodeHasExecuted, and $CodeExecute on them.
-        // The spec will do the same.  per samth, 2013 April 22.
-        if (!$IsModule(mod))
+        // *Rationale:*  We use Module-specific intrinsics like
+        // `$CodeGetLinkedModules`, `$CodeHasExecuted`, and `$CodeExecute` on
+        // them.  The spec will do the same.  per samth, 2013 April 22.
+        //
+        if (!$IsModule(module))
             throw $TypeError("Module object required");
 
-        // If name is in this.@loading, this succeeds, with no immediate
-        // effect on the pending load; but if that load eventually produces
-        // a module-declaration for the same name, that will produce a
+        // If there is already a module in the registry with the given full
+        // name, replace it, but any scripts or modules that are linked to the
+        // old module remain linked to it. *Rationale:* Re-linking
+        // already-linked modules might not work, since the new module may
+        // export a different set of names. Also, the new module may be linked
+        // to the old one! This is a convenient way to monkeypatch
+        // modules. Once modules are widespread, this technique can be used for
+        // polyfilling.
+        //
+        // If `name` is in `this.@loading`, `.set()` succeeds, with no
+        // immediate effect on the pending load; but if that load eventually
+        // produces a module-declaration for the same name, that will produce a
         // link-time error. per samth, 2013 April 22.
-        $MapSet(this.@modules, name, mod);
+        //
+        $MapSet(this.@modules, name, module);
         return this;
     }
 
-    // Synchronously remove a module instance from the module registry.
-    // If there is no module with the given full name in the registry, do
-    // nothing.
+    // **`delete(name)`** - Synchronously remove a module instance from the
+    // module registry.
     //
-    // Throw a TypeError if name is not a string.  If it is a string but not
-    // a valid full name for a module, do nothing.
+    // **`.delete()` and concurrent loads:** Calling `.delete()` has no
+    // immediate effect on in-flight loads, but it can cause such a load to
+    // fail later.
     //
-    // Return this loader.
+    // That's because the dependency-loading algorithm (which we'll get to in a
+    // bit) assumes that if it finds a module in the registry, it doesn't need
+    // to load that module.  If someone deletes that module from the registry
+    // (and doesn't replace it with something compatible), then when loading
+    // finishes, it will find that a module it was counting on has vanished.
+    // Linking will fail.
     //
-    // loader.delete("A") has no effect at all if !loader.@modules.has("A"),
-    // even if "A" is currently loading (an entry exists in
-    // loader.@loading).  This is analogous to .set().  per (reading between
-    // the lines) discussions with dherman, 2013 April 17, and samth, 2013
-    // April 22.
-    //
-    // Effects on concurrent loads:  A delete has no immediate effect on
-    // in-flight loads, but it can cause a load to fail later.  Here's how
-    // it works:
-    //
-    // - During load phase, whenever we find new code that imports a module,
-    //   we first look in the registry for that module, and failing that,
-    //   the table of in-flight loads.  If it is not in either table, we
-    //   start a fresh load.  There is no per-LinkSet state to prevent us
-    //   from kicking off many loads for the same module during a single
-    //   load phase; in the case of cyclic imports, if someone keeps
-    //   deleting the successfully-loaded modules from the registry, we
-    //   could go on indefinitely.
-    //
-    // - After a succesful load phase, when all fetches, translate hooks,
-    //   link hooks, and compiles have finished successfully, we move on to
-    //   link phase.  We walk the graph again, starting from the root, and
-    //   try to link all the not-yet-linked modules, looking up every
-    //   imported module in the registry as we go.  If at this point we find
-    //   that a module we need is no longer in the registry, that's a link
-    //   error.
-    //
-    // per samth, 2013 April 22.
-    //
-    // Containment: loader.delete("A") removes only "A" from the registry,
-    // and not other modules linked against "A", for several reasons:
+    // **`.delete()` and already-linked code:** `loader.delete("A")` removes
+    // only "A" from the registry, and not other modules linked against "A",
+    // for several reasons:
     //
     // 1. What a module is linked against is properly an implementation
     //    detail, which the "remove everything" behavior would leak.
     //
     // 2. The transitive closure of what is linked against what is
-    //    potentially a lot of stuff.
+    //    an unpredictable amount of stuff, potentially a lot.
     //
     // 3. Some uses of modules -- in particular polyfilling -- involve
     //    defining a new module MyX, linking it against some busted built-in
@@ -1239,23 +1189,39 @@ export class Loader {
     //    multiple "versions" of a module linked together is a feature, not
     //    a bug.
     //
-    // per samth, 2013 April 16.
-    //
     delete(name) {
+        // If there is no module with the given name in the registry, this does
+        // nothing.
+        //
+        // `loader.delete("A")` has no effect at all if
+        // `!loader.@modules.has("A")`, even if "A" is currently loading (an
+        // entry exists in `loader.@loading`).  This is analogous to `.set()`.
+        // per (reading between the lines) discussions with dherman, 2013 April
+        // 17, and samth, 2013 April 22.
         $MapDelete(this.@modules, name);
         return this;
     }
 
-    // Define all the built-in objects and functions of the ES6 standard
-    // library associated with this loader's intrinsics as properties on
-    // `obj`.
-    defineBuiltins(obj = this.@global) {
-        $DefineBuiltins(obj, this);
-        return obj;
-    }
-
 
     // ## Loader hooks
+    //
+    // The import process can be customized by assigning to (or subclassing and
+    // overriding) any number of the five loader hooks:
+    //
+    //   * `normalize(name, options)` - From a possibly relative module name,
+    //     determine the full module name.
+    //
+    //   * `resolve(fullName, options)` - Given a full module name, determine the URL
+    //     to load and whether we're loading a script or a module.
+    //
+    //   * `fetch(url, fulfill, reject, skip, options)` - Load a script or module
+    //     from the given URL.
+    //
+    //   * `translate(src, options)` - Optionally translate a script or module from
+    //     some other language to JS.
+    //
+    //   * `link(src, options)` - Determine dependencies of a module; optionally
+    //     convert an AMD/npm/other module to an ES Module object.
 
     // TODO these methods need to check the this-value carefully.  This can
     // be done with a private symbol.
@@ -1425,6 +1391,16 @@ export class Loader {
     // The default implementation does nothing and returns undefined.
     //
     link(src, options) {
+    }
+
+    // ## Globals, builtins, and intrinsics
+
+    // Define all the built-in objects and functions of the ES6 standard
+    // library associated with this loader's intrinsics as properties on
+    // `obj`.
+    defineBuiltins(obj = this.@global) {
+        $DefineBuiltins(obj, this);
+        return obj;
     }
 }
 
