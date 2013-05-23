@@ -1015,10 +1015,10 @@ export class Loader {
         //     import "x" as x, "y" as y;
         //     assert(log === "xy");
 
-        // **Error handling:**  Suppose a module is linked, we start executing
-        // its body, and that throws an exception.  We leave it in the module
-        // registry (per samth, 2013 April 16) because re-loading the module
-        // and running it again is not likely to make things better.
+        // **Exceptions during execution:**  Suppose a module is linked, we
+        // start executing its body, and that throws an exception.  We leave it
+        // in the module registry (per samth, 2013 April 16) because re-loading
+        // the module and running it again is not likely to make things better.
         //
         // Other fully linked modules in the same LinkSet are also left in
         // the registry (per dherman, 2013 April 18).  Some of those may be
@@ -1079,12 +1079,16 @@ export class Loader {
 
     // ## Module registry
     //
-    // Each Loader has a **module registry**, a cache of already loaded and
+    // Each `Loader` has a **module registry**, a cache of already loaded and
     // linked modules.  The Loader uses this map to avoid fetching modules
     // multiple times.
+    //
+    // The methods below support directly querying and modifying the registry.
+    // They are synchronous and never fire any loader hooks or trigger new
+    // loads.
 
-    // **`get(name)`** - Get a module by name from the registry.  The argument
-    // `name` is the full module name.
+    // **`get`** - Get a module by name from the registry.  The argument `name`
+    // is the full module name.
     //
     get(name) {
         // Throw a TypeError if `name` is not a string.
@@ -1101,11 +1105,10 @@ export class Loader {
         return m;
     }
 
-    // **`has(name)`** - Return true if a module with the given full name is in
-    // this Loader's module registry.
+    // **`has`** - Return `true` if a module with the given full name is in the
+    // registry.
     //
-    // This does not fire any loader hooks or execute any module code.  Throw a
-    // TypeError if `name` is not a string.
+    // This doesn't call any hooks or execute any module code.
     //
     has(name) {
         if (typeof name !== "string")
@@ -1114,7 +1117,7 @@ export class Loader {
         return $MapHas(this.@modules, name);
     }
 
-    // **`set(name, module)`** - Put a module in the module registry.
+    // **`set`** - Put a module into the registry.
     set(name, module) {
         if (typeof name !== "string")
             throw $TypeError("module name must be a string");
@@ -1146,8 +1149,7 @@ export class Loader {
         return this;
     }
 
-    // **`delete(name)`** - Synchronously remove a module instance from the
-    // module registry.
+    // **`delete`** - Remove a module from the registry.
     //
     // **`.delete()` and concurrent loads:** Calling `.delete()` has no
     // immediate effect on in-flight loads, but it can cause such a load to
@@ -1170,11 +1172,11 @@ export class Loader {
     // 2. The transitive closure of what is linked against what is
     //    an unpredictable amount of stuff, potentially a lot.
     //
-    // 3. Some uses of modules -- in particular polyfilling -- involve
-    //    defining a new module MyX, linking it against some busted built-in
-    //    module X, then replacing X in the registry with MyX. So having
-    //    multiple "versions" of a module linked together is a feature, not
-    //    a bug.
+    // 3. Some uses of modules -- in particular polyfilling -- involve defining
+    //    a new module `MyX`, linking it against some busted built-in module
+    //    `X`, then replacing `X` in the registry with `MyX`. So having
+    //    multiple "versions" of a module linked together is a feature, not a
+    //    bug.
     //
     delete(name) {
         // If there is no module with the given name in the registry, this does
@@ -1213,26 +1215,23 @@ export class Loader {
     // TODO these methods need to check the this-value carefully.  This can
     // be done with a private symbol.
 
-    // For each import() call or import-declaration, the Loader first calls
-    // loader.normalize(name, options) passing the module name as passed to
-    // import() or as written in the import-declaration.  This hook returns
-    // a full module name which is used for the rest of the import process.
-    // (In particular, modules are stored in the registry under their full
-    // module name.)
+    // **`normalize`** - For each `import()` call or import-declaration, the
+    // Loader first calls `loader.normalize(name, options)` passing the module
+    // name as passed to `import()` or as written in the import-declaration.
+    // This hook returns a full module name which is used for the rest of the
+    // import process.  (In particular, modules are stored in the registry
+    // under their full module name.)
     //
-    // When the normalize hook is called:  For all imports, including
-    // imports in scripts.  It is not called for the main script body
-    // executed by a call to loader.load(), .eval(), or .evalAsync().
+    // **When this hook is called:** For all imports, including imports in
+    // scripts.  It is not called for the main script body executed by a call
+    // to loader.load(), .eval(), or .evalAsync().
     //
     // After calling this hook, if the full module name is in the registry,
-    // loading stops. Otherwise loading continues, calling the resolve()
+    // loading stops. Otherwise loading continues, calling the `resolve`
     // hook.
     //
-    // The normalize hook may also create a custom metadata value that will
+    // The `normalize` hook may also create a custom "metadata" value that will
     // be passed automatically to the other hooks in the pipeline.
-    //
-    // The default implementation does nothing and returns the module name
-    // unchanged.
     //
     // Returns one of:
     //   - a string s, the full module name.  The loader will create a new
@@ -1243,14 +1242,17 @@ export class Loader {
     //
     //   - an object that has a .normalized property that is a string, the
     //     full module name.
+    //
+    // **Default implementation:**  Return the module name unchanged.
+    //
     normalize(name, options) {
         return name;
     }
 
-    // Determine the resource address (URL, path, etc.) for the requested
-    // module name.
+    // `resolve` - Given a full module name, determine the resource address
+    // (URL, path, etc.) to load.
     //
-    // The resolve hook is also responsible for determining whether the
+    // The `resolve` hook is also responsible for determining whether the
     // resource in question is a module or a script.
     //
     // The hook may return:
