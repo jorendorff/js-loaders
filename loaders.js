@@ -39,7 +39,7 @@
 // You can join the conversation on the [es-discuss mailing
 // list](https://mail.mozilla.org/listinfo/es-discuss), [in the github issue
 // tracker](https://github.com/jorendorff/js-loaders/issues), or on IRC, in the
-// #jslang channel on [irc.mozilla.org](https://wiki.mozilla.org/IRC).
+// `#jslang` channel on [irc.mozilla.org](https://wiki.mozilla.org/IRC).
 //
 //
 // ## Current status
