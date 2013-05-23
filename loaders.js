@@ -909,6 +909,12 @@ export class Loader {
 
     // **`@onFulfill`** - This is called once a fetch succeeds.
     @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
+        // If `loadTask` is no longer needed by any `LinkSet`, do nothing.
+        // When one load in a LinkSet fails, we shouldn't continue loading
+        // dependencies anyway.
+        if ($SetSize(loadTask.linkSets) === 0)
+            return;
+
         try {
             // Check arguments to `fulfill` callback.
             if (typeof src !== "string") {
@@ -1510,6 +1516,7 @@ class LoadTask {
     //
     finish(loader, actualAddress, script) {
         $Assert(this.status === "loading");
+        $Assert($SetSize(this.linkSets) === 0);
 
         loader.@checkModuleDeclarations(script, this);
 
@@ -1691,7 +1698,7 @@ class LoadTask {
         let sets = $SetElements(this.linkSets);
         for (let i = 0; i < sets.length; i++)
             sets[i].fail(exc);
-        $Assert($SetSize(sets) === 0);
+        $Assert($SetSize(this.linkSets) === 0);
     }
 
     // **`onLinkSetFail`** - This is called when a LinkSet associated with this
