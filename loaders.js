@@ -22,7 +22,8 @@
 //   * While dependencies are loading for one script, another script can run.
 //     And that script may share dependencies with the first one.
 //
-// This system takes those things into account.
+// Also, the precise behavior of the system must be specified in some detail,
+// to minimize cross-browser compatibility gotchas.
 //
 //
 // ## References
