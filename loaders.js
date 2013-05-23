@@ -632,19 +632,13 @@ export class Loader {
             return;
         }
 
-        let m = $MapGet(this.@modules, fullName);
-        if (m !== undefined) {
-            // We already had this module in the registry.
-            AsyncCall(success, m);
-        } else {
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            let load = $MapGet(this.@loading, fullName);
-            let linkSet = new LinkSet(this, load, success, errback);
-        }
-
+        // Once we successfully load and link the module, this is what will
+        // happen:
         let success = () => {
-            let m = $MapGet(this.@modules, fullName); // TODO: file an issue; David wants to get rid of this
+            // We look the module up again. Since callbacks are async,
+            // something may have happened to it. TODO: file an issue; David
+            // wants to get rid of this particular one.
+            let m = $MapGet(this.@modules, fullName);
             try {
                 if (m === undefined) {
                     throw $TypeError("import(): module \"" + fullName +
@@ -656,6 +650,17 @@ export class Loader {
             }
             return callback(m);
         };
+
+        let m = $MapGet(this.@modules, fullName);
+        if (m !== undefined) {
+            // We already had this module in the registry.
+            AsyncCall(success, m);
+        } else {
+            // The module is now loading.  When it loads, it may have more
+            // imports, requiring further loads, so put it in a LinkSet.
+            let load = $MapGet(this.@loading, fullName);
+            let linkSet = new LinkSet(this, load, success, errback);
+        }
     }
 
     // **`@import`** - The common implementation of the `import()` method and the
