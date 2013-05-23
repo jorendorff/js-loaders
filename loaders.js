@@ -207,19 +207,19 @@ export class Loader {
 
     // ## Configuration
 
-    // **`.global`** - The global object associated with this loader.  All code
+    // **`global`** - The global object associated with this loader.  All code
     // loaded by this loader runs in the scope of this object.
     get global() {
         return this.@global;
     }
 
-    // **`.strict`** - The loader's strictness setting.  If true, all code
+    // **`strict`** - The loader's strictness setting.  If true, all code
     // loaded by this loader is treated as strict-mode code.
     get strict() {
         return this.@strict;
     }
 
-    // **`.baseURL`** - Used for auto-mapping module names to URLs.
+    // **`baseURL`** - Used for auto-mapping module names to URLs.
     get baseURL() {
         return this.@baseURL;
     }
@@ -280,7 +280,7 @@ export class Loader {
         }
     }
 
-    // **`eval(src, options)`** - Execute the program `src`.
+    // **`eval`** - Execute the program `src`.
     //
     // `src` may import modules, but if it imports a module that is not
     // already loaded, a `SyntaxError` is thrown.
@@ -311,7 +311,7 @@ export class Loader {
     // P2 ISSUE: #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
-        // Unpack options. Only one option is supported: options.url.
+        // Unpack options. Only one option is supported: `options.url`.
         let url = this.@baseURL;  // P4 ISSUE: is baseURL the right default?
         if (options !== undefined && "url" in options) {
             url = options.url;
@@ -380,8 +380,7 @@ export class Loader {
         return Loader.@ensureExecuted(script);
     }
 
-    // **`evalAsync(src, callback, errback, options)`** - Asynchronously
-    // evaluate the program `src`.
+    // **`evalAsync`** - Asynchronously evaluate the program `src`.
     //
     // `src` may import modules that have not been loaded yet.  In that case,
     // load all those modules, and their imports, transitively, before
@@ -441,8 +440,8 @@ export class Loader {
         return this.@evalAsync(src, callback, errback, url);
     }
 
-    // **`@evalAsync(src, callback, errback, srcurl)`** - Shared implementation
-    // of `evalAsync()` and the post-fetch part of `load()`.
+    // **`@evalAsync`** - Shared implementation of `evalAsync()` and the
+    // post-fetch part of `load()`.
     @evalAsync(src, callback, errback, srcurl) {
         // Compile and check the script.
         let script;
@@ -476,9 +475,9 @@ export class Loader {
         }
     }
 
-    // **`load(url, callback, errback, options)`**  Asynchronously load and run
-    // a script.  If the script contains import declarations, this can cause
-    // modules to be loaded, linked, and executed.
+    // **`load`** - Asynchronously load and run a script.  If the script
+    // contains import declarations, this can cause modules to be loaded,
+    // linked, and executed.
     //
     // On success, the result of evaluating the script is passed to the success
     // callback.  The comment on `asyncEval()` explains `callback` and
@@ -596,9 +595,9 @@ export class Loader {
         }
     }
 
-    // Asynchronously load, link, and execute a module and any dependencies
-    // it imports.  On success, pass the Module object to the success
-    // callback.
+    // **`import`** - Asynchronously load, link, and execute a module and any
+    // dependencies it imports.  On success, pass the Module object to the
+    // success callback.
     //
     // See the comment on asyncEval() for more about callback and errback.
     //
@@ -658,82 +657,82 @@ export class Loader {
         };
     }
 
-    // The common implementation of the import() method and the processing
-    // of import declarations in ES code.
+    // **`@import`** - The common implementation of the `import()` method and the
+    // processing of `import` declarations in ES code.
     //
     // There are several possible outcomes:
     //
-    // 1.  Getting this.normalize throws, or the normalize hook isn't
-    //     callable, or it throws an exception, or it returns an invalid
-    //     value.  In these cases, @import throws.
+    // 1.  Getting `this.normalize` throws, or the `normalize` hook isn't
+    //     callable, or it throws an exception, or it returns an invalid value.
+    //     In these cases, `@import` throws.
     //
-    // 2.  The normalize hook returns the name of a module that is already
-    //     in the registry.  @import returns the normalized name.
+    // 2.  The `normalize` hook returns the name of a module that is already in
+    //     the registry.  `@import` returns the normalized name.
     //
-    // 3.  In all other cases, either a new LoadTask is started or we can
-    //     join one already in flight.  @import returns the normalized name.
+    // 3.  In all other cases, either a new `LoadTask` is started or we can
+    //     join one already in flight.  `@import` returns the normalized name.
     //
-    // referer provides information about the context of the import() call
+    // `referer` provides information about the context of the `import()` call
     // or import-declaration.  This information is passed to all the loader
     // hooks.
     //
-    // name is the (pre-normalize) name of the module to be imported, as it
+    // `name` is the (pre-normalize) name of the module to be imported, as it
     // appears in the import-declaration or as the argument to
     // loader.import().
     //
-    // TODO:  Suggest alternative name for referer.  It is really nothing to
-    // do with the nasty Referer HTTP header.  Perhaps "importContext",
-    // "importer", "client".
+    // TODO:  Suggest alternative name for `referer`.  It is really nothing to
+    // do with the nasty Referer HTTP header.  Perhaps `importContext`,
+    // `importer`, `client`.
     //
     @import(referer, name) {
-        // Call the normalize hook to get a normalized module name and
-        // metadata.  See the comment on normalize().
+        // Call the `normalize` hook to get a normalized module name and
+        // metadata.  See the comment on `normalize()`.
         //
         // Errors that happen during this step propagate to the caller.
         //
         let normalized, metadata;
         {
-            // P4 ISSUE: Here referer is passed to the normalize hook and
-            // later it is passed to the resolve hook, and so on.  Should we
+            // P4 ISSUE: Here `referer` is passed to the `normalize` hook and
+            // later it is passed to the `resolve` hook, and so on.  Should we
             // create a new object each time?  (I think it's OK to pass the
             // same referer object to successive hooks within a single load;
-            // but eval() creates a new referer object for each call to the
-            // normalize() hook, since they are not abstractly all part of a
+            // but `eval()` creates a new referer object for each call to the
+            // `normalize()` hook, since they are not abstractly all part of a
             // single load.)
             let result = this.normalize(request, {referer});
 
-            // Interpret the value returned by the normalize hook.
+            // Interpret the value returned by the `normalize` hook.
             //
-            // It must a string or an object with a .normalized property
-            // whose value is a string.  Otherwise a TypeError is thrown.
+            // It must a string or an object with a `.normalized` property
+            // whose value is a string.  Otherwise a `TypeError` is thrown.
             // per samth, 2013 April 22, and issue #13.
             //
             if (typeof result === "string") {
                 normalized = result;
                 metadata = {};
             } else if (!IsObject(result)) {
-                // The result is null, a boolean, a number, or (if symbols
+                // The result is `null`, a boolean, a number, or (if symbols
                 // somehow get defined as primitives) a symbol. Throw.
                 //
-                // Rationale: Both a string and an object are possibly valid
-                // return values. We could use ToString or ToObject to
-                // coerce this value. But neither is the slightest bit
-                // compelling or useful. So throw instead.
+                // *Rationale:*  Both a string and an object are possibly valid
+                // return values.  We could use `ToString` or `ToObject` to
+                // coerce this value.  But neither is the slightest bit
+                // compelling or useful.  So throw instead.
                 //
                 throw $TypeError(
                     "Loader.normalize hook must return undefined, " +
                     "a string, or an object");
             } else {
-                // Several hooks, including the normalize hook, may return
+                // Several hooks, including the `normalize` hook, may return
                 // multiple values, by returning an object where several
-                // properties are significant.  In all these cases, the
-                // object is just a temporary record.  The loader
-                // immediately gets the data it wants out of the returned
-                // object and then discards it.
+                // properties are significant.  In all these cases, the object
+                // is just a temporary record.  The loader immediately gets the
+                // data it wants out of the returned object and then discards
+                // it.
                 //
-                // In this case, we care about two properties on the
-                // returned object, .normalized and .metadata, but only
-                // .normalized is required.
+                // In this case, we care about two properties on the returned
+                // object, `.normalized` and `.metadata`, but only
+                // `.normalized` is required.
                 //
                 if (!("normalized" in result)) {
                     throw $TypeError(
@@ -743,7 +742,7 @@ export class Loader {
 
                 normalized = result.normalized;  // can throw
 
-                // Do not use $ToString here, per samth, 2013 April 22.
+                // Do not use `$ToString` here, per samth, 2013 April 22.
                 if (typeof normalized !== "string") {
                     throw $TypeError(
                         "Object returned by loader.normalize hook must have " +
@@ -754,7 +753,7 @@ export class Loader {
             }
         }
 
-        // From this point @import cannot throw.
+        // From this point `@import` cannot throw.
 
         // If the module has already been loaded and linked, we are done.
         if ($MapHas(this.@modules, normalized)) {
@@ -766,15 +765,15 @@ export class Loader {
         if ($MapHas(this.@loading, normalized))
             return normalized;
 
-        // Create a LoadTask object for this module load.  Once this object
-        // is in this.@loading, LinkSets may add themselves to its set of
-        // waiting link sets. Errors must be reported to loadTask.fail().
+        // Create a `LoadTask` object for this module load.  Once this object
+        // is in `this.@loading`, `LinkSets` may add themselves to its set of
+        // waiting link sets.  Errors must be reported to `loadTask.fail()`.
         let loadTask = new LoadTask([normalized]);
         $MapSet(this.@loading, normalized, loadTask);
 
         let url, type;
         try {
-            // Call the resolve hook.
+            // Call the `resolve` hook.
             let result = this.resolve(normalized, {referer, metadata});
 
             // Interpret the result.
@@ -782,7 +781,7 @@ export class Loader {
             if (typeof result === "string") {
                 url = result;
             } else if (IsObject(result)) {
-                // result.url must be present and must be a string.
+                // `result.url` must be present and must be a string.
                 if (!("url" in result)) {
                     throw $TypeError("Object returned from loader.resolve hook " +
                                      "must have a .url property");
@@ -793,12 +792,11 @@ export class Loader {
                                      "loader.resolve hook must be a string");
                 }
 
-                // result.extra is optional, but if present must be an
-                // iterable object, a collection of module names. It
-                // indicates that the resource at result.url is a script
-                // containing those modules.  (The module we're loading,
-                // named by normalized, may be present in result.extra or
-                // not.)
+                // `result.extra` is optional, but if present must be an
+                // iterable object, a collection of module names.  It indicates
+                // that the resource at `result.url` is a script containing
+                // those modules.  (The module we're loading, named by
+                // `normalized`, may be present in `result.extra` or not.)
                 //
                 // This means the loader can merge the following imports in
                 // a single load:
@@ -806,7 +804,7 @@ export class Loader {
                 //     import "a" as a, "b" as b;
                 //
                 // if it knows in advance a URL that contains module
-                // declarations for both "a" and "b".
+                // declarations for both `a` and `b`.
                 //
                 if ("extra" in result) {
                     let extra = result.extra;
@@ -833,8 +831,8 @@ export class Loader {
                         }
                     }
 
-                    // Record a load in progress for all other modules
-                    // defined in the same script.
+                    // Record a load in progress for all other modules defined
+                    // in the same script.
                     for (let i = 0; i < names.length; i++) {
                         let fullName = names[i];
                         if (fullName !== normalized) {
@@ -858,7 +856,7 @@ export class Loader {
 
         loadTask.type = type;
 
-        // Prepare to call the fetch hook.
+        // Prepare to call the `fetch` hook.
         let fetchCompleted = false;
         let thisLoader = this;
 
@@ -883,12 +881,12 @@ export class Loader {
         // P3 ISSUE: what about "extra"?
         let options = {referer, metadata, normalized, type};
 
-        // Call the fetch hook.
+        // Call the `fetch` hook.
         try {
             this.fetch(url, fulfill, reject, options);
         } catch (exc) {
-            // As in load(), take care that loadTask.fail is called if the
-            // fetch hook fails, but at most once.
+            // As in `load()`, take care that `loadTask.fail` is called if the
+            // `fetch` hook fails, but at most once.
             if (fetchCompleted)
                 AsyncCall(() => { throw exc; });
             else
@@ -898,9 +896,10 @@ export class Loader {
         return normalized;
     }
 
+    // **`@onFulfill`** - This is called once a fetch succeeds.
     @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
         try {
-            // Check arguments to fulfill hook.
+            // Check arguments to `fulfill` callback.
             if (typeof src !== "string") {
                 throw $TypeError("fetch hook fulfill callback: " +
                                  "first argument must be a string");
@@ -910,13 +909,13 @@ export class Loader {
                                  "second argument must be a string");
             }
 
-            // Call translate and link hooks.
+            // Call `translate` and `link` hooks.
             src = this.translate(src, {normalized, actualAddress, metadata, type});
             if (typeof src !== "string")
                 throw $TypeError("translate hook must return a string");
             let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
 
-            // Interpret linkResult.  See comment on the link() method.
+            // Interpret `linkResult`.  See comment on the `link()` method.
             if (linkResult === undefined) {
                 let script = $Compile(this, src, normalized, actualAddress, this.@strict);
                 loadTask.finish(this, actualAddress, script);
@@ -948,13 +947,13 @@ export class Loader {
         }
     }
 
-    // Walk the dependency graph of the module or script `start`, executing all
-    // module bodies that have not executed.
+    // **`@ensureExecuted`** - Walk the dependency graph of the module or
+    // script `start`, executing all module bodies that have not executed.
     //
     // `start` and its dependencies must already be linked.
     //
     // On success, `start` and all its dependencies, transitively, will have
-    // started to execute exactly once.  That is, the $CodeHasExecuted bit is
+    // started to execute exactly once.  That is, the `$CodeHasExecuted` bit is
     // set on all of them.
     //
     // **Purpose** - Module bodies are executed on demand, as late as possible.
@@ -968,7 +967,7 @@ export class Loader {
     // May 21).
     //
     // **Error handling** - Module bodies can throw exceptions, and they are
-    // propagated to the caller.  The $CodeHasExecuted bit remains set on a
+    // propagated to the caller.  The `$CodeHasExecuted` bit remains set on a
     // module after its body throws an exception.
     //
     // **Not-yet-executed modules** - There is only one way a module can be
@@ -1016,10 +1015,10 @@ export class Loader {
         //     import "x" as x, "y" as y;
         //     assert(log === "xy");
 
-        // Error handling:  Suppose a module is linked, we start executing
-        // its body, and that throws an exception.  We leave it in the
-        // module registry (per samth, 2013 April 16) because re-loading the
-        // module and running it again is not likely to make things better.
+        // **Error handling:**  Suppose a module is linked, we start executing
+        // its body, and that throws an exception.  We leave it in the module
+        // registry (per samth, 2013 April 16) because re-loading the module
+        // and running it again is not likely to make things better.
         //
         // Other fully linked modules in the same LinkSet are also left in
         // the registry (per dherman, 2013 April 18).  Some of those may be
@@ -1028,11 +1027,10 @@ export class Loader {
         // demand.  This allows unrelated modules to finish loading and
         // initializing successfully, if they are needed.
         //
-        // One consequence of this design is that while executing a module
-        // body, calling eval() or System.get() can cause other module
-        // bodies to execute.  That is, module body execution can nest.
-        // However no individual module's body will be executed more than
-        // once.
+        // While executing a module body, calling `eval()` or `System.get()`
+        // can cause other module bodies to execute.  That is, module body
+        // execution can nest.  However no individual module's body will be
+        // executed more than once.
 
         // Depth-first walk of the dependency graph, stopping at cycles, and
         // executing each module body that has not already been executed (in
@@ -1056,8 +1054,8 @@ export class Loader {
             $SetAdd(schedule, m);
 
             if ($IsModule(m)) {
-                // The $SetRemove call below means that if we already plan to
-                // execute this script, move it to execute after m.
+                // The `$SetRemove` call here means that if we already plan to
+                // execute this script, move it to execute after `m`.
                 let script = $ModuleGetContainingScript(m);
                 $SetRemove(schedule, script);
                 $SetAdd(schedule, script);
