@@ -154,7 +154,9 @@ export class Loader {
         //
         // **Notation.** This weird `loader.@modules` syntax is not part of the
         // JS language. It is only meant to indicate that the `@modules`
-        // property is private.  TODO: Replace this with a `WeakMap`.
+        // property is private.  TODO: Instead, implement private state with a
+        // `WeakMap`.
+        //
         this.@modules = $MapNew();
 
         // `this.@loading` stores information about modules that are loading
@@ -632,13 +634,24 @@ export class Loader {
             return;
         }
 
-        // Once we successfully load and link the module, this is what will
-        // happen:
-        let success = () => {
-            // We look the module up again. Since callbacks are async,
+        let m = $MapGet(this.@modules, fullName);
+        if (m !== undefined) {
+            // We already had this module in the registry.
+            AsyncCall(success, m);
+        } else {
+            // The module is now loading.  When it loads, it may have more
+            // imports, requiring further loads, so put it in a LinkSet.
+            let load = $MapGet(this.@loading, fullName);
+
+            // We will look the module up again. Since callbacks are async,
             // something may have happened to it. TODO: file an issue; David
-            // wants to get rid of this particular one.
-            let m = $MapGet(this.@modules, fullName);
+            // wants to get rid of this particular re-lookup.
+            let callback = () => success($MapGet(this.@modules, fullName));
+
+            let linkSet = new LinkSet(this, load, callback, errback);
+        }
+
+        function success(m) {
             try {
                 if (m === undefined) {
                     throw $TypeError("import(): module \"" + fullName +
@@ -649,17 +662,6 @@ export class Loader {
                 return errback(exc);
             }
             return callback(m);
-        };
-
-        let m = $MapGet(this.@modules, fullName);
-        if (m !== undefined) {
-            // We already had this module in the registry.
-            AsyncCall(success, m);
-        } else {
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            let load = $MapGet(this.@loading, fullName);
-            let linkSet = new LinkSet(this, load, success, errback);
         }
     }
 
@@ -938,7 +940,7 @@ export class Loader {
                 }
                 let mod = linkResult;
                 $MapSet(this.@modules, normalized, mod);
-                loadTask.onEndRun(normalized, mod);
+                loadTask.onEndRun();
             } else {
                 let mod = null;
                 let imports = linkResult.imports;
@@ -1452,6 +1454,8 @@ export class Loader {
 //     registry.  Its body may or may not have been executed yet (see
 //     @ensureExecuted).
 //
+//         .status === "linked"
+//
 //     (TODO: this is speculation) LoadTasks that enter this state are removed
 //     from the loader.@loading table and from all LinkSets; they become
 //     garbage.
@@ -1463,15 +1467,16 @@ export class Loader {
 //
 class LoadTask {
     // If the constructor argument is an array, it is the array of module names
-    // that we're loading; the task begins in the "loading" state.
+    // that we're loading; the task begins in the `"loading"` state.
     //
-    // If the argument is a script, the task begins in the "loaded" state. This
-    // happens in eval() and evalAsync(): the eval script does not need to go
-    // through the "loading" part of the pipeline, but it must be linked.
+    // If the argument is a script, the task begins in the `"loaded"`
+    // state. This happens in `eval()` and `evalAsync()`: the eval script does
+    // not need to go through the `"loading"` part of the pipeline, but it must
+    // be linked.
     //
-    // TODO - consider instead of allowing directly creating "loaded"
-    // LoadTasks, having the caller create it, add it to the LinkSet, and then
-    // call finish() manually.
+    // TODO - consider instead of allowing directly creating `"loaded"`
+    // `LoadTask`s, having the caller create it, add it to the `LinkSet`, and
+    // then call `finish()` manually.
     //
     constructor(namesOrScript) {
         this.fullNames = fullNames;
@@ -1564,6 +1569,14 @@ class LoadTask {
 
         this.status = "loaded";
         this.dependencies = fullNames;
+        for (let i = 0; i < sets.length; i++)
+            sets[i].onLoad(this);
+    }
+
+    // **`onEndRun`** - Called when the `link` hook returns a Module object.
+    onEndRun() {
+        $Assert(this.status === "loading");
+        this.status = "linked";
         for (let i = 0; i < sets.length; i++)
             sets[i].onLoad(this);
     }
@@ -1753,7 +1766,7 @@ class LinkSet {
     //
     onLoad(loadTask) {
         $Assert($SetHas(this.loads, loadTask));
-        $Assert(loadTask.status === "loaded");
+        $Assert(loadTask.status === "loaded" || loadTask.status === "linked");
         if (--this.loadingCount === 0) {
             // Link, then schedule the success callback.
             try {
@@ -1855,10 +1868,12 @@ class LinkSet {
             $LinkScript(script, mods);
         }
 
-        // Link all the scripts and modules together.  This can throw
-        // partway through.  P4 ISSUE: What happens to the already-linked
-        // modules then? They may or may not be linked to other modules
-        // that can't be recovered.
+        // Link all the scripts and modules together.
+        //
+        // TODO: This could throw partway through.  When linking fails, we must
+        // rollback any linking we already did up to that point.  Linkage must
+        // either happen for all scripts and modules, or fail, atomically.
+        // Per dherman, 2013 May 15.
         walk(undefined, script, dependencies);
 
         // Move the fully linked modules from the `@loading` table to the
