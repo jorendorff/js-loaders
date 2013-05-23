@@ -145,14 +145,7 @@ import {
     //   `name`, then `$ModuleGetDeclaringScript(module) === script`.
     $ModuleGetDeclaringScript,
 
-    // The remaining primitives operate on both scripts and modules.
-
-    // * Scripts and modules each have a bit that indicates if their code has
-    //   ever started executing. `$CodeHasExecuted(c)` and
-    //   `$CodeSetExecuted(c)` test and set that bit. (Once set, it is never
-    //   cleared.)
-    $CodeHasExecuted,
-    $CodeSetExecuted,
+    // The two remaining primitives operate on both scripts and modules.
 
     // * `$CodeExecute(c)` executes the body of a script or module. If `c` is a
     //   module, return undefined. If it's a script, return the value of the
@@ -165,8 +158,6 @@ import {
     $CodeGetLinkedModules
 } from "implementation-intrinsics";
 
-// TODO: Remove `$CodeHasExecuted` and `$CodeSetExecuted` in favor of a `WeakMap`.
-//
 // TODO: Merge `$ScriptDeclaredModuleNames` and `$ScriptGetDeclaredModule` into
 // a single function that returns an array of pairs.
 //
@@ -1074,9 +1065,9 @@ export class Loader {
             throw $TypeError("module name must be a string");
 
         // Entries in the module registry must actually be `Module`s.
-        // *Rationale:*  We use `Module`-specific intrinsics like
-        // `$CodeGetLinkedModules`, `$CodeHasExecuted`, and `$CodeExecute` on
-        // them.  The spec will do the same.  per samth, 2013 April 22.
+        // *Rationale:* We use `Module`-specific intrinsics like
+        // `$CodeGetLinkedModules` and `$CodeExecute` on them.  The spec will
+        // do the same.  per samth, 2013 April 22.
         if (!$IsModule(module))
             throw $TypeError("Module object required");
 
@@ -1839,6 +1830,23 @@ class LinkSet {
 
 // ## Module and script execution
 
+// **`executedCode`** - The set of all scripts and modules we have ever passed
+// to `$CodeExecute()`; that is, everything we've ever tried to execute.
+//
+// (Of course instead of a hash table, an implementation could implement this
+// using a bit per script/module.)
+//
+var executedCode = $WeakMapNew();
+
+// **`execute`** - Execute the given script or module `c` (but only if we have
+// never tried to execute it before).
+function execute(code) {
+    if (!$WeakMapHas(executedCode, code)) {
+        $WeakMapSet(executedCode, code, true);
+        $CodeExecute(code);
+    }
+}
+
 // **`ensureExecuted`** - Walk the dependency graph of the script or module
 // `start`, executing any script or module bodies that have not already
 // executed (including, finally, `start` itself).
@@ -1846,8 +1854,8 @@ class LinkSet {
 // `start` and its dependencies must already be linked.
 //
 // On success, `start` and all its dependencies, transitively, will have
-// started to execute exactly once.  That is, the `$CodeHasExecuted` bit will
-// be set on all of them.
+// started to execute exactly once.  That is, they will all have been added to
+// `executedCode`.
 //
 // **Purpose** - Module bodies are executed on demand, as late as possible.
 // The loader always uses this function to execute scripts, and always calls
@@ -1867,7 +1875,7 @@ class LinkSet {
 // and imports a module K, and executing K's body throws, then the next script
 // that imports M will cause the body of S to execute. Super weird.
 //
-static ensureExecuted(mod) {
+function ensureExecuted(mod) {
     // **Why the graph walk doesn't stop at already-executed modules:**  It's
     // a matter of correctness.  Here is the test case:
     //
@@ -1907,27 +1915,15 @@ static ensureExecuted(mod) {
     //     import "x" as x, "y" as y;
     //     assert(log === "xy");
 
-    // **Exceptions during execution:** Suppose a module is linked, we start
-    // executing its body, and that throws an exception.  We leave it in the
-    // module registry (per samth, 2013 April 16) because re-loading the module
-    // and running it again is not likely to make things better.
+    // Build a *schedule* giving the sequence in which modules and scripts
+    // should execute.
     //
-    // Other fully linked modules in the same LinkSet are also left in the
-    // registry (per dherman, 2013 April 18).  Some of those may be unrelated
-    // to the module that threw.  Since their "has ever started executing" bit
-    // is not yet set, they will be executed on demand.  This allows unrelated
-    // modules to finish loading and initializing successfully, if they are
-    // needed.
+    // **Execution order** - *Modules* execute in depth-first, left-to-right,
+    // post order, stopping at cycles.
     //
-    // **Nesting** - While executing a module body, calling `eval()` or
-    // `System.get()` can cause other module bodies to execute.  That is,
-    // module body execution can nest.  However no individual module's body
-    // will be executed more than once.
-
-    // **Execution order** - Modules are executed in depth-first, left-to-right,
-    // post order, stopping at cycles.  A script that contains one or more
-    // dependencies is executed immediately after the last of the modules it
-    // declares that are in the dependency set (per dherman, 2013 May 21).
+    // The *script* that contains one or more required modules is executed
+    // immediately after the last of the modules it declares that are in the
+    // dependency set, per dherman, 2013 May 21.
     //
     let seen = $SetNew();
     let schedule = $SetNew();
@@ -1953,15 +1949,29 @@ static ensureExecuted(mod) {
 
     walk(start);
 
+    // Run the code.
+    //
+    // **Exceptions during execution:** Suppose a module is linked, we start
+    // executing its body, and that throws an exception.  We leave it in the
+    // module registry (per samth, 2013 April 16) because re-loading the module
+    // and running it again is not likely to make things better.
+    //
+    // Other fully linked modules in the same LinkSet are also left in the
+    // registry (per dherman, 2013 April 18).  Some of those may be unrelated
+    // to the module that threw.  Since their "has ever started executing" bit
+    // is not yet set, they will be executed on demand.  This allows unrelated
+    // modules to finish loading and initializing successfully, if they are
+    // needed.
+    //
+    // **Nesting** - While executing a module body, calling `eval()` or
+    // `System.get()` can cause other module bodies to execute.  That is,
+    // module body execution can nest.  However no individual module's body
+    // will be executed more than once.
+    //
     let result;
     schedule = $SetElements(schedule);
-    for (let i = 0; i < schedule.length; i++) {
-        let c = schedule[i];
-        if (!$CodeHasExecuted(c)) {
-            $CodeSetExecuted(c);
-            result = $CodeExecute(c);
-        }
-    }
+    for (let i = 0; i < schedule.length; i++)
+        execute(schedule[i]);
     return result;
 }
 
