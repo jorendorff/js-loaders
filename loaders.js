@@ -207,19 +207,19 @@ export class Loader {
 
     // ## Configuration
 
-    // Return the global object associated with this loader.
+    // **`.global`** - The global object associated with this loader.  All code
+    // loaded by this loader runs in the scope of this object.
     get global() {
         return this.@global;
     }
 
-    // Return the loader's strictness setting. If true, all code loaded by
-    // this loader is treated as strict-mode code.
+    // **`.strict`** - The loader's strictness setting.  If true, all code
+    // loaded by this loader is treated as strict-mode code.
     get strict() {
         return this.@strict;
     }
 
-    // Get/set the base URL this loader uses for auto-mapping module names
-    // to URLs.
+    // **`.baseURL`** - Used for auto-mapping module names to URLs.
     get baseURL() {
         return this.@baseURL;
     }
@@ -244,7 +244,6 @@ export class Loader {
     //
     //   * `load(url, callback, errback)` - Asynchronously load and run a
     //     script.  Loads imported modules.
-    //
 
     // **`@checkModuleDeclartions`** - Check to see if script declares any
     // modules that are already loaded or loading.  If so, throw a SyntaxError.
@@ -281,32 +280,33 @@ export class Loader {
         }
     }
 
-    // Execute the program src.
+    // **`eval(src, options)`** - Execute the program `src`.
     //
-    // src may import modules, but if it imports a module that is not
-    // already in this loader's module registry, a SyntaxError is thrown.
+    // `src` may import modules, but if it imports a module that is not
+    // already loaded, a `SyntaxError` is thrown.
     //
-    // options.url is used as the script's filename.  (This may be used in
-    // Error objects thrown while executing the program, and it may appear
-    // in debugging tools.)
+    // **Options:** `eval()`, `evalAsync()`, and `load()` all accept an
+    // optional `options` object. `options.url`, if present, is passed to each
+    // loader hook, for each module loaded, as `options.referer.url`.  (The
+    // default loader hooks ignore it, though.)
     //
-    // Loader hooks:  This calls only the translate hook.  per samth,
-    // 2013 April 22.  See rationale in the comment for evalAsync().
+    // (`options.url` may also be stored in the script and used for
+    // `Error().fileName`, `Error().stack`, and the debugger, and we anticipate
+    // doing so via `$Compile`; but such use is outside the scope of the
+    // language standard.)
     //
-    // P5 SECURITY ISSUE: This will allow Web content to run JS code that
-    // appears (in the devtools, for example) to be from any arbitrary URL.
-    // We might be able to constrain this to only same-domain URLs or
-    // something.  But ideally that filename just doesn't matter.  It
-    // certainly shouldn't matter to any code; code really shouldn't be
-    // looking at Error().stack or Error().fileName for security purposes!
+    // P5 SECURITY ISSUE: Make sure that is OK.
+    //
+    // (The google doc mentions another option, `options.module`, which
+    // would be a string and would cause all imports to be normalized
+    // relative to that module name.  per samth, 2013 April 22.  jorendorff
+    // objected to this feature and it is not presently implemented.)
     //
     // P4 ISSUE:  What about letting the user set the line number?
     // samth is receptive.  2013 April 22.
     //
-    // NOTE:  The google doc mentions another option, options.module, which
-    // would be a string and would cause all imports to be normalized
-    // relative to that module name.  per samth, 2013 April 22.  jorendorff
-    // objected to this feature and it is not presently implemented.
+    // **Loader hooks:**  This calls only the translate hook.  per samth,
+    // 2013 April 22.  See rationale in the comment for `evalAsync()`.
     //
     // P2 ISSUE: #8: Does global.eval go through the translate hook?
     //
@@ -412,18 +412,7 @@ export class Loader {
     // event loop:  except in the case of nested event loops, these
     // callbacks are never called while user code is on the stack.
     //
-    // **Options:** `options.url`, if present, is passed to each loader hook,
-    // for each module loaded, as `options.referer.url`.  (The default loader
-    // hooks ignore it, though.)
-    //
-    // (`options.url` may also be stored in the script and used for
-    // `Error().fileName`, `Error().stack`, and the debugger, and we anticipate
-    // doing so via `$Compile`; but such use is outside the scope of the
-    // language standard.)
-    //
-    // (`options.module` is being specified, to serve an analogous purpose for
-    // normalization, but it is not implemented here. See the comment on
-    // `eval()`.)
+    // **Options:** The comment on `eval()` explains `options`.
     //
     // **Loader hooks:**  For the script `src`, the `normalize`, `resolve`,
     // `fetch`, and `link` hooks are not called.  The `fetch` hook is for
@@ -452,8 +441,8 @@ export class Loader {
         return this.@evalAsync(src, callback, errback, url);
     }
 
-    // Shared implementation of `evalAsync()` and the post-fetch part of
-    // `load()`.
+    // **`@evalAsync(src, callback, errback, srcurl)`** - Shared implementation
+    // of `evalAsync()` and the post-fetch part of `load()`.
     @evalAsync(src, callback, errback, srcurl) {
         // Compile and check the script.
         let script;
@@ -487,18 +476,15 @@ export class Loader {
         }
     }
 
-    // Asynchronously load and run a script.  If the script contains import
-    // declarations, this can cause modules to be loaded, linked, and
-    // executed.
+    // **`load(url, callback, errback, options)`**  Asynchronously load and run
+    // a script.  If the script contains import declarations, this can cause
+    // modules to be loaded, linked, and executed.
     //
-    // On success, the result of evaluating the script is passed to the
-    // success callback.
+    // On success, the result of evaluating the script is passed to the success
+    // callback.  The comment on `asyncEval()` explains `callback` and
+    // `errback`.
     //
-    // See the comment on asyncEval() for more about callback and errback.
-    //
-    // If options is not undefined and options.url is not undefined, then
-    // options.url is passed to the loader hooks as options.referer.url.
-    // (The default loader hook implementations ignore options.referer.)
+    // The comment on `eval()` explains `options`.
     //
     load(url,
          callback = value => undefined,
@@ -1673,7 +1659,8 @@ class LoadTask {
     //   the complex error-handling process and just directly call the
     //   errback hook.
 
-    // Fail this load task. All LinkSets that require it also fail.
+    // **`fail(exc)`** - Fail this load task. All `LinkSet`s that require it
+    // also fail.
     fail(exc) {
         $Assert(this.status === "loading");
         this.status = "failed";

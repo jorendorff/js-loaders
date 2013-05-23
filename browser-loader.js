@@ -206,21 +206,21 @@ System.resolve = function resolve(normalized, referer) {
         return address;
     }
 
-    // Add ".js" here, per samth 2013 April 22.  Rationale:  It would be
+    // Add `".js"` here, per samth 2013 April 22.  *Rationale:*  It would be
     // unhelpful to make everyone remove the file extensions from all their
-    // scripts.  It would be even worse to make the file extension part of every
-    // module name, because module names should be simple strings like "jquery"
-    // and should not contain particles that only make sense for a particular
-    // kind of resolve/load mechanism.  That is, the default resolve hook should
-    // not be privileged!  It's honestly not designed to do everything users will
-    // want and it is expected that many projects will use a package loader in
-    // practice.
+    // scripts.  It would be even worse to make the file extension part of
+    // every module name, because module names should be simple strings like
+    // `"jquery"` and should not contain particles that only make sense for a
+    // particular kind of resolve/load mechanism.  That is, the default resolve
+    // hook should not be privileged!  It's honestly not designed to do
+    // everything users will want and it is expected that many projects will
+    // use a package loader in practice.
     //
-    // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
-    // address, per samth 2013 April 22.  Rationale:  The default resolve
-    // behavior should try to return an absolute URL.  If the user overrides
-    // it to return a relative URL, the default fetch behavior should cope
-    // with that.
+    // Both `System.resolve()` and `System.fetch()` call `$ToAbsoluteURL` on
+    // the address, per samth 2013 April 22.  *Rationale:*  The default resolve
+    // behavior should try to return an absolute URL.  If the user overrides it
+    // to return a relative URL, the default fetch behavior should cope with
+    // that.
     //
     return $ToAbsoluteURL(this.@baseURL, normalized + ".js");
 };
