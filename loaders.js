@@ -1473,6 +1473,10 @@ class LoadTask {
     // happens in eval() and evalAsync(): the eval script does not need to go
     // through the "loading" part of the pipeline, but it must be linked.
     //
+    // TODO - consider instead of allowing directly creating "loaded"
+    // LoadTasks, having the caller create it, add it to the LinkSet, and then
+    // call finish() manually.
+    //
     constructor(namesOrScript) {
         this.fullNames = fullNames;
         if ($IsArray(namesOrScript)) {
