@@ -4,6 +4,8 @@
 // proposal in terms of ES6 plus a few primitives meant to be exposed by the
 // implementation.
 //
+// Source code is on github: [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
+//
 //
 // ## Why JS is different
 //
@@ -26,23 +28,23 @@
 // ## References
 //
 // The loader proposal is standard-track, but no detailed specification text
-// has been written yet.  This implementation uses these two documents as a
-// starting point:
+// has been written yet.  I started here:
 //
 //   * [ES6 Modules](https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#)
 //     (Google docs) by Sam Tobin-HochStadt and David Herman
 //
 //   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
-//      by Yehuda Katz
+//     by Yehuda Katz
 //
-// In addition many details of the behavior have been pinned down in IRC
-// conversations with Sam and David.
+// You can join the conversation [in the github issue
+// tracker](https://github.com/jorendorff/js-loaders/issues) or on IRC, in the
+// #jslang channel on [irc.mozilla.org](https://wiki.mozilla.org/IRC).
 //
 //
 // ## Current status
 //
-// This implementation of ES6 modules is incomplete and untested.  Some parts
-// are in decent shape:
+// This implementation of ES6 module loaders is incomplete and untested.  Some
+// parts are in decent shape:
 //
 //   * the `Loader` constructor;
 //   * the methods for loading and running code:
@@ -65,9 +67,6 @@
 //     modules;
 //   * intrinsics;
 //   * probably various other odds and ends.
-//
-//
-// TODO: Implement #14, #24.
 
 "use strict";
 
@@ -117,9 +116,8 @@ import {
     $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
     $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
     $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
-    $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
     $IsArray,       // $IsArray(v) ~= Array.isArray(v)
-    $ArrayPush,     // $ArrayPush(arr, v) ~= Object.defineProperty(arr, arr.length, {configurable: true, enumerable: true, writable: true, value: v})
+    $ArrayPush,     // $ArrayPush(arr, v) ~= arr.push(v)
     $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
     $SetNew,        // $SetNew() ~= new Set
     $SetHas,        // $SetHas(set, v) ~= set.has(v)

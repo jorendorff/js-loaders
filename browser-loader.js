@@ -2,27 +2,44 @@
 
 "use strict";
 
+// This file shows sample implementations of the browser's loader hooks.  [The
+// `Loader` API](./loaders.js), which is standard-track for ECMAScript Edition
+// 6, provides hooks so that an implementation or user code can customize the
+// import process.
+//
+// The hooks defined here provide some simple behavior for `import` in the
+// browser. The plan is to standardize something like this in a joint effort
+// between TC39 and the standard organizations responsible for Web applications
+// and so forth.
+
 // P3 ISSUE #21: Determine whether this is a subclass or what.
 
 import {
-    // Embedding features
     $QueueTask,
     $ToAbsoluteURL,
-    $FetchTextFromURL,
-
-    // Capabilities that JS provides, but via methods that other code could
-    // delete or replace
-    $MapGet,            // $MapGet(map, key) ~= map.get(key)
-    $StringSplit,       // $StringSplit(s, delim) ~= s.split(delim)
-    $TypeError          // $TypeError(msg) ~= new TypeError(msg)
+    $FetchTextFromURL
 } from "implementation-intrinsics";
+
+// Capabilities that JS provides, but via methods that other code could
+// delete or replace.
+import {
+    $ArrayPush,     // $ArrayPush(arr, v) ~= arr.push(v)
+    $MapNew,        // $MapNew() ~= new Map
+    $MapGet,        // $MapGet(map, key) ~= map.get(key)
+    $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
+    $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
+    $MapIterator,   // for ([k, v] of $MapIterator(map)) ~= for ([k, v] of map)
+    $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
+    $StringSplit,   // $StringSplit(s, delim) ~= s.split(delim)
+    $TypeError      // $TypeError(msg) ~= new TypeError(msg)
+} from "implementation-builtins";
 
 import { System } from "js/loaders";
 
+// **`System.normalize`** - Convert relative module names to full module names.
+//
 // P1 ISSUE #22:  Make sure hierarchical module names are sufficient for
 // packages.
-//
-// Normalize relative module names based on the referring module's name.
 //
 // Relative module names are handy for imports within a package.
 //
@@ -110,15 +127,18 @@ System.normalize = function normalize(name, options) {
     return rest;
 };
 
-// The ondemand table is a Map from urls (strings) to module contents (string or
-// Array of string). Updated by loader.ondemand().
+// **`System.@ondemandTable`** - Maps urls (strings) to resource contents (a
+// string, the module name; or an Array of strings, a list of module
+// names). Updated by `System.ondemand()`.
 System.@ondemandTable = $MapNew();
 
-// Map from module names to urls, a cached index of the data in
-// this.@ondemand.
+// **`System.@locations`** - Maps module names to urls, a copy of the data in
+// `this.@ondemand` tuned for lookup by module name. (This is purely a
+// performance hack, a cache.  Whenever `@ondemandTable` is modified, we
+// discard `@locations`.)
 System.@locations = undefined;
 
-// System.ondemand - Browser resolve configuration.
+// **`System.ondemand`** - Browser resolve configuration.
 //
 // TODO: doc comment here
 // 
@@ -159,7 +179,12 @@ System.ondemand = function ondemand(sources) {
     this.@locations = undefined;
 };
 
-function ondemandTableLookup(loader, normalized, referer) {
+// **`ondemandTableLookup`** - Given a loader and a full module name, find the
+// URL of that module in the `ondemand` table.
+//
+// P4 ISSUE - Expose this function via some public API?
+//
+function ondemandTableLookup(loader, normalized) {
     if (loader.@locations === undefined) {
         // P5 ISSUE: module names can appear in multiple values in the
         // @ondemand table. This raises the question of ordering of
@@ -180,23 +205,14 @@ function ondemandTableLookup(loader, normalized, referer) {
     return $MapGet(loader.@locations, normalized);
 }
 
-// Browser system resolve hook.
+// **`System.resolve`** - Find a URL for the given module name.
 //
 // Consult the ondemand table.  If any string value in the table matches the
 // module name, return the key.  If any array value in the table contains an
 // element that matches the module name, return {address: key, type: "script"}.
-// Otherwise, percent-encode each segment of the module name, add ".js" to the
-// last segment, resolve that relative to this.@baseURL, and return the resolved
-// URL.
-//
-// TODO:  Implement percent-encoding.
-//
-// P5 ISSUE:  Do we care if "." and ".." end up being sent in URL paths?  Empty
-// segments ("x//y")?  I think we should try to produce valid URLs or throw, but
-// maybe <http://foo.bar/x/y//////../../> is valid.
 //
 System.resolve = function resolve(normalized, referer) {
-    let address = ondemandTableLookup(this, normalized, referer);
+    let address = ondemandTableLookup(this, normalized);
     if (address !== undefined) {
         // Relative URLs in the ondemand table are resolved relative to
         // the baseURL, per samth 2013 April 26.
@@ -206,6 +222,12 @@ System.resolve = function resolve(normalized, referer) {
         return address;
     }
 
+    // Otherwise, percent-encode each segment of the module name, add ".js" to the
+    // last segment, resolve that relative to this.@baseURL, and return the resolved
+    // URL.
+    //
+    // TODO:  Implement percent-encoding.
+    //
     // Add `".js"` here, per samth 2013 April 22.  *Rationale:*  It would be
     // unhelpful to make everyone remove the file extensions from all their
     // scripts.  It would be even worse to make the file extension part of
@@ -222,13 +244,20 @@ System.resolve = function resolve(normalized, referer) {
     // to return a relative URL, the default fetch behavior should cope with
     // that.
     //
+    // P5 ISSUE: Do we care if "." and ".." end up being sent in URL paths?
+    // Empty segments ("x//y")?  I think we should try to produce valid URLs or
+    // throw, but if <http://foo.bar/x/y//////../../> is a valid URL, fine.
+    //
     return $ToAbsoluteURL(this.@baseURL, normalized + ".js");
 };
 
+// **`System.fetch`** - Download a resource off the Web.
 System.fetch = function fetch(address, fulfill, reject, options) {
     // Both System.resolve() and System.fetch() call $ToAbsoluteURL on the
     // address. See comment in System.resolve above.
     address = $ToAbsoluteURL(this.@baseURL, address);
 
+    // TODO: Implement this in terms of XHR instead of an intrinsic ([issue
+    // #24](https://github.com/jorendorff/js-loaders/issues/24)).
     $FetchTextFromURL(address, fulfill, reject);
 };
