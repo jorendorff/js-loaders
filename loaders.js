@@ -304,9 +304,10 @@ export class Loader {
     //   * `load(url, callback, errback)` - Asynchronously load and run a
     //     script.  Loads imported modules.
 
-    // **`@checkModuleDeclartions`** - Check to see if script declares any
-    // modules that are already loaded or loading.  If so, throw a SyntaxError.
-    // If not, add entries to the @loading map for each declared module.
+    // **`@checkModuleDeclarations`** - Check to see if script declares any
+    // modules that are already loaded or loading.  If so, throw a
+    // `SyntaxError`.  If not, add entries to the @loading map for each
+    // declared module.
     //
     // *Rationale:* Consider two evalAsync calls.
     //
