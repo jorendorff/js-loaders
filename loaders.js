@@ -36,8 +36,9 @@
 //   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
 //     by Yehuda Katz
 //
-// You can join the conversation [in the github issue
-// tracker](https://github.com/jorendorff/js-loaders/issues) or on IRC, in the
+// You can join the conversation on the [es-discuss mailing
+// list](https://mail.mozilla.org/listinfo/es-discuss), [in the github issue
+// tracker](https://github.com/jorendorff/js-loaders/issues), or on IRC, in the
 // #jslang channel on [irc.mozilla.org](https://wiki.mozilla.org/IRC).
 //
 //
@@ -127,7 +128,6 @@ import {
     $MapGet,        // $MapGet(map, key) ~= map.get(key)
     $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
     $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
-    $MapIterator,   // $MapIterator(map) ~= map[@@iterator]()
     $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
     $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
 } from "implementation-builtins";

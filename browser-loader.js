@@ -28,7 +28,7 @@ import {
     $MapGet,        // $MapGet(map, key) ~= map.get(key)
     $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
     $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
-    $MapIterator,   // for ([k, v] of $MapIterator(map)) ~= for ([k, v] of map)
+    $MapPairs,      // $MapPairs(map) ~= [...map]
     $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
     $StringSplit,   // $StringSplit(s, delim) ~= s.split(delim)
     $TypeError      // $TypeError(msg) ~= new TypeError(msg)
@@ -190,13 +190,15 @@ function ondemandTableLookup(loader, normalized) {
         // @ondemand table. This raises the question of ordering of
         // duplicates.
         var locations = $MapNew();
-        for (let [url, contents] of $MapIterator(loader.@ondemand)) {
+        let pairs = $MapPairs(loader.@ondemand);
+        for (let i = 0; i < pairs.length; i++) {
+            let [url, contents] = pairs[i];
             if (typeof contents === "string") {
                 $MapSet(locations, contents, url);
             } else {
                 // contents is an array.
-                for (let i = 0; i < contents.length; i++)
-                    $MapSet(locations, contents[i], url);
+                for (let j = 0; j < contents.length; j++)
+                    $MapSet(locations, contents[j], url);
             }
         }
         loader.@locations = locations;
