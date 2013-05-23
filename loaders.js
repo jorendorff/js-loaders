@@ -1423,11 +1423,11 @@ export class Loader {
 // The task leaves this state when the source is successfully compiled, or
 // an error causes the load to fail.
 //
-// LoadTasks in this state are associated with one or more LinkSets in a
+// `LoadTask`s in this state are associated with one or more `LinkSet`s in a
 // many-to-many relation. This implementation stores both directions of the
-// relation: loadTask.linkSets is the Set of all LinkSets that require
-// loadTask and linkSet.loads is the Set of all loadTasks that linkSet
-// requires.
+// relation: `loadTask.linkSets` is the `Set` of all `LinkSet`s that require
+// `loadTask`; and `linkSet.loads` is the `Set` of all `LoadTask`s that
+// `linkSet` requires.
 //
 // 2.  Loaded:  Source is available and has been "translated"; syntax has
 // been checked; dependencies have been identified.  But the module hasn't
@@ -1489,19 +1489,19 @@ class LoadTask {
         this.dependencies = null;
     }
 
-    // The loader calls this after the last loader hook (the .link hook),
-    // and after the script or module's syntax has been checked.
+    // **`finish(loader, actualAddress, script)`** - The loader calls this
+    // after the last loader hook (the `link` hook), and after the script or
+    // module's syntax has been checked. `finish` does three things:
     //
-    // 1. Process module declarations.
-    // 2. Process imports. This may trigger additional loads.
-    // 3. Call .onLoad on any listening LinkSets (see that method for the
-    // conclusion of the load/link/run process).
+    //   1. Process module declarations.
     //
-    // On success, this transitions the LoadTask from "loading" status to
-    // "loaded".
+    //   2. Process imports. This may trigger additional loads.
     //
-    // In this implementation, `script` is a compiled script object
-    // representing the result of compiling either a module or a script.
+    //   3. Call `.onLoad` on any listening `LinkSet`s (see that method for the
+    //      conclusion of the load/link/run process).
+    //
+    // On success, this transitions the `LoadTask` from `"loading"` status to
+    // `"loaded"`.
     //
     finish(loader, actualAddress, script) {
         $Assert(this.status === "loading");
@@ -1697,7 +1697,8 @@ class LoadTask {
     }
 }
 
-// A `LinkSet` represents a call to `loader.evalAsync()`, `.load()`, or `.import()`.
+// A `LinkSet` represents a call to `loader.evalAsync()`, `.load()`, or
+// `.import()`.
 class LinkSet {
     constructor(loader, startingLoad, callback, errback) {
         // TODO: make LinkSets not inherit from Object.prototype, for isolation;
