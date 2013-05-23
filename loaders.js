@@ -342,6 +342,7 @@ export class Loader {
             let [client, request] = pairs[i];
             let referer = {name: client, url: url};
             let name = this.normalize(request, {referer});
+            // TODO - BUG - result of normalize needs to be checked; may be an object
 
             let m = $MapGet(this.@modules, name);
             if (m === undefined) {
@@ -701,7 +702,7 @@ export class Loader {
             // single load.)
             let result = this.normalize(request, {referer});
 
-            // Interpret the value returned by the `normalize` hook.
+            // Interpret the `result`.
             //
             // It must a string or an object with a `.normalized` property
             // whose value is a string.  Otherwise a `TypeError` is thrown.
@@ -1122,12 +1123,10 @@ export class Loader {
         if (typeof name !== "string")
             throw $TypeError("module name must be a string");
 
-        // Entries in the module registry must actually be Modules.
-        //
-        // *Rationale:*  We use Module-specific intrinsics like
+        // Entries in the module registry must actually be `Module`s.
+        // *Rationale:*  We use `Module`-specific intrinsics like
         // `$CodeGetLinkedModules`, `$CodeHasExecuted`, and `$CodeExecute` on
         // them.  The spec will do the same.  per samth, 2013 April 22.
-        //
         if (!$IsModule(module))
             throw $TypeError("Module object required");
 
@@ -1163,7 +1162,7 @@ export class Loader {
     // Linking will fail.
     //
     // **`.delete()` and already-linked code:** `loader.delete("A")` removes
-    // only "A" from the registry, and not other modules linked against "A",
+    // only `A` from the registry, and not other modules linked against `A`,
     // for several reasons:
     //
     // 1. What a module is linked against is properly an implementation
@@ -1172,9 +1171,9 @@ export class Loader {
     // 2. The transitive closure of what is linked against what is
     //    an unpredictable amount of stuff, potentially a lot.
     //
-    // 3. Some uses of modules -- in particular polyfilling -- involve defining
-    //    a new module `MyX`, linking it against some busted built-in module
-    //    `X`, then replacing `X` in the registry with `MyX`. So having
+    // 3. Some uses of modules&mdash;in particular polyfilling&mdash;involve
+    //    defining a new module `MyX`, linking it against some busted built-in
+    //    module `X`, then replacing `X` in the registry with `MyX`. So having
     //    multiple "versions" of a module linked together is a feature, not a
     //    bug.
     //
@@ -1215,12 +1214,12 @@ export class Loader {
     // TODO these methods need to check the this-value carefully.  This can
     // be done with a private symbol.
 
-    // **`normalize`** - For each `import()` call or import-declaration, the
-    // Loader first calls `loader.normalize(name, options)` passing the module
-    // name as passed to `import()` or as written in the import-declaration.
-    // This hook returns a full module name which is used for the rest of the
-    // import process.  (In particular, modules are stored in the registry
-    // under their full module name.)
+    // **`normalize`** hook - For each `import()` call or import-declaration,
+    // the Loader first calls `loader.normalize(name, options)` passing the
+    // module name as passed to `import()` or as written in the
+    // import-declaration.  This hook returns a full module name which is used
+    // for the rest of the import process.  (In particular, modules are stored
+    // in the registry under their full module name.)
     //
     // **When this hook is called:** For all imports, including imports in
     // scripts.  It is not called for the main script body executed by a call
@@ -1233,113 +1232,110 @@ export class Loader {
     // The `normalize` hook may also create a custom "metadata" value that will
     // be passed automatically to the other hooks in the pipeline.
     //
-    // Returns one of:
-    //   - a string s, the full module name.  The loader will create a new
-    //     empty Object to serve as the metadata object for the rest of the
-    //     load; OR
+    // Returns either:
     //
-    //   - undefined, equivalent to returning `name` unchanged; OR
+    //   - a string, the full module name.  The loader will create a new empty
+    //     Object to serve as the metadata object for the rest of the load. Or:
     //
-    //   - an object that has a .normalized property that is a string, the
+    //   - an object that has a `.normalized` property that is a string, the
     //     full module name.
     //
-    // **Default implementation:**  Return the module name unchanged.
+    // **Default behavior:**  Return the module name unchanged.
     //
     normalize(name, options) {
         return name;
     }
 
-    // `resolve` - Given a full module name, determine the resource address
-    // (URL, path, etc.) to load.
+    // **`resolve`** hook - Given a full module name, determine the resource
+    // address (URL, path, etc.) to load.
     //
     // The `resolve` hook is also responsible for determining whether the
     // resource in question is a module or a script.
     //
     // The hook may return:
     //
-    //   - undefined, to request the default behavior described below.
-    //     (P1 ISSUE #13: Define behavior when the resolve hook returns
-    //     undefined.)
-    //
     //   - a string, the resource address. In this case the resource is a
     //     module.
     //
-    //   - an object that has a .address property which is a string, the
-    //     resource address.  The object may also have a .type property,
-    //     which if present must be either "script" or "module".
+    //   - an object that has a `.address` property which is a string, the
+    //     resource address.  The object may also have a `.type` property,
+    //     which if present must be either `"script"` or `"module"`.
     //
-    // Default behavior:  Return the module name unchanged.
-    //
-    // (The browser's System.resolve hook is considerably more complex.)
-    //
-    // When the resolve hook is called:  For all imports, immediately after
-    // the normalize hook returns successfully, unless the normalize hook
-    // names a module that is already loaded or loading.
+    // **When this hook is called:**  For all imports, immediately after the
+    // `normalize` hook returns successfully, unless the module is already
+    // loaded or loading.
     //
     // P1 ISSUE #4:  Relative module names.
     //
     // P1 ISSUE #14:  Define how the ondemand table gets consulted.
+    //
+    // **Default behavior:**  Return the module name unchanged.
+    //
+    // (The browser's System.resolve hook is considerably more complex.)
     //
     resolve(normalized, options) {
         var address = this.@ondemandTableLookup(normalized, options.referer);
         return address === undefined ? normalized : address;
     }
 
-    // Asynchronously fetch the requested source from the given url
-    // (produced by the resolve hook).
+    // **`fetch`** hook - Asynchronously fetch the requested source from the
+    // given address (produced by the `resolve` hook).
     //
-    // This is the one hook that must be overloaded in order to make the
-    // import keyword work. The default implementation simply schedules a
-    // call to the reject hook.
+    // This is the hook that must be overloaded in order to make the `import`
+    // keyword work.
     //
-    // The fetch hook should load the requested address and call the
-    // fulfill() callback, passing two arguments: the fetched source, as a
-    // string; and the actual address where it was found (after all
-    // redirects), also as a string.
+    // The `fetch` hook should load the requested address and call the
+    // `fulfill` callback, passing two arguments: the fetched source, as a
+    // string; and the actual address where it was found (after all redirects),
+    // also as a string.
     //
-    // options.type is the string "module" when fetching a standalone
-    // module, and "script" when fetching a script.
+    // `options.type` is the string `"module"` when fetching a standalone
+    // module, and `"script"` when fetching a script.
     //
-    // When the fetch hook is called:  For all modules and scripts whose
-    // source is not directly provided by the caller.  It is not called for
-    // the script bodies executed by loader.eval() and .evalAsync(), since
-    // those do not need to be fetched.  loader.evalAsync() can trigger this
-    // hook, for modules imported by the script.  loader.eval() is
-    // synchronous and thus never triggers the fetch hook.
+    // **When this hook is called:** For all modules and scripts whose source
+    // is not directly provided by the caller.  It is not called for the script
+    // bodies executed by `loader.eval()` and `.evalAsync()`, since those do
+    // not need to be fetched.  `loader.evalAsync()` can trigger this hook, for
+    // modules imported by the script.  `loader.eval()` is synchronous and thus
+    // never triggers the `fetch` hook.
     //
-    // (loader.load() does not call normalize/resolve hooks but it does call
-    // the fetch/translate/link hooks, per samth, 2013 April 22.)
+    // (`loader.load()` does not call `normalize`, `resolve`, or `link`, since
+    // we're loading a script, not a module; but it does call the `fetch` and
+    // `translate` hooks, per samth, 2013 April 22.)
     //
-    // The fetch hook may call the fulfill/reject callback synchronously rather
-    // than waiting for the next event loop turn.  Per meeting, 2013 April 26.
+    // **Synchronous calls to `fulfill` and `reject`:**  (P2 ISSUE #9)  The
+    // `fetch` hook may call the `fulfill` or `reject` callback synchronously
+    // rather than waiting for the next event loop turn.  Per meeting, 2013
+    // April 26.
     //
-    // P2 ISSUE: #9: synchronous calls to fulfill()
+    // I think samth and I agree that a synchronous `fulfill` callback should
+    // not synchronously call `translate`/`link` hooks, much less
+    // `normalize`/`resolve`/`fetch` hooks for dependencies.  TODO:  Code that
+    // up.
     //
-    // I think samth and I agree that a synchronous fulfill() callback
-    // should not synchronously call translate/link hooks, much less
-    // normalize/resolve/fetch hooks for dependencies. TODO: Code that up.
-    //
-    // TODO: comment default behavior
+    // **Default behavior:** Pass a `TypeError` to the `reject` callback.
     //
     fetch(resolved, fulfill, reject, options) {
         AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
     }
 
-    // Optionally translate src from some other language into JS.
+    // **`translate`** hook - Optionally translate `src` from some other
+    // language into JS.
     //
-    // When the translate hook is called:  For all modules and scripts.  The
-    // default implementation does nothing and returns src unchanged.
-    // (Note:  It is not decided whether this is called for direct eval
-    // scripts; see issue on Loader.eval().)
+    // **When this hook is called:**  For all modules and scripts.  (It is
+    // not decided whether this is called for direct eval scripts; see issue on
+    // Loader.eval().)
+    //
+    // **Default behavior:** Return `src` unchanged.
     //
     translate(src, options) {
         return src;
     }
 
-    // The link hook allows a loader to optionally override the default
+    // **`link`** hook - Allow a loader to optionally override the default
     // linking behavior.  There are three options.
     //
-    //  1. The link hook may return undefined. The loader then uses the
+    //  1. The link hook may return `undefined`. The loader then uses the
     //     default linking behavior.  It compiles src as an ES module, looks
     //     at its imports, loads all dependencies asynchronously, and
     //     finally links them as a unit and adds them to the registry.
@@ -1351,16 +1347,20 @@ export class Loader {
     //     then simply adds that module to the registry.
     //
     //     P3 ISSUE #17: Timing in this case.
+    //
     //     P3 ISSUE #18: link hook returning a Module vs. loader.set().
     //
-    //  3. The hook may return a factory object which the loader will use to
-    //     create the module and link it with its clients and dependencies.
+    //  3. *(unimplemented)* The hook may return a factory object which the
+    //     loader will use to create the module and link it with its clients
+    //     and dependencies.
     //
-    //     The form of a factory object is:  {
-    //         imports: <array of strings (module names)>,
-    //         ?exports: <array of strings (property names)>,
-    //         execute: <function (Module, Module, ...) -> Module>
-    //     }
+    //     The form of a factory object is:
+    //
+    //         {
+    //             imports: <array of strings (module names)>,
+    //             ?exports: <array of strings (property names)>,
+    //             execute: <function (Module, Module, ...) -> Module>
+    //         }
     //
     //     The array of exports is optional.  If the hook does not specify
     //     exports, the module is dynamically linked.  In this case, it is
@@ -1374,10 +1374,10 @@ export class Loader {
     //
     //     P3 ISSUE #19: how does this work?
     //
-    // When the link hook is called:  Immediately after the translate hook,
-    // for modules only.
+    // **When this hook is called:**  After the `translate` hook, for modules
+    // only.
     //
-    // The default implementation does nothing and returns undefined.
+    // **Default behavior:**  Return undefined.
     //
     link(src, options) {
     }
@@ -1393,6 +1393,8 @@ export class Loader {
     }
 }
 
+// ## Dependency loading
+//
 // The goal of a LoadTask is to resolve, fetch, translate, link, and compile
 // a single module (or a collection of modules that all live in the same
 // script).
@@ -1403,53 +1405,53 @@ export class Loader {
 //
 // 1.  Loading:  Source is not available yet.
 //
-//     .status === "loading"
-//     .linkSets is a Set of LinkSets
+//         .status === "loading"
+//         .linkSets is a Set of LinkSets
 //
-// The task leaves this state when the source is successfully compiled, or
-// an error causes the load to fail.
+//     The task leaves this state when the source is successfully compiled, or
+//     an error causes the load to fail.
 //
-// `LoadTask`s in this state are associated with one or more `LinkSet`s in a
-// many-to-many relation. This implementation stores both directions of the
-// relation: `loadTask.linkSets` is the `Set` of all `LinkSet`s that require
-// `loadTask`; and `linkSet.loads` is the `Set` of all `LoadTask`s that
-// `linkSet` requires.
+//     `LoadTask`s in this state are associated with one or more `LinkSet`s in
+//     a many-to-many relation. This implementation stores both directions of
+//     the relation: `loadTask.linkSets` is the `Set` of all `LinkSet`s that
+//     require `loadTask`; and `linkSet.loads` is the `Set` of all `LoadTask`s
+//     that `linkSet` requires.
 //
-// 2.  Loaded:  Source is available and has been "translated"; syntax has
-// been checked; dependencies have been identified.  But the module hasn't
-// been linked or executed yet.  We are waiting for dependencies.
+// 2.  Loaded: Source is available and has been "translated"; syntax has been
+//     checked; dependencies have been identified.  But the module hasn't been
+//     linked or executed yet.  We are waiting for dependencies.
 //
-// This implementation treats the Module object as already existing at this
-// point (except for factory-made modules).  But it has not been linked and
-// thus must not be exposed to script yet.
+//     This implementation treats the Module object as already existing at this
+//     point (except for factory-made modules).  But it has not been linked and
+//     thus must not be exposed to script yet.
 //
-// The "loaded" state says nothing about the status of the dependencies; they
-// may all be linked and executed and yet there may not be any LinkSet that's
-// ready to link and execute this module.  The LinkSet may be waiting for
-// unrelated dependencies to load.
+//     The "loaded" state says nothing about the status of the dependencies;
+//     they may all be linked and executed and yet there may not be any LinkSet
+//     that's ready to link and execute this module.  The LinkSet may be
+//     waiting for unrelated dependencies to load.
 //
-//     .status === "loaded"
-//     .script is a script or null
-//     .factory is a callable object or null
-//     .dependencies is an Array of strings (full module names)
+//         .status === "loaded"
+//         .script is a script or null
+//         .factory is a callable object or null
+//         .dependencies is an Array of strings (full module names)
 //
-// Exactly one of [.script, .factory] is non-null.
+//     Exactly one of `[.script, .factory]` is non-null.
 //
-// The task leaves this state when a LinkSet successfully links the module
-// and moves it into the loader's module registry.
+//     The task leaves this state when a LinkSet successfully links the module
+//     and moves it into the loader's module registry.
 //
 // 3.  Done:  The module has been linked and added to the loader's module
-// registry.  Its body may or may not have been executed yet (see
-// @ensureExecuted).
+//     registry.  Its body may or may not have been executed yet (see
+//     @ensureExecuted).
 //
-// (TODO: this is speculation) LoadTasks that enter this state are removed
-// from the loader.@loading table and from all LinkSets; they become
-// garbage.
+//     (TODO: this is speculation) LoadTasks that enter this state are removed
+//     from the loader.@loading table and from all LinkSets; they become
+//     garbage.
 //
 // 4.  Failed:  The load failed. The task never leaves this state.
 //
-//     .status === "failed"
-//     .exception is an exception value
+//         .status === "failed"
+//         .exception is an exception value
 //
 class LoadTask {
     // If the constructor argument is an array, it is the array of module names
@@ -1479,9 +1481,9 @@ class LoadTask {
         this.dependencies = null;
     }
 
-    // **`finish(loader, actualAddress, script)`** - The loader calls this
-    // after the last loader hook (the `link` hook), and after the script or
-    // module's syntax has been checked. `finish` does three things:
+    // **`finish`** - The loader calls this after the last loader hook (the
+    // `link` hook), and after the script or module's syntax has been
+    // checked. `finish` does three things:
     //
     //   1. Process module declarations.
     //
@@ -1659,8 +1661,8 @@ class LoadTask {
     //   the complex error-handling process and just directly call the
     //   errback hook.
 
-    // **`fail(exc)`** - Fail this load task. All `LinkSet`s that require it
-    // also fail.
+    // **`fail`** - Fail this load task. All `LinkSet`s that require it also
+    // fail.
     fail(exc) {
         $Assert(this.status === "loading");
         this.status = "failed";
@@ -1671,9 +1673,9 @@ class LoadTask {
         $Assert($SetSize(sets) === 0);
     }
 
-    // **`onLinkSetFail(loader, linkSet)`** - This is called when a LinkSet
-    // associated with this load fails.  If this load is not needed by any
-    // surviving LinkSet, drop it.
+    // **`onLinkSetFail`** - This is called when a LinkSet associated with this
+    // load fails.  If this load is not needed by any surviving LinkSet, drop
+    // it.
     onLinkSetFail(loader, linkSet) {
         $Assert($SetHas(this.linkSets, linkSet));
         $SetDelete(this.linkSets, linkSet);
@@ -1701,8 +1703,8 @@ class LinkSet {
 
         this.loads = $SetNew();
 
-        // Invariant: this.loadingCount is the number of LoadTasks in
-        // this.loads whose .status is "loading".
+        // Invariant: `this.loadingCount` is the number of `LoadTask`s in
+        // `this.loads` whose `.status` is `"loading"`.
         this.loadingCount = 0;
 
         this.addLoad(startingLoad);
@@ -1720,12 +1722,12 @@ class LinkSet {
         }
     }
 
-    // **`onLoad(loadTask)`** - LoadTask.prototype.finish calls this after one
-    // LoadTask actually finishes, and after kicking off loads for all its
-    // dependencies.
+    // **`onLoad`** - `LoadTask.prototype.finish` calls this after one
+    // `LoadTask` successfully finishes, and after kicking off loads for all
+    // its dependencies.
     //
-    // If the LoadTask is completely satisfied (that is, all dependencies have
-    // loaded) then we link the modules and fire the callback.
+    // If this `LinkSet` is completely satisfied (that is, all dependencies
+    // have loaded) then we link the modules and fire the success callback.
     //
     // **Timing and grouping of dependencies.** Consider
     //
@@ -1738,15 +1740,14 @@ class LinkSet {
     //
     // *Rationale:* Dependencies could be initialized more eagerly, but the
     // order would be less deterministic. The design opts for a bit more
-    // determinism in common cases-- though it is easy to trigger
+    // determinism in common cases&mdash;though it is easy to trigger
     // non-determinism since multiple link sets can be in-flight at once.
     //
     onLoad(loadTask) {
         $Assert($SetHas(this.loads, loadTask));
         $Assert(loadTask.status === "loaded");
         if (--this.loadingCount === 0) {
-            // Link, then schedule the callback (which actually runs the
-            // code).
+            // Link, then schedule the success callback.
             try {
                 this.link();
             } catch (exc) {
@@ -1758,10 +1759,10 @@ class LinkSet {
         }
     }
 
-    // **`link()`** - Link all scripts and modules in this link set to each
-    // other and to modules in the registry.  This is done in a synchronous
-    // walk of the graph.  On success, commit all the modules in this LinkSet
-    // to the loader's module registry.
+    // **`link`** - Link all scripts and modules in this link set to each other
+    // and to modules in the registry.  This is done in a synchronous walk of
+    // the graph.  On success, commit all the modules in this LinkSet to the
+    // loader's module registry.
     link() {
         // TODO - need a starting {script, dependencyFullNames} pair.
         let {script, dependencies} = throw TODO;
@@ -1818,6 +1819,7 @@ class LinkSet {
             // modules should be loaded, but it is an asynchronous process.
             // Intervening calls to Loader.set() or Loader.delete() can
             // cause things to be missing.
+            //
             let mods = [];
             for (let i = 0; i < deps.length; i++) {
                 let fullName = deps[i];
@@ -1851,16 +1853,16 @@ class LinkSet {
         // that can't be recovered.
         walk(undefined, script, dependencies);
 
-        // Move the fully linked modules from the @loading table to the
-        // @modules table.
+        // Move the fully linked modules from the `@loading` table to the
+        // `@modules` table.
         for (let i = 0; i < linkedNames.length; i++) {
             $MapDelete(this.loader.@loading, linkedNames[i]);
             $MapSet(this.loader.@modules, linkedNames[i], linkedModules[i]);
         }
     }
 
-    // Fail this LinkSet.  Detach it from all loads and schedule the error
-    // callback.
+    // **`fail`** - Fail this `LinkSet`.  Detach it from all loads and schedule
+    // the error callback.
     fail(exc) {
         let loads = $SetElements(this.loads);
         for (let i = 0; i < loads.length; i++)
@@ -1868,6 +1870,7 @@ class LinkSet {
         AsyncCall(this.errback, exc);
     }
 }
+
 
 // ## Utility functions
 
