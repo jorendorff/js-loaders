@@ -15,7 +15,6 @@
 // P3 ISSUE #21: Determine whether this is a subclass or what.
 
 import {
-    $QueueTask,
     $ToAbsoluteURL,
     $FetchTextFromURL
 } from "implementation-intrinsics";

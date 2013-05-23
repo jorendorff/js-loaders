@@ -74,40 +74,108 @@
 
 // ## Primitives
 
-// We rely on the JavaScript implementation to provide a few primitives.
+// We rely on the JavaScript implementation to provide a few primitives.  You
+// can skip over this stuff, but it gives a flavor of what sort of thing the
+// rest of this file is going to be doing.
 import {
-    // The `$QueueTask(fn)` primitive schedules a callback `fn` to be called
-    // in a subsequent event loop turn.  It is mainly used to ensure that
-    // user callbacks are called from an empty stack.
-    $QueueTask,
-
-    // `$Assert(condition)` does nothing. It is called here to indicate that
-    // the given `condition` must be true.
+    // * `$Assert(condition)` is your bog-standard assert function. It does
+    //   nothing. The given `condition` is always true.
     $Assert,
 
-    // Modules
-    $ModuleGetContainingScript,
+    // * `$QueueTask(fn)` schedules a callback `fn` to be called in a later
+    //   event loop turn.  Much like `setTimeout(fn, 0)`.  The HTML spec calls
+    //   this "[queueing a
+    //   task](http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#queue-a-task)".
+    //   Here, it&rsquo;s mainly used to ensure that user callbacks are called
+    //   from an empty stack.
+    $QueueTask,
 
-    // Scripts
-    $Compile,  // Parse a script or a module body. Returns a script.
-    $ScriptDeclaredModuleNames,  // Returns an array of strings, the modules declared in the script.
-    $ScriptGetDeclaredModule,  // (script, name) -> Module
-    $ScriptImports,  // array of pairs, see comment in Loader.eval()
-    $LinkScript,  // Link a script to the modules requested in its imports.
+    // * `$DefineBuiltins(obj)` builds a full copy of the ES builtins on `obj`,
+    //   so for example you get a fresh new `obj.Array` constructor and methods
+    //   like `obj.Array.prototype.push`. You even get `obj.Loader`, a copy of
+    //   `Loader`.
+    $DefineBuiltins,
 
-    // Primitives that operate on both scripts and modules.
+    // Now on to the core JS language implementation intrinsics.
+
+    // * `$Compile(loader, src, moduleName, address, strict)` parses a script
+    //   or module body. If `moduleName` is null, then `src` is parsed as an
+    //   ES6 Program; otherwise `moduleName` is a string, and `src` is parsed
+    //   as a module body.  `$Compile` detects ES "early errors" and throws
+    //   `SyntaxError`. On success, it returns a script object, and this is the
+    //   only way script objects are created. (Script objects are never exposed
+    //   to end users; they are for use with the following intrinsics only.)
+    //
+    //   Note that this does not execute any of the code in `src`.
+    //
+    $Compile,
+
+    // * `$ScriptDeclaredModuleNames(script)` returns an array of strings, the
+    //   names of all modules declared in the script.
+    //
+    //   A script declares modules using this syntax: `module "vc" {
+    //   ... }`.  Modules don't nest, and they can only occur at toplevel, so
+    //   there is a single flat array for the whole script.
+    //
+    $ScriptDeclaredModuleNames,
+
+    // * `$ScriptGetDeclaredModule(script, name)` returns a `Module` object for
+    //   a module declared in the body of the given `script`.
+    //
+    //   Modules declared in scripts must be linked and executed before they
+    //   are exposed to user code.
+    //
+    $ScriptGetDeclaredModule,
+
+    // * `$ScriptImports(script)` returns an array of pairs representing every
+    //   import-declaration in `script`. See the comment in `Loader.eval()`.
+    $ScriptImports,
+
+    // * `$LinkScript(script, modules)` links a script to all the modules
+    //   requested in its imports. `modules` is an array of `Module` objects,
+    //   the same length as `$ScriptImports(script)`.
+    //
+    //   Throws if any `import`-`from` declaration in `script` imports a name
+    //   that the corresponding module does not export.
+    //
+    $LinkScript,
+
+    // * `$ModuleGetDeclaringScript(module)` returns a script object. If
+    //   `$ScriptGetDeclaredModule(script, name) === module` for some string
+    //   `name`, then `$ModuleGetDeclaringScript(module) === script`.
+    $ModuleGetDeclaringScript,
+
+    // The remaining primitives operate on both scripts and modules.
+
+    // * Scripts and modules each have a bit that indicates if their code has
+    //   ever started executing. `$CodeHasExecuted(c)` and
+    //   `$CodeSetExecuted(c)` test and set that bit. (Once set, it is never
+    //   cleared.)
     $CodeHasExecuted,
     $CodeSetExecuted,
 
-    // `$CodeExecute(c)` - Execute the body of a script or module. If `c` is a
-    // module, return undefined. If it is a script, return the value of the
-    // last-executed expression statement.
+    // * `$CodeExecute(c)` executes the body of a script or module. If `c` is a
+    //   module, return undefined. If it's a script, return the value of the
+    //   last-executed expression statement (just like `eval`).
     $CodeExecute,
-    $CodeGetLinkedModules,
 
-    // Globals
-    $DefineBuiltins
+    // * `$CodeGetLinkedModules(c)` returns an array of the modules linked to
+    //   `c` in a previous `$LinkScript` call.  (We could perhaps do without
+    //   this by caching this information in a WeakMap.)
+    $CodeGetLinkedModules
 } from "implementation-intrinsics";
+
+// TODO: Remove `$CodeHasExecuted` and `$CodeSetExecuted` in favor of a `WeakMap`.
+//
+// TODO: Move `@ensureExecuted` outside of the `Loader` class.
+//
+// TODO: Merge `$ScriptDeclaredModuleNames` and `$ScriptGetDeclaredModule` into
+// a single function that returns an array of pairs.
+//
+// TODO: Consider removing `$ScriptImports` in favor of a `$CodeImports` that
+// we call separately on modules and scripts; `$LinkScript` would become
+// `$CodeLink` and then `$CodeGetLinkedModules` could really be replaced with a
+// `WeakMap`.
 
 // The remaining primitives are not very interesting. These are capabilities
 // that JS provides via builtin methods. We use primitives rather than the
@@ -1071,7 +1139,7 @@ export class Loader {
             if ($IsModule(m)) {
                 // The `$SetRemove` call here means that if we already plan to
                 // execute this script, move it to execute after `m`.
-                let script = $ModuleGetContainingScript(m);
+                let script = $ModuleGetDeclaringScript(m);
                 $SetRemove(schedule, script);
                 $SetAdd(schedule, script);
             }
