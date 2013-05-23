@@ -75,8 +75,8 @@
 // ## Primitives
 
 // We rely on the JavaScript implementation to provide a few primitives.  You
-// can skip over this stuff, but it gives a flavor of what sort of thing the
-// rest of this file is going to be doing.
+// can skip over this stuff. On the other hand, it tells what sort of thing
+// we'll be doing here.
 import {
     // * `$Assert(condition)` is your bog-standard assert function. It does
     //   nothing. The given `condition` is always true.
@@ -167,8 +167,6 @@ import {
 
 // TODO: Remove `$CodeHasExecuted` and `$CodeSetExecuted` in favor of a `WeakMap`.
 //
-// TODO: Move `@ensureExecuted` outside of the `Loader` class.
-//
 // TODO: Merge `$ScriptDeclaredModuleNames` and `$ScriptGetDeclaredModule` into
 // a single function that returns an array of pairs.
 //
@@ -215,8 +213,7 @@ export class Loader {
         // This map only ever contains `Module` objects that have been fully
         // linked.  However it can contain modules whose bodies have not yet
         // started to execute.  Except in the case of cyclic imports, such
-        // modules are not exposed to user code.  See
-        // `Loader.@ensureExecuted()`.
+        // modules are not exposed to user code.  See `ensureExecuted()`.
         //
         // **Notation.** This weird `loader.@modules` syntax is not part of the
         // JS language. It is only meant to indicate that the `@modules`
@@ -446,7 +443,7 @@ export class Loader {
         // Execute any (directly or indirectly imported) module bodies that
         // have not been executed yet, then execute script.  Any script or
         // module body can throw.
-        return Loader.@ensureExecuted(script);
+        return ensureExecuted(script);
     }
 
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
@@ -535,7 +532,7 @@ export class Loader {
             // what the spec is expected to say.
             let result;
             try {
-                result = Loader.@ensureExecuted(script);
+                result = ensureExecuted(script);
             } catch (exc) {
                 AsyncCall(errback, exc);
                 return;
@@ -723,7 +720,7 @@ export class Loader {
                     throw $TypeError("import(): module \"" + fullName +
                                      "\" was deleted from the loader");
                 }
-                Loader.@ensureExecuted(m);
+                ensureExecuted(m);
             } catch (exc) {
                 return errback(exc);
             }
@@ -1028,135 +1025,6 @@ export class Loader {
         } catch (exc) {
             loadTask.fail(exc);
         }
-    }
-
-    // **`@ensureExecuted`** - Walk the dependency graph of the module or
-    // script `start`, executing all module bodies that have not executed.
-    //
-    // `start` and its dependencies must already be linked.
-    //
-    // On success, `start` and all its dependencies, transitively, will have
-    // started to execute exactly once.  That is, the `$CodeHasExecuted` bit is
-    // set on all of them.
-    //
-    // **Purpose** - Module bodies are executed on demand, as late as possible.
-    // The loader always uses this function to execute scripts, and always
-    // calls this function before returning a module to script.
-    //
-    // **Execution order** - Modules are executed in depth-first,
-    // left-to-right, post order, stopping at cycles.  A script that contains
-    // one or more dependencies is executed immediately after the last of the
-    // modules it declares that are in the dependency set (per dherman, 2013
-    // May 21).
-    //
-    // **Error handling** - Module bodies can throw exceptions, and they are
-    // propagated to the caller.  The `$CodeHasExecuted` bit remains set on a
-    // module after its body throws an exception.
-    //
-    // **Not-yet-executed modules** - There is only one way a module can be
-    // exposed to script before it has executed.  In the case of an import
-    // cycle, whichever module executes first can observe the others before
-    // they have executed.  Simply put, we have to start somewhere: one of the
-    // modules in the cycle must run first.
-    //
-    // P3 ISSUE: If you `eval()` or `load()` a script S that declares a module
-    // M and imports a module K, and executing K's body throws, then the next
-    // script that imports M will cause the body of S to execute. Super weird.
-    //
-    static @ensureExecuted(mod) {
-        // NOTE: A tricky test case for this code:
-        //
-        //     <script>
-        //       var ok = false;
-        //     </script>
-        //     <script>
-        //       module "x" { import "y" as y; throw fit; }
-        //       module "y" { import "x" as x; ok = true; }
-        //       import "y" as y;  // marks "x" as executed, but not "y"
-        //     </script>
-        //     <script>
-        //       import "x" as x;  // must execute "y" but not "x"
-        //       assert(ok === true);
-        //     </script>
-        //
-        // This is tricky because when we go to run the last script,
-        // module "x" is already marked as executed, but one of its
-        // dependencies, "y", isn't. We must find it anyway and execute it.
-        //
-        // Cyclic imports, combined with exceptions during module execution
-        // interrupting this algorithm, are the culprit.
-        //
-        // The remedy:  when walking the dependency graph, do not stop at
-        // already-marked-executed modules.  Implementations may optimize as
-        // noted below.
-
-        // Another test case:
-        //
-        //     var log = "";
-        //     module "x" { import "y" as y; log += "x"; }
-        //     module "y" { log += "y"; }
-        //     import "x" as x, "y" as y;
-        //     assert(log === "xy");
-
-        // **Exceptions during execution:**  Suppose a module is linked, we
-        // start executing its body, and that throws an exception.  We leave it
-        // in the module registry (per samth, 2013 April 16) because re-loading
-        // the module and running it again is not likely to make things better.
-        //
-        // Other fully linked modules in the same LinkSet are also left in
-        // the registry (per dherman, 2013 April 18).  Some of those may be
-        // unrelated to the module that threw.  Since their "has ever
-        // started executing" bit is not yet set, they will be executed on
-        // demand.  This allows unrelated modules to finish loading and
-        // initializing successfully, if they are needed.
-        //
-        // While executing a module body, calling `eval()` or `System.get()`
-        // can cause other module bodies to execute.  That is, module body
-        // execution can nest.  However no individual module's body will be
-        // executed more than once.
-
-        // Depth-first walk of the dependency graph, stopping at cycles, and
-        // executing each module body that has not already been executed (in
-        // post order).
-        //
-        // An implementation can optimize this by marking each module with
-        // an extra "no need to walk this subtree" bit when all
-        // dependencies, transitively, are found to have been executed.
-        //
-        let seen = $SetNew();
-        let schedule = $SetNew();
-
-        function walk(m) {
-            $SetAdd(seen, m);
-            let deps = $CodeGetLinkedModules(mod);
-            for (let i = 0; i < deps.length; i++) {
-                let dep = deps[i];
-                if (!$SetHas(seen, dep))
-                    walk(dep);
-            }
-            $SetAdd(schedule, m);
-
-            if ($IsModule(m)) {
-                // The `$SetRemove` call here means that if we already plan to
-                // execute this script, move it to execute after `m`.
-                let script = $ModuleGetDeclaringScript(m);
-                $SetRemove(schedule, script);
-                $SetAdd(schedule, script);
-            }
-        }
-
-        walk(start);
-
-        let result;
-        let schedule = $SetElements(schedule);
-        for (let i = 0; i < schedule.length; i++) {
-            let c = schedule[i];
-            if (!$CodeHasExecuted(c)) {
-                $CodeSetExecuted(c);
-                result = $CodeExecute(c);
-            }
-        }
-        return result;
     }
 
 
@@ -1474,6 +1342,7 @@ export class Loader {
         return obj;
     }
 }
+
 
 // ## Dependency loading
 //
@@ -1965,6 +1834,135 @@ class LinkSet {
             loads[i].onLinkSetFail(this.loader, this);
         AsyncCall(this.errback, exc);
     }
+}
+
+
+// ## Module and script execution
+
+// **`ensureExecuted`** - Walk the dependency graph of the script or module
+// `start`, executing any script or module bodies that have not already
+// executed (including, finally, `start` itself).
+//
+// `start` and its dependencies must already be linked.
+//
+// On success, `start` and all its dependencies, transitively, will have
+// started to execute exactly once.  That is, the `$CodeHasExecuted` bit will
+// be set on all of them.
+//
+// **Purpose** - Module bodies are executed on demand, as late as possible.
+// The loader always uses this function to execute scripts, and always calls
+// this function before returning a module to script.
+//
+// **Error handling** - Module bodies can throw exceptions, and they are
+// propagated to the caller.  The `$CodeHasExecuted` bit remains set on a
+// module after its body throws an exception.
+//
+// **Not-yet-executed modules** - There is one way a module can be exposed to
+// script before it has executed.  In the case of an import cycle, whichever
+// module executes first can observe the others before they have executed.
+// Simply put, we have to start somewhere: one of the modules in the cycle must
+// run before the others.
+//
+// P3 ISSUE: If you `eval()` or `load()` a script S that declares a module M
+// and imports a module K, and executing K's body throws, then the next script
+// that imports M will cause the body of S to execute. Super weird.
+//
+static ensureExecuted(mod) {
+    // **Why the graph walk doesn't stop at already-executed modules:**  It's
+    // a matter of correctness.  Here is the test case:
+    //
+    //     <script>
+    //       var ok = false;
+    //     </script>
+    //     <script>
+    //       module "x" { import "y" as y; throw fit; }
+    //       module "y" { import "x" as x; ok = true; }
+    //       import "y" as y;  // marks "x" as executed, but not "y"
+    //     </script>
+    //     <script>
+    //       import "x" as x;  // must execute "y" but not "x"
+    //       assert(ok === true);
+    //     </script>
+    //
+    // When we `ensureExecuted` the third script, module `x` is already marked
+    // as executed, but one of its dependencies, `y`, isn't.  In order to
+    // achieve the desired postcondition, we must find `y` anyway and execute
+    // it.
+    //
+    // Cyclic imports, combined with exceptions during module execution
+    // interrupting this algorithm, are the culprit.
+    //
+    // The remedy: when walking the dependency graph, do not stop at
+    // already-marked-executed modules.
+    //
+    // (The implementation could optimize this by marking each module with an
+    // extra "no need to walk this subtree" bit when all dependencies,
+    // transitively, are found to have been executed.)
+
+    // Another test case:
+    //
+    //     var log = "";
+    //     module "x" { import "y" as y; log += "x"; }
+    //     module "y" { log += "y"; }
+    //     import "x" as x, "y" as y;
+    //     assert(log === "xy");
+
+    // **Exceptions during execution:** Suppose a module is linked, we start
+    // executing its body, and that throws an exception.  We leave it in the
+    // module registry (per samth, 2013 April 16) because re-loading the module
+    // and running it again is not likely to make things better.
+    //
+    // Other fully linked modules in the same LinkSet are also left in the
+    // registry (per dherman, 2013 April 18).  Some of those may be unrelated
+    // to the module that threw.  Since their "has ever started executing" bit
+    // is not yet set, they will be executed on demand.  This allows unrelated
+    // modules to finish loading and initializing successfully, if they are
+    // needed.
+    //
+    // **Nesting** - While executing a module body, calling `eval()` or
+    // `System.get()` can cause other module bodies to execute.  That is,
+    // module body execution can nest.  However no individual module's body
+    // will be executed more than once.
+
+    // **Execution order** - Modules are executed in depth-first, left-to-right,
+    // post order, stopping at cycles.  A script that contains one or more
+    // dependencies is executed immediately after the last of the modules it
+    // declares that are in the dependency set (per dherman, 2013 May 21).
+    //
+    let seen = $SetNew();
+    let schedule = $SetNew();
+
+    function walk(m) {
+        $SetAdd(seen, m);
+        let deps = $CodeGetLinkedModules(mod);
+        for (let i = 0; i < deps.length; i++) {
+            let dep = deps[i];
+            if (!$SetHas(seen, dep))
+                walk(dep);
+        }
+        $SetAdd(schedule, m);
+
+        if ($IsModule(m)) {
+            // The `$SetRemove` call here means that if we already plan to
+            // execute this script, move it to execute after `m`.
+            let script = $ModuleGetDeclaringScript(m);
+            $SetRemove(schedule, script);
+            $SetAdd(schedule, script);
+        }
+    }
+
+    walk(start);
+
+    let result;
+    schedule = $SetElements(schedule);
+    for (let i = 0; i < schedule.length; i++) {
+        let c = schedule[i];
+        if (!$CodeHasExecuted(c)) {
+            $CodeSetExecuted(c);
+            result = $CodeExecute(c);
+        }
+    }
+    return result;
 }
 
 
