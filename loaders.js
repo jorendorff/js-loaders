@@ -159,6 +159,8 @@ import {
     $CodeGetLinkedModules
 } from "implementation-intrinsics";
 
+// TODO: Rename `$Compile` to `$Parse`.
+//
 // TODO: Merge `$ScriptDeclaredModuleNames` and `$ScriptGetDeclaredModule` into
 // a single function that returns an array of pairs.
 //
