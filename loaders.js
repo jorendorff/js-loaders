@@ -818,27 +818,30 @@ export class Loader {
                     // P4 ISSUE: confirm iterable rather than array
                     let names = [...extra];
 
+                    // Record a load in progress for all other modules defined
+                    // in the same script.
                     for (let i = 0; i < names.length; i++) {
                         let name = names[i];
                         if (typeof name !== "string")
                             throw $TypeError("module names must be strings");
-                        if (name !== normalized &&
-                            ($MapHas(this.@modules, name)
-                             || $MapHas(this.@loading, name))) {
-                            throw $TypeError(
-                                "loader.resolve hook claims module \"" +
-                                name + "\" is at <" + url + "> but " +
-                                "it is already loaded");
-                        }
-                    }
+                        if (name !== normalized) {
+                            if ($MapHas(this.@modules, name)) {
+                                throw $TypeError(
+                                    "loader.resolve hook claims module \"" +
+                                    name + "\" is at <" + url + "> but " +
+                                    "it is already loaded");
+                            }
 
-                    // Record a load in progress for all other modules defined
-                    // in the same script.
-                    for (let i = 0; i < names.length; i++) {
-                        let fullName = names[i];
-                        if (fullName !== normalized) {
-                            ???;
-                            $MapSet(this.@loading, fullName, loadTask);
+                            let existingLoad = $MapGet(this.@loading, name);
+                            if (existingLoad === undefined) {
+                                $ArrayPush(loadTask.fullNames, name);
+                                $MapSet(this.@loading, name, loadTask);
+                            } else if (existingLoad !== loadTask) {
+                                throw $TypeError(
+                                    "loader.resolve hook claims module \"" +
+                                    name + "\" is at <" + url + "> but " +
+                                    "it is already loading or loaded");
+                            }
                         }
                     }
 
