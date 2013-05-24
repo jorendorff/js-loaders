@@ -287,7 +287,7 @@ export class Loader {
     //   * `evalAsync(src, callback, errback)` - Asynchronously run some code.
     //     Loads imported modules.
     //
-    //   * `load(url, callback, errback)` - Asynchronously load and run a
+    //   * `load(address, callback, errback)` - Asynchronously load and run a
     //     script.  Loads imported modules.
 
     // **`@checkModuleDeclarations`** - Check to see if script declares any
@@ -332,14 +332,13 @@ export class Loader {
     // already loaded, a `SyntaxError` is thrown.
     //
     // **Options:** `eval()`, `evalAsync()`, and `load()` all accept an
-    // optional `options` object. `options.url`, if present, is passed to each
-    // loader hook, for each module loaded, as `options.referer.url`.  (The
-    // default loader hooks ignore it, though.)
+    // optional `options` object. `options.address`, if present, is passed to
+    // each loader hook, for each module loaded, as `options.referer.address`.
+    // (The default loader hooks ignore it, though.)
     //
-    // (`options.url` may also be stored in the script and used for
-    // `Error().fileName`, `Error().stack`, and the debugger, and we anticipate
-    // doing so via `$Parse`; but such use is outside the scope of the language
-    // standard.)
+    // (`options.address` may also be stored in the script and used for
+    // `Error().fileName`, `Error().stack`, and developer tools; but such use
+    // is outside the scope of the language standard.)
     //
     // P5 SECURITY ISSUE: Make sure that is OK.
     //
@@ -357,21 +356,22 @@ export class Loader {
     // P2 ISSUE: #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
-        // Unpack options. Only one option is supported: `options.url`.
-        let url = Loader.@unpackUrlOption(options, null);
+        // Unpack options. Only one option is supported: `options.address`.
+        let address = Loader.@unpackAddressOption(options, null);
 
+        // TODO - Consider rewriting this in terms of onFulfill.
         src = this.translate(src, {
             normalized: null,
-            actualAddress: url,
+            actualAddress: address,
             metadata: {},
             type: "script"
         });
 
-        let script = $Parse(this, src, null, url, this.@strict);
+        let script = $Parse(this, src, null, address, this.@strict);
 
         let load = new Load([]);
         let linkSet = new LinkSet(this, load, null, null);
-        load.finish(this, url, script, true);
+        load.finish(this, address, script, true);
         linkSet.link();
 
         // Execute any (directly or indirectly imported) module bodies that
@@ -380,18 +380,18 @@ export class Loader {
         return ensureExecuted(script);
     }
 
-    // **`@unpackUrlOption`** - TODO - comment this method
-    static @unpackUrlOption(options, errback) {
-        if (options !== undefined && "url" in options) {
-            let url = options.url;
-            if (typeof url !== "string") {
-                let exc = $TypeError("options.url must be a string, if present");
+    // **`@unpackAddressOption`** - TODO - comment this method
+    static @unpackAddressOption(options, errback) {
+        if (options !== undefined && "address" in options) {
+            let address = options.address;
+            if (typeof address !== "string") {
+                let exc = $TypeError("options.address must be a string, if present");
                 if (errback === null)
                     throw exc;
                 AsyncCall(errback, exc);
                 return undefined;
             }
-            return url;
+            return address;
         }
 
         // The default address is null, per samth 2013 May 24.
@@ -458,14 +458,14 @@ export class Loader {
         // if (typeof errback !== "function")
         //     throw $TypeError("Loader.load: error callback must be a function");
 
-        let url = Loader.@unpackUrlOption(options, errback);
-        if (url === undefined)
+        let address = Loader.@unpackAddressOption(options, errback);
+        if (address === undefined)
             return;
 
         let load = new Load([]);
         let run = Loader.makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
-        this.@onFulfill(load, {}, null, "script", src, url);
+        this.@onFulfill(load, {}, null, "script", src, address);
     }
 
     // **`makeEvalCallback`** - Create and return a callback, to be called
@@ -489,7 +489,7 @@ export class Loader {
     }
 
     // **`@callFetch`** - Call the fetch hook.  Handle any errors.
-    @callFetch(load, url, referer, metadata, normalized, type) {
+    @callFetch(load, address, referer, metadata, normalized, type) {
         let options = {referer, metadata, normalized, type};
         let errback = exc => load.fail(exc);
 
@@ -540,7 +540,7 @@ export class Loader {
         }
 
         try {
-            this.fetch(url, fulfill, reject, options);
+            this.fetch(address, fulfill, reject, options);
         } catch (exc) {
             // Some care is taken here to prevent even a badly-behaved fetch
             // hook from causing errback() to be called twice.
@@ -561,16 +561,16 @@ export class Loader {
     //
     // The comment on `eval()` explains `options`.
     //
-    load(url,
+    load(address,
          callback = value => undefined,
          errback = exc => { throw exc; },
          options = undefined)
     {
         // Build a referer object.
-        let opturl = Loader.@unpackUrlOption(options, errback);
-        if (opturl === undefined)
+        let refererAddress = Loader.@unpackAddressOption(options, errback);
+        if (refererAddress === undefined)
             return;
-        let referer = {name: null, url: opturl};
+        let referer = {name: null, address: refererAddress};
 
         // *Rationale for creating an empty object for metadata:* The
         // `normalize` hook only makes sense for modules; `load()` loads
@@ -588,7 +588,7 @@ export class Loader {
         let load = new Load([]);
         let run = Loader.makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
-        return this.@callFetch(load, url, referer, metadata, null, "script");
+        return this.@callFetch(load, address, referer, metadata, null, "script");
     }
 
     // **`import`** - Asynchronously load, link, and execute a module and any
@@ -611,10 +611,10 @@ export class Loader {
                 return;
             }
         }
-        let url = Loader.@unpackUrlOption(options, errback);
-        if (url === undefined)
+        let address = Loader.@unpackAddressOption(options, errback);
+        if (address === undefined)
             return;
-        let referer = {name, url};
+        let referer = {name, address};
 
         // this.@import starts us along the pipeline.
         let fullName;
@@ -789,7 +789,7 @@ export class Loader {
         let load = new Load([normalized]);
         $MapSet(this.@loads, normalized, load);
 
-        let url, type;
+        let address, type;
         try {
             // Call the `resolve` hook.
             let result = this.resolve(normalized, {referer, metadata});
@@ -797,22 +797,22 @@ export class Loader {
             // Interpret the result.
             type = "module";
             if (typeof result === "string") {
-                url = result;
+                address = result;
             } else if (IsObject(result)) {
-                // `result.url` must be present and must be a string.
-                if (!("url" in result)) {
+                // `result.address` must be present and must be a string.
+                if (!("address" in result)) {
                     throw $TypeError("Object returned from loader.resolve hook " +
-                                     "must have a .url property");
+                                     "must have a .address property");
                 }
-                url = result.url;
-                if (typeof url !== "string") {
-                    throw $TypeError(".url property of object returned from " +
+                address = result.address;
+                if (typeof address !== "string") {
+                    throw $TypeError(".address property of object returned from " +
                                      "loader.resolve hook must be a string");
                 }
 
                 // `result.extra` is optional, but if present must be an
                 // iterable object, a collection of module names.  It indicates
-                // that the resource at `result.url` is a script containing
+                // that the resource at `result.address` is a script containing
                 // those modules.  (The module we're loading, named by
                 // `normalized`, may be present in `result.extra` or not.)
                 //
@@ -821,8 +821,8 @@ export class Loader {
                 //
                 //     import "a" as a, "b" as b;
                 //
-                // if it knows in advance a URL that contains module
-                // declarations for both `a` and `b`.
+                // if it knows in advance the address of a script that contains
+                // module declarations for both `a` and `b`.
                 //
                 if ("extra" in result) {
                     let extra = result.extra;
@@ -845,7 +845,7 @@ export class Loader {
                             if ($MapHas(this.@modules, name)) {
                                 throw $TypeError(
                                     "loader.resolve hook claims module \"" +
-                                    name + "\" is at <" + url + "> but " +
+                                    name + "\" is at <" + address + "> but " +
                                     "it is already loaded");
                             }
 
@@ -856,7 +856,7 @@ export class Loader {
                             } else if (existingLoad !== load) {
                                 throw $TypeError(
                                     "loader.resolve hook claims module \"" +
-                                    name + "\" is at <" + url + "> but " +
+                                    name + "\" is at <" + address + "> but " +
                                     "it is already loading or loaded");
                             }
                         }
@@ -866,7 +866,7 @@ export class Loader {
                 }
             } else {
                 throw $TypeError("loader.resolve hook must return a " +
-                                 "string or an object with .url");
+                                 "string or an object with .address");
             }
         } catch (exc) {
             // `load` is responsible for firing error callbacks and removing
@@ -880,7 +880,7 @@ export class Loader {
         // Start the fetch.
         // P3 ISSUE: type makes sense here, yes?
         // P3 ISSUE: what about "extra"?
-        this.@callFetch(load, url, referer, metadata, normalized, type);
+        this.@callFetch(load, address, referer, metadata, normalized, type);
 
         return normalized;
     }
@@ -1071,11 +1071,11 @@ export class Loader {
     //   * `normalize(name, options)` - From a possibly relative module name,
     //     determine the full module name.
     //
-    //   * `resolve(fullName, options)` - Given a full module name, determine the URL
-    //     to load and whether we're loading a script or a module.
+    //   * `resolve(fullName, options)` - Given a full module name, determine
+    //     the address to load and whether we're loading a script or a module.
     //
-    //   * `fetch(url, fulfill, reject, skip, options)` - Load a script or module
-    //     from the given URL.
+    //   * `fetch(address, fulfill, reject, skip, options)` - Load a script or
+    //     module from the given address.
     //
     //   * `translate(src, options)` - Optionally translate a script or module from
     //     some other language to JS.
@@ -1504,7 +1504,7 @@ class Load {
         //
         for (let i = 0; i < pairs.length; i++) {
             let [client, request] = pairs[i];
-            let referer = {name: client, url: actualAddress};
+            let referer = {name: client, address: actualAddress};
             let fullName;
             try {
                 fullName = loader.@import(referer, request, sync);
