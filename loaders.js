@@ -192,6 +192,8 @@ import {
     $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
 } from "implementation-builtins";
 
+// ## The Loader class
+//
 // A Loader is responsible for asynchronously finding, fetching, linking,
 // and running modules and scripts.
 //
@@ -382,59 +384,10 @@ export class Loader {
 
         let script = $Compile(this, src, null, url, this.@strict);
 
-        // TODO - BUG - This creates a Load and stores it in @loads, but those
-        // entries are not removed if linking fails.
-        this.@checkModuleDeclarations(script, null);
-
-        // $ScriptImports returns an array of [client, request] pairs.
-        //
-        // client tells where the import appears. It is the full name of the
-        // enclosing module, or null for toplevel imports.
-        //
-        // request is the name being imported.  It is not necessarily a full
-        // name, so we call the normalize hook below.
-        //
-        let pairs = $ScriptImports(script);
-
-        // Linking precedes execution. The code below completely finishes
-        // linking `script` with its dependencies before executing any of them.
-        let modules = [];
-        for (let i = 0; i < pairs.length; i++) {
-            let [client, request] = pairs[i];
-            let referer = {name: client, url: url};
-            let name = this.normalize(request, {referer});
-            // TODO - BUG - result of normalize needs to be checked; may be an object
-
-            let m = $MapGet(this.@modules, name);
-            if (m === undefined) {
-                // The module is not in the registry. Perhaps it is
-                // declared in this script.
-                m = $ScriptGetDeclaredModule(script, name);
-
-                // Rationale for throwing a SyntaxError:  SyntaxError is already
-                // used for a few conditions that can be detected statically
-                // (before a script begins to execute) but are not really
-                // syntax errors per se.  Reusing it seems better than
-                // inventing a new Error subclass.
-                if (m === undefined)
-                    throw $SyntaxError("eval: module not loaded: " + name);
-            }
-            $ArrayPush(modules, m);
-        }
-
-        // The modules are already linked.  Now link the script.  Since
-        // this can throw a link error, it is observable that this happens
-        // before dependencies are executed below.
-        $LinkScript(script, modules);
-
-        // Commit declared modules to the registry.
-        let declared = $ScriptDeclaredModuleNames(script);
-        for (let i = 0; i < declared.length; i++) {
-            let fullName = declared[i];
-            let m = $ScriptGetDeclaredModule(script, fullName);
-            $MapDelete(this.@loads, fullName);
-            $MapSet(this.@modules, fullName, m);
-        }
+        let load = new Load([]);
+        let linkSet = new LinkSet(this, load, null, null);
+        load.finish(this, url, script, true);
+        linkSet.link();
 
         // Execute any (directly or indirectly imported) module bodies that
         // have not been executed yet, then execute script.  Any script or
@@ -509,6 +462,9 @@ export class Loader {
         let script;
         try {
             script = $Compile(this, code, null, srcurl, this.@strict);
+
+            // TODO - BUG - This creates a `Load` and stores it in `@loads`,
+            // but those entries are not removed if linking fails.
             this.@checkModuleDeclarations(script, null);
         } catch (exc) {
             AsyncCall(errback, exc);
@@ -519,7 +475,7 @@ export class Loader {
         // script.  Once the script is linked, the LinkSet will call the
         // run() function below.
         let loaded = new Load(script);
-        let linkSet = new LinkSet(this, loaded, run, errback);
+        new LinkSet(this, loaded, run, errback);
 
         function run() {
             // Tail calls would be equivalent to AsyncCall, except for
@@ -699,7 +655,7 @@ export class Loader {
         // this.@import starts us along the pipeline.
         let fullName;
         try {
-            fullName = this.@import(referer, moduleName);
+            fullName = this.@import(referer, moduleName, false);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
@@ -719,7 +675,7 @@ export class Loader {
             // wants to get rid of this particular re-lookup.
             let callback = () => success($MapGet(this.@modules, fullName));
 
-            let linkSet = new LinkSet(this, load, callback, errback);
+            new LinkSet(this, load, callback, errback);
         }
 
         function success(m) {
@@ -748,7 +704,10 @@ export class Loader {
     // 2.  The `normalize` hook returns the name of a module that is already in
     //     the registry.  `@import` returns the normalized name.
     //
-    // 3.  In all other cases, either a new `Load` is started or we can join
+    // 3.  This is a synchronous import (for `eval()`) and the module is not
+    //     yet loaded.  `@import` throws.
+    //
+    // 4.  In all other cases, either a new `Load` is started or we can join
     //     one already in flight.  `@import` returns the normalized name.
     //
     // `referer` provides information about the context of the `import()` call
@@ -763,7 +722,7 @@ export class Loader {
     // do with the nasty Referer HTTP header.  Perhaps `importContext`,
     // `importer`, `client`.
     //
-    @import(referer, name) {
+    @import(referer, name, sync) {
         // Call the `normalize` hook to get a normalized module name and
         // metadata.  See the comment on `normalize()`.
         //
@@ -832,17 +791,33 @@ export class Loader {
             }
         }
 
-        // From this point `@import` cannot throw.
-
-        // If the module has already been loaded and linked, we are done.
-        if ($MapHas(this.@modules, normalized)) {
-            // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
+        // If the module has already been linked, we are done.
+        // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
+        if ($MapHas(this.@modules, normalized))
             return normalized;
+
+        // If the module is already loaded, we are done.
+        let load = $MapGet(this.@loads, normalized);
+        if (load !== undefined && load.status === "loaded")
+            return normalized;
+
+        // If we can't wait for the module to load, we are done.
+        if (sync) {
+            // Rationale for throwing a `SyntaxError`: `SyntaxError` is already
+            // used for a few conditions that can be detected statically
+            // (before a script begins to execute) but are not really syntax
+            // errors per se.  Reusing it seems better than inventing a new
+            // Error subclass.
+            throw $SyntaxError("eval: module not loaded: \"" + normalized + "\"");
         }
 
         // If the module is already loading, we are done.
-        if ($MapHas(this.@loads, normalized))
+        if (load !== undefined) {
+            $Assert(load.status === "loading");
             return normalized;
+        }
+
+        // From this point `@import` cannot throw.
 
         // Create a `Load` object for this module load.  Once this object is in
         // `this.@loads`, `LinkSets` may add themselves to its set of waiting
@@ -978,7 +953,7 @@ export class Loader {
             // Interpret `linkResult`.  See comment on the `link()` method.
             if (linkResult === undefined) {
                 let script = $Compile(this, src, normalized, actualAddress, this.@strict);
-                load.finish(this, actualAddress, script);
+                load.finish(this, actualAddress, script, false);
             } else if (!IsObject(linkResult)) {
                 throw $TypeError("link hook must return an object or undefined");
             } else if ($IsModule(linkResult)) {
@@ -1506,7 +1481,8 @@ class Load {
     //
     //   1. Process module declarations.
     //
-    //   2. Process imports. This may trigger additional loads.
+    //   2. Process imports. This may trigger additional loads (though if
+    //      `sync` is true, it definitely won't: we'll throw instead).
     //
     //   3. Call `.onLoad` on any listening `LinkSet`s (see that method for the
     //      conclusion of the load/link/run process).
@@ -1514,12 +1490,21 @@ class Load {
     // On success, this transitions the `Load` from `"loading"` status to
     // `"loaded"`.
     //
-    finish(loader, actualAddress, script) {
+    finish(loader, actualAddress, script, sync) {
         $Assert(this.status === "loading");
         $Assert($SetSize(this.linkSets) === 0);
 
         loader.@checkModuleDeclarations(script, this);
 
+        // `$ScriptImports` returns an array of `[client, request]` pairs.
+        //
+        // `client` tells where the import appears. It is the full name of the
+        // enclosing module, or null for toplevel imports.
+        //
+        // `request` is the name being imported.  It is not necessarily a full
+        // name; we pass it to `Loader.@import` which will call the `normalize`
+        // hook.
+        //
         let pairs = $ScriptImports(script);
         let fullNames = [];
         let sets = this.linkSets;
@@ -1555,22 +1540,22 @@ class Load {
             let referer = {name: client, url: actualAddress};
             let fullName;
             try {
-                fullName = loader.@import(referer, request);
+                fullName = loader.@import(referer, request, sync);
             } catch (exc) {
                 return this.fail(exc);
             }
             fullNames[i] = fullName;
 
-            if (!$MapHas(this.@modules, fullName)) {
+            if (!$MapHas(loader.@modules, fullName)) {
                 // Add the new `Load` to each `LinkSet` even if it is done
                 // loading, because the association keeps the `Load` alive
                 // (`Load`s are reference-counted; see `onLinkSetFail`).
                 //
                 // ISSUE: whether to keep a copy
                 //
-                let load = $MapGet(this.@loads, fullName);
+                let depLoad = $MapGet(loader.@loads, fullName);
                 for (let j = 0; j < sets.length; j++)
-                    sets[j].addLoad(load);
+                    sets[j].addLoad(depLoad);
             }
         }
 
