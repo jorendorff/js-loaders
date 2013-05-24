@@ -334,7 +334,7 @@ export class Loader {
             let pendingLoad = $MapGet(this.@loads, fullName);
             if (pendingLoad === undefined) {
                 if (load === null)
-                    load = new Load(declared, script);
+                    load = new Load(script);
                 $MapSet(this.@loads, fullName, load);
             } else if (pendingLoad !== load) {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
@@ -397,6 +397,7 @@ export class Loader {
         return ensureExecuted(script);
     }
 
+    // TODO - comment, distinguish sync vs. async errors
     @unpackUrlOption(options) {
         if (options !== undefined && "url" in options) {
             let url = options.url;
@@ -471,11 +472,14 @@ export class Loader {
         // Compile and check the script.
         let script;
         try {
-            script = $Compile(this, code, null, srcurl, this.@strict);
+            src = this.translate(src, {
+                normalized: null,
+                actualAddress: srcurl,
+                metadata: {},
+                type: "script"
+            });
 
-            // TODO - BUG - This creates a `Load` and stores it in `@loads`,
-            // but those entries are not removed if linking fails.
-            this.@checkModuleDeclarations(script, null);
+            script = $Compile(this, src, null, srcurl, this.@strict);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
@@ -484,8 +488,9 @@ export class Loader {
         // Arrange for any dependencies to be loaded and linked with
         // script.  Once the script is linked, the LinkSet will call the
         // run() function below.
-        let loaded = new Load(script);
-        new LinkSet(this, loaded, run, errback);
+        let load = new Load([]);
+        new LinkSet(this, load, run, errback);
+        load.finish(this, url, script, false);
 
         function run() {
             // Tail calls would be equivalent to AsyncCall, except for
