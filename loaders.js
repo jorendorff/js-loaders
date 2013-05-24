@@ -600,7 +600,7 @@ export class Loader {
     // linked, and executed.
     //
     // On success, the result of evaluating the script is passed to the success
-    // callback.  The comment on `asyncEval()` explains `callback` and
+    // callback.  The comment on `evalAsync()` explains `callback` and
     // `errback`.
     //
     // The comment on `eval()` explains `options`.
@@ -669,10 +669,10 @@ export class Loader {
     }
 
     // **`import`** - Asynchronously load, link, and execute a module and any
-    // dependencies it imports.  On success, pass the Module object to the
+    // dependencies it imports.  On success, pass the `Module` object to the
     // success callback.
     //
-    // See the comment on asyncEval() for more about callback and errback.
+    // The comment on `evalAsync()` explains `callback` and `errback`.
     //
     import(moduleName,
            callback = () => undefined,
@@ -1550,7 +1550,7 @@ class LoadTask {
     //  5. Call the errback hooks for each LinkSet in F.
     //
     //     P5 ISSUE:  Ordering.  We can spec the order to be the order of
-    //     the import()/load()/asyncEval() calls, wouldn't be hard.
+    //     the `import()/load()/evalAsync()` calls, wouldn't be hard.
     //
     // After that, we drop the failed LinkSets and they become garbage.
     //
