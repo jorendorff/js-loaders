@@ -405,7 +405,7 @@ export class Loader {
         }
 
         // P1 ISSUE: What default address should be used here, if baseURL is
-        // going away? Perhaps null.
+        // going away? null, per samth 2013 May 24.
         return this.@baseURL;
     }
 
@@ -459,53 +459,44 @@ export class Loader {
               errback = exc => { throw exc; },
               options = undefined)
     {
+        // P4 ISSUE: Check callability of callbacks here (and everywhere
+        // success/failure callbacks are provided)?  It would be a mercy,
+        // since the TypeError if they are not functions happens much later
+        // and with an empty stack.  But Futures don't do it.  Assuming no.
+        //
+        // if (typeof callback !== "function")
+        //     throw $TypeError("Loader.load: callback must be a function");
+        // if (typeof errback !== "function")
+        //     throw $TypeError("Loader.load: error callback must be a function");
+
         let url = this.@unpackUrlOption(options, errback);
         if (url === undefined)
             return;
 
-        return this.@evalAsync(src, callback, errback, url);
+        let load = new Load([]);
+        let run = Loader.makeEvalCallback(load, callback, errback);
+        new LinkSet(this, load, run, errback);
+        this.@onFulfill(load, null, {}, "script", src, url);
     }
 
-    // **`@evalAsync`** - Shared implementation of `evalAsync()` and the
-    // post-fetch part of `load()`.
-    @evalAsync(src, callback, errback, srcurl) {
-        // Translate and parse the script.
-        let script;
-        try {
-            src = this.translate(src, {
-                normalized: null,
-                actualAddress: srcurl,
-                metadata: {},
-                type: "script"
-            });
-
-            script = $Parse(this, src, null, srcurl, this.@strict);
-        } catch (exc) {
-            AsyncCall(errback, exc);
-            return;
-        }
-
-        // Arrange for any dependencies to be loaded and linked with
-        // script.  Once the script is linked, the LinkSet will call the
-        // run() function below.
-        let load = new Load([]);
-        new LinkSet(this, load, run, errback);
-        load.finish(this, url, script, false);
-
-        function run() {
+    // **`makeEvalCallback`** - Create and return a callback, to be called
+    // after linking is complete, that executes the script loaded by the given
+    // `load`.
+    static makeEvalCallback(load, callback, errback) {
+        return () => {
             // Tail calls would be equivalent to AsyncCall, except for
             // possibly some imponderable timing details.  This is meant as
             // a reference implementation, so we just literal-mindedly do
             // what the spec is expected to say.
             let result;
             try {
-                result = ensureExecuted(script);
+                result = ensureExecuted(load.script);
             } catch (exc) {
                 AsyncCall(errback, exc);
                 return;
             }
             AsyncCall(callback, result);
-        }
+        };
     }
 
     // **`@callFetch`** - Call the fetch hook.  Handle any errors.
@@ -582,30 +573,11 @@ export class Loader {
          errback = exc => { throw exc; },
          options = undefined)
     {
-        // This method only does two things.
-        //
-        // 1. Call the fetch hook to fetch the script from the given url.
-        //
-        // 2. Once we get the source code, pass it to `@evalAsync()` which does
-        //    the rest.  (Implementation issue: This reuse costs an extra turn
-        //    of the event loop which we could eliminate, at some cost in
-        //    complexity.)
-
         // Build a referer object.
         let opturl = this.@unpackUrlOption(options, errback);
         if (opturl === undefined)
             return;
         let referer = {name: null, url: opturl};
-
-        // P4 ISSUE: Check callability of callbacks here (and everywhere
-        // success/failure callbacks are provided)?  It would be a mercy,
-        // since the TypeError if they are not functions happens much later
-        // and with an empty stack.  But Futures don't do it.  Assuming no.
-        //
-        // if (typeof callback !== "function")
-        //     throw $TypeError("Loader.load: callback must be a function");
-        // if (typeof errback !== "function")
-        //     throw $TypeError("Loader.load: error callback must be a function");
 
         // *Rationale for creating an empty object for metadata:* The
         // `normalize` hook only makes sense for modules; `load()` loads
@@ -618,16 +590,15 @@ export class Loader {
         // loader hooks to use. It is never exposed to code loaded by this
         // Loader.
         //
-        let fetchOptions = {
-            referer: referer,
-            metadata: {},
-            normalized: null,
-            type: "script"
-        };
+        let metadata = {};
+        let fetchOptions = {referer, metadata, normalized: null, type: "script"};
 
+        let load = new Load([]);
+        let run = Loader.makeEvalCallback(load, callback, errback);
+        new LinkSet(this, load, run, errback);
         let fulfill = (src, actualAddress) =>
-            this.@evalAsync(src, callback, errback, actualAddress);
-        return this.@callFetch(url, fulfill, errback, fetchOptions);
+            this.@onFulfill(load, null, metadata, "script", src, actualAddress);
+        return this.@callFetch(url, fulfill, exc => load.fail(exc), fetchOptions);
     }
 
     // **`import`** - Asynchronously load, link, and execute a module and any
@@ -947,11 +918,18 @@ export class Loader {
                                  "second argument must be a string");
             }
 
-            // Call `translate` and `link` hooks.
+            // Call the `translate` hook.
             src = this.translate(src, {normalized, actualAddress, metadata, type});
             if (typeof src !== "string")
                 throw $TypeError("translate hook must return a string");
-            let linkResult = this.link(src, {normalized, actualAddress, metadata, type});
+
+            // Call the `link` hook, if we are loading a module.
+            // P1 ISSUE: Should this hook be called when loading a script?
+            // Perhaps once per module?
+            let linkResult =
+                type === "module"
+                ? this.link(src, {normalized, actualAddress, metadata, type})
+                : undefined;
 
             // Interpret `linkResult`.  See comment on the `link()` method.
             if (linkResult === undefined) {
