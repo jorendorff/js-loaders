@@ -201,8 +201,8 @@ export class Loader {
     // P3 ISSUE #10: Is the parent argument necessary?
     //
     constructor(parent, options) {
-        // `this.@modules` is the module registry.  It maps full module names
-        // to `Module` objects.
+        // **`this.@modules`** is the module registry.  It maps full module
+        // names to `Module` objects.
         //
         // This map only ever contains `Module` objects that have been fully
         // linked.  However it can contain modules whose bodies have not yet
@@ -216,24 +216,22 @@ export class Loader {
         //
         this.@modules = $MapNew();
 
-        // `this.@loading` stores information about modules that are loading
-        // and not yet linked.  It maps module names to `Load` objects.
+        // **`this.@loads`** stores information about modules that are loading
+        // or loaded but not yet linked.  It maps full module names to `Load`
+        // objects.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
         // they need only once.
         //
-        // TODO - Rename this, since it is misleading - the `Load`s in it can
-        // be "loading" or "loaded".
-        //
-        this.@loading = $MapNew();
+        this.@loads = $MapNew();
 
         // Various configurable options.
         this.@global = options.global;  // P4 ISSUE: ToObject here?
         this.@strict = ToBoolean(options.strict);
         this.@baseURL = $ToString(options.baseURL);
 
-        // P4 ISSUE: DETAILED BEHAVIOR OF HOOKS
+        // P4 ISSUE: Detailed behavior of hooks.
         //
         // As implemented here, hooks are just ordinary properties of the
         // Loader object.  Default implementations are just ordinary methods
@@ -309,8 +307,8 @@ export class Loader {
 
     // **`@checkModuleDeclarations`** - Check to see if script declares any
     // modules that are already loaded or loading.  If so, throw a
-    // `SyntaxError`.  If not, add entries to the @loading map for each
-    // declared module.
+    // `SyntaxError`.  If not, add entries to the @loads map for each declared
+    // module.
     //
     // *Rationale:* Consider two evalAsync calls.
     //
@@ -331,11 +329,11 @@ export class Loader {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
                                    "which is already loaded");
             }
-            let pendingLoad = $MapGet(this.@loading, fullName);
+            let pendingLoad = $MapGet(this.@loads, fullName);
             if (pendingLoad === undefined) {
                 if (load === null)
                     load = new Load(declared, script);
-                $MapSet(this.@loading, fullName, load);
+                $MapSet(this.@loads, fullName, load);
             } else if (pendingLoad !== load) {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
                                    "which is already loading");
@@ -384,8 +382,8 @@ export class Loader {
 
         let script = $Compile(this, src, null, url, this.@strict);
 
-        // TODO - BUG - This creates a Load and stores it in @loading, but
-        // those entries are not removed if linking fails.
+        // TODO - BUG - This creates a Load and stores it in @loads, but those
+        // entries are not removed if linking fails.
         this.@checkModuleDeclarations(script, null);
 
         // $ScriptImports returns an array of [client, request] pairs.
@@ -434,7 +432,7 @@ export class Loader {
         for (let i = 0; i < declared.length; i++) {
             let fullName = declared[i];
             let m = $ScriptGetDeclaredModule(script, fullName);
-            $MapDelete(this.@loading, fullName);
+            $MapDelete(this.@loads, fullName);
             $MapSet(this.@modules, fullName, m);
         }
 
@@ -714,7 +712,7 @@ export class Loader {
         } else {
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
-            let load = $MapGet(this.@loading, fullName);
+            let load = $MapGet(this.@loads, fullName);
 
             // We will look the module up again. Since callbacks are async,
             // something may have happened to it. TODO: file an issue; David
@@ -843,14 +841,14 @@ export class Loader {
         }
 
         // If the module is already loading, we are done.
-        if ($MapHas(this.@loading, normalized))
+        if ($MapHas(this.@loads, normalized))
             return normalized;
 
         // Create a `Load` object for this module load.  Once this object is in
-        // `this.@loading`, `LinkSets` may add themselves to its set of waiting
+        // `this.@loads`, `LinkSets` may add themselves to its set of waiting
         // link sets.  Errors must be reported to `load.fail()`.
         let load = new Load([normalized]);
-        $MapSet(this.@loading, normalized, load);
+        $MapSet(this.@loads, normalized, load);
 
         let url, type;
         try {
@@ -912,10 +910,10 @@ export class Loader {
                                     "it is already loaded");
                             }
 
-                            let existingLoad = $MapGet(this.@loading, name);
+                            let existingLoad = $MapGet(this.@loads, name);
                             if (existingLoad === undefined) {
                                 $ArrayPush(load.fullNames, name);
-                                $MapSet(this.@loading, name, load);
+                                $MapSet(this.@loads, name, load);
                             } else if (existingLoad !== load) {
                                 throw $TypeError(
                                     "loader.resolve hook claims module \"" +
@@ -933,7 +931,7 @@ export class Loader {
             }
         } catch (exc) {
             // `load` is responsible for firing error callbacks and removing
-            // itself from `this.@loading`.
+            // itself from `this.@loads`.
             load.fail(exc);
             return normalized;
         }
@@ -1071,10 +1069,10 @@ export class Loader {
         // modules. Once modules are widespread, this technique can be used for
         // polyfilling.
         //
-        // If `name` is in `this.@loading`, `.set()` succeeds, with no
-        // immediate effect on the pending load; but if that load eventually
-        // produces a module-declaration for the same name, that will produce a
-        // link-time error. per samth, 2013 April 22.
+        // If `name` is in `this.@loads`, `.set()` succeeds, with no immediate
+        // effect on the pending load; but if that load eventually produces a
+        // module-declaration for the same name, that will produce a link-time
+        // error. per samth, 2013 April 22.
         //
         $MapSet(this.@modules, name, module);
         return this;
@@ -1115,7 +1113,7 @@ export class Loader {
         //
         // `loader.delete("A")` has no effect at all if
         // `!loader.@modules.has("A")`, even if "A" is currently loading (an
-        // entry exists in `loader.@loading`).  This is analogous to `.set()`.
+        // entry exists in `loader.@loads`).  This is analogous to `.set()`.
         // per (reading between the lines) discussions with dherman, 2013 April
         // 17, and samth, 2013 April 22.
         $MapDelete(this.@modules, name);
@@ -1329,7 +1327,7 @@ export class Loader {
 // ## Notes on error handling
 //
 // Most errors that can occur during a load, asyncEval, or import are related
-// to either a specific in-flight `Load` (in `loader.@loading`) or a specific
+// to either a specific in-flight `Load` (in `loader.@loads`) or a specific
 // `LinkSet`.
 //
 // When such an error occurs:
@@ -1345,12 +1343,12 @@ export class Loader {
 //         fulfill callback inorrectly, or calling the reject callback), then F
 //         = the set of LinkSets that needed that module.
 //
-//  2. Let M = the set of all in-flight modules (in loader.@loading)
-//     that are not needed by any LinkSet other than those in F.
+//  2. Let M = the set of all in-flight modules (in loader.@loads) that are not
+//     needed by any LinkSet other than those in F.
 //
 //     P3 ISSUE #20: Can the set M be computed efficiently?
 //
-//  3. Remove all modules in M from `loader.@loading`.  If any are in "loading"
+//  3. Remove all modules in M from `loader.@loads`.  If any are in "loading"
 //     state, neuter the fetch hook's fulfill/reject callbacks so that they
 //     become no-ops.
 //
@@ -1419,7 +1417,7 @@ export class Loader {
 // The goal of a Load is to resolve, fetch, translate, link, and compile a
 // single module (or a collection of modules that all live in the same script).
 //
-// Load objects are the values in a Loader's .@loading map.
+// Load objects are the values in a Loader's .@loads map.
 //
 // It is in one of four states:
 //
@@ -1467,7 +1465,7 @@ export class Loader {
 //         .status === "linked"
 //
 //     (TODO: this is speculation) Loads that enter this state are removed from
-//     the loader.@loading table and from all LinkSets; they become garbage.
+//     the loader.@loads table and from all LinkSets; they become garbage.
 //
 // 4.  Failed:  The load failed. The load never leaves this state.
 //
@@ -1571,7 +1569,7 @@ class Load {
                 //
                 // ISSUE: whether to keep a copy
                 //
-                let load = $MapGet(this.@loading, fullName);
+                let load = $MapGet(this.@loads, fullName);
                 for (let j = 0; j < sets.length; j++)
                     sets[j].addLoad(load);
             }
@@ -1611,9 +1609,9 @@ class Load {
         if ($SetSize(this.linkSets) === 0) {
             for (let i = 0; i < this.fullNames.length; i++) {
                 let fullName = this.fullNames[i];
-                let currentLoad = $MapGet(loader.@loading, fullName);
+                let currentLoad = $MapGet(loader.@loads, fullName);
                 if (currentLoad === this)
-                    $MapDelete(loader.@loading, fullName);
+                    $MapDelete(loader.@loads, fullName);
             }
         }
     }
@@ -1717,20 +1715,20 @@ class LinkSet {
                         "which is already loaded");
                 }
                 if (load === undefined) {
-                    if ($MapHas(this.loader.@loading, fullName)) {
+                    if ($MapHas(this.loader.@loads, fullName)) {
                         throw $SyntaxError(
                             "script declares module \"" + fullName + "\", " +
                             "which is already loading");
                     }
                 } else {
-                    let current = $MapGet(this.loader.@loading, fullName);
+                    let current = $MapGet(this.loader.@loads, fullName);
 
                     // These two cases can happen if a script unexpectedly
                     // declares modules not named by resolve().other.
                     if (current === undefined) {
                         // Make sure no other script in the same LinkSet
                         // declares it too.
-                        $MapSet(this.loader.@loading, fullName, this);
+                        $MapSet(this.loader.@loads, fullName, this);
                     } else if (current !== this) {
                         throw $SyntaxError(
                             "script declares module \"" + fullName + "\", " +
@@ -1754,7 +1752,7 @@ class LinkSet {
                 let fullName = deps[i];
                 let mod = $MapGet(this.loader.@modules, fullName);
                 if (mod !== undefined) {
-                    let load = $MapGet(this.loader.@loading, fullName);
+                    let load = $MapGet(this.loader.@loads, fullName);
                     if (load === undefined || load.status !== "loaded") {
                         throw $SyntaxError(
                             "module \"" + fullName + "\" was deleted from the loader");
@@ -1784,10 +1782,10 @@ class LinkSet {
         // Per dherman, 2013 May 15.
         walk(undefined, script, dependencies);
 
-        // Move the fully linked modules from the `@loading` table to the
+        // Move the fully linked modules from the `@loads` table to the
         // `@modules` table.
         for (let i = 0; i < linkedNames.length; i++) {
-            $MapDelete(this.loader.@loading, linkedNames[i]);
+            $MapDelete(this.loader.@loads, linkedNames[i]);
             $MapSet(this.loader.@modules, linkedNames[i], linkedModules[i]);
         }
     }
