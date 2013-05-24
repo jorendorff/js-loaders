@@ -536,6 +536,65 @@ export class Loader {
         }
     }
 
+    // **`@callFetch`** - Call the fetch hook.  Handle any errors.
+    @callFetch(url, callback, errback, options) {
+        // *Rationale for `fetchCompleted`:* The fetch hook is user code.
+        // Callbacks the Loader passes to it are subject to every variety of
+        // misuse; the system must be robust against these hooks being called
+        // multiple times.
+        //
+        // Futures treat extra `resolve()` calls after the first as no-ops; we
+        // throw instead, per meeting 2013 April 26.
+        //
+        // P5 ISSUE: what kind of error to throw when that happens (assuming
+        // TypeError).
+        //
+        let fetchCompleted = false;
+
+        function fulfill(src, actualAddress) {
+            if (fetchCompleted)
+                throw $TypeError("fetch() fulfill callback: fetch already completed");
+            fetchCompleted = true;
+
+            if (typeof src !== "string") {
+                let msg = "fulfill callback: first argument must be a string";
+                AsyncCall(errback, $TypeError(msg));
+                return;
+            }
+            if (typeof actualAddress !== "string") {
+                let msg = "fulfill callback: third argument must be a string";
+                AsyncCall(errback, $TypeError(msg));
+                return;
+            }
+
+            // Even though `fulfill()` will *typically* called asynchronously
+            // from an empty or nearly empty stack already, the `fetch` hook
+            // may call it from a nonempty stack, even synchronously.
+            // Therefore use `AsyncCall` here, at the cost of an extra event
+            // loop turn.
+            AsyncCall(callback, src, actualAddress);
+        }
+
+        function reject(exc) {
+            if (fetchCompleted)
+                throw $TypeError("fetch() reject callback: fetch already completed");
+            fetchCompleted = true;
+
+            AsyncCall(errback, exc);
+        }
+
+        try {
+            this.fetch(url, fulfill, reject, options);
+        } catch (exc) {
+            // Some care is taken here to prevent even a badly-behaved fetch
+            // hook from causing errback() to be called twice.
+            if (fetchCompleted)
+                AsyncCall(() => { throw exc; });
+            else
+                AsyncCall(errback, exc);
+        }
+    }
+
     // **`load`** - Asynchronously load and run a script.  If the script
     // contains import declarations, this can cause modules to be loaded,
     // linked, and executed.
@@ -553,25 +612,28 @@ export class Loader {
     {
         // This method only does two things.
         //
-        // 1. Call the fetch hook to load the script from the given url.
+        // 1. Call the fetch hook to fetch the script from the given url.
         //
-        // 2. Once we get the source code, pass it to @evalAsync() which
-        //    does the rest.  (Implementation issue: This reuse causes a
-        //    single extra turn of the event loop which we could eliminate;
-        //    not sure how visible it would be from a spec perspective.)
-        //
-        let referer = null;
+        // 2. Once we get the source code, pass it to `@evalAsync()` which does
+        //    the rest.  (Implementation issue: This reuse costs an extra turn
+        //    of the event loop which we could eliminate, at some cost in
+        //    complexity.)
+
+        // Build a referer object.
+        let opturl;
         if (options !== undefined && "url" in options) {
-            let url = options.url;
-            if (url !== undefined) {
-                if (typeof url !== "string") {
-                    let msg = "load: options.url must be a string or undefined";
-                    AsyncCall(errback, $TypeError(msg));
-                    return;
-                }
-                referer = {name: null, url: url};
+            opturl = options.url;
+            if (opturl !== undefined && typeof opturl !== "string") {
+                let msg = "load: options.url must be a string or undefined";
+                AsyncCall(errback, $TypeError(msg));
+                return;
             }
         }
+        // P2 ISSUE: What default address should be used here, if baseURL is
+        // going away? Perhaps null.
+        if (opturl === undefined)
+            opturl = this.@baseURL;
+        let referer = {name: null, url: opturl};
 
         // P4 ISSUE: Check callability of callbacks here (and everywhere
         // success/failure callbacks are provided)?  It would be a mercy,
@@ -583,78 +645,27 @@ export class Loader {
         // if (typeof errback !== "function")
         //     throw $TypeError("Loader.load: error callback must be a function");
 
-        // Rationale for creating an empty object for metadata: The
-        // normalize hook only makes sense for modules; load() loads
-        // scripts.  But we do want load() to use the fetch hook, which
-        // means we must come up with a metadata value of some kind
-        // (this is ordinarily the normalize hook's responsibility).
+        // *Rationale for creating an empty object for metadata:* The
+        // `normalize` hook only makes sense for modules; `load()` loads
+        // scripts.  But we do want `load()` to use the `fetch` hook, which
+        // means we must come up with a metadata value of some kind (this is
+        // ordinarily the `normalize` hook's responsibility).
         //
         // `metadata` is created using the intrinsics of the enclosing
         // loader class, not the Loader's intrinsics, because it is for the
         // loader hooks to use. It is never exposed to code loaded by this
         // Loader.
         //
-        let metadata = {};
-
-        // Rationale for fetchCompleted: The fetch hook is user code.
-        // Callbacks the Loader passes to it are subject to every variety of
-        // misuse; the system must be robust against these hooks being
-        // called multiple times.
-        //
-        // Futures treat extra resolve() calls after the first as no-ops; we
-        // throw instead, per meeting 2013 April 26.
-        //
-        // P5 ISSUE: what kind of error to throw when that happens (assuming
-        // TypeError).
-        //
-        let fetchCompleted = false;
-        let thisLoader = this;
-
-        // Note that the fetch hook may call fulfill() and the other hooks
-        // synchronously; see comment on fetch().
-        function fulfill(src, actualAddress) {
-            if (fetchCompleted)
-                throw $TypeError("load() fulfill callback: fetch already completed");
-            fetchCompleted = true;
-
-            if (typeof src !== "string") {
-                let msg = "load() fulfill callback: first argument must be a string";
-                AsyncCall(errback, $TypeError(msg));
-            }
-            if (typeof actualAddress !== "string") {
-                let msg = "load() fulfill callback: third argument must be a string";
-                AsyncCall(errback, $TypeError(msg));
-            }
-
-            thisLoader.@evalAsync(src, callback, errback, actualAddress);
-        }
-
-        function reject(exc) {
-            if (fetchCompleted)
-                throw $TypeError("load() reject callback: fetch already completed");
-            fetchCompleted = true;
-
-            AsyncCall(errback, exc);
-        }
-
         let fetchOptions = {
             referer: referer,
-            metadata: metadata,
+            metadata: {},
             normalized: null,
             type: "script"
         };
 
-        try {
-            this.fetch(url, fulfill, reject, fetchOptions);
-        } catch (exc) {
-            // Some care is taken here to prevent even a badly-behaved fetch
-            // hook from causing errback() to be called twice or not to be
-            // called at all.
-            if (fetchCompleted)
-                AsyncCall(() => { throw exc; });
-            else
-                reject(exc);
-        }
+        let fulfill = (src, actualAddress) =>
+            this.@evalAsync(src, callback, errback, actualAddress);
+        return this.@callFetch(url, fulfill, errback, fetchOptions);
     }
 
     // **`import`** - Asynchronously load, link, and execute a module and any
@@ -926,42 +937,14 @@ export class Loader {
 
         loadTask.type = type;
 
-        // Prepare to call the `fetch` hook.
-        let fetchCompleted = false;
-        let thisLoader = this;
-
-        function fulfill(src, actualAddress) {
-            if (fetchCompleted)
-                throw $TypeError("fetch fulfill callback: fetch already completed");
-            fetchCompleted = true;
-
-            return thisLoader.@onFulfill(loadTask, normalized, metadata, type,
-                                         src, actualAddress);
-        }
-
-        function reject(exc) {
-            if (fetchCompleted)
-                throw $TypeError("fetch reject callback: fetch already completed");
-            fetchCompleted = true;
-
-            return loadTask.fail(exc);
-        }
-
+        // Start the fetch.
         // P3 ISSUE: type makes sense here, yes?
         // P3 ISSUE: what about "extra"?
         let options = {referer, metadata, normalized, type};
-
-        // Call the `fetch` hook.
-        try {
-            this.fetch(url, fulfill, reject, options);
-        } catch (exc) {
-            // As in `load()`, take care that `loadTask.fail` is called if the
-            // `fetch` hook fails, but at most once.
-            if (fetchCompleted)
-                AsyncCall(() => { throw exc; });
-            else
-                loadTask.fail(exc);
-        }
+        let fulfill = (src, actualAddress) =>
+                          this.@onFulfill(loadTask, normalized, metadata, type,
+                                          src, actualAddress);
+        this.@callFetch(url, fulfill, exc => loadTask.fail(exc), options);
 
         return normalized;
     }
