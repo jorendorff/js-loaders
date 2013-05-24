@@ -1831,7 +1831,7 @@ var executedCode = $WeakMapNew();
 function execute(code) {
     if (!$WeakMapHas(executedCode, code)) {
         $WeakMapSet(executedCode, code, true);
-        $CodeExecute(code);
+        return $CodeExecute(code);
     }
 }
 
@@ -1849,10 +1849,6 @@ function execute(code) {
 // The loader always uses this function to execute scripts, and always calls
 // this function before returning a module to script.
 //
-// **Error handling** - Module bodies can throw exceptions, and they are
-// propagated to the caller.  The `$CodeHasExecuted` bit remains set on a
-// module after its body throws an exception.
-//
 // **Not-yet-executed modules** - There is one way a module can be exposed to
 // script before it has executed.  In the case of an import cycle, whichever
 // module executes first can observe the others before they have executed.
@@ -1863,7 +1859,7 @@ function execute(code) {
 // and imports a module K, and executing K's body throws, then the next script
 // that imports M will cause the body of S to execute. Super weird.
 //
-function ensureExecuted(mod) {
+function ensureExecuted(start) {
     // **Why the graph walk doesn't stop at already-executed modules:**  It's
     // a matter of correctness.  Here is the test case:
     //
@@ -1918,7 +1914,7 @@ function ensureExecuted(mod) {
 
     function walk(m) {
         $SetAdd(seen, m);
-        let deps = $CodeGetLinkedModules(mod);
+        let deps = $CodeGetLinkedModules(m);
         for (let i = 0; i < deps.length; i++) {
             let dep = deps[i];
             if (!$SetHas(seen, dep))
@@ -1939,10 +1935,12 @@ function ensureExecuted(mod) {
 
     // Run the code.
     //
-    // **Exceptions during execution:** Suppose a module is linked, we start
-    // executing its body, and that throws an exception.  We leave it in the
-    // module registry (per samth, 2013 April 16) because re-loading the module
-    // and running it again is not likely to make things better.
+    // **Exceptions during execution:** - Module bodies can throw exceptions, and they are
+    // propagated to the caller.
+    //
+    // When this happens, we leave the module in the registry (per samth, 2013
+    // April 16) because re-loading the module and running it again is not
+    // likely to make things better.
     //
     // Other fully linked modules in the same LinkSet are also left in the
     // registry (per dherman, 2013 April 18).  Some of those may be unrelated
@@ -1959,7 +1957,7 @@ function ensureExecuted(mod) {
     let result;
     schedule = $SetElements(schedule);
     for (let i = 0; i < schedule.length; i++)
-        execute(schedule[i]);
+        result = execute(schedule[i]);
     return result;
 }
 
