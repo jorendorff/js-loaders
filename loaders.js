@@ -786,7 +786,7 @@ export class Loader {
         // Create a `Load` object for this module load.  Once this object is in
         // `this.@loads`, `LinkSets` may add themselves to its set of waiting
         // link sets.  Errors must be reported to `load.fail()`.
-        let load = new Load([normalized]);
+        load = new Load([normalized]);
         $MapSet(this.@loads, normalized, load);
 
         let address, type;
