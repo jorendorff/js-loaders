@@ -630,13 +630,16 @@ export class Loader {
             // We already had this module in the registry.
             AsyncCall(success, m);
         } else {
+            // TODO - BUG - if @import failed, the load will have removed
+            // itself from this.@loads.
+
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
             let load = $MapGet(this.@loads, fullName);
 
             // We will look the module up again. Since callbacks are async,
-            // something may have happened to it. TODO: file an issue; David
-            // wants to get rid of this particular re-lookup.
+            // something may have happened to it. TODO: pull it out of
+            // load.script instead.
             let callback = () => success($MapGet(this.@modules, fullName));
 
             new LinkSet(this, load, callback, errback);
@@ -1513,17 +1516,8 @@ class Load {
             }
             fullNames[i] = fullName;
 
-            if (!$MapHas(loader.@modules, fullName)) {
-                // Add the new `Load` to each `LinkSet` even if it is done
-                // loading, because the association keeps the `Load` alive
-                // (`Load`s are reference-counted; see `onLinkSetFail`).
-                //
-                // ISSUE: whether to keep a copy
-                //
-                let depLoad = $MapGet(loader.@loads, fullName);
-                for (let j = 0; j < sets.length; j++)
-                    sets[j].addLoad(depLoad);
-            }
+            for (let j = 0; j < sets.length; j++)
+                sets[j].addLoadByName(fullName);
         }
 
         this.status = "loaded";
@@ -1588,15 +1582,41 @@ class LinkSet {
         this.addLoad(startingLoad);
     }
 
+    // **`addLoadByName`** - If a module with the given `fullName` is loading
+    // or loaded but not linked, add the `Load` to this link set.
+    addLoadByName(fullName) {
+        if (!$MapHas(this.loader.@modules, fullName)) {
+            // We add `depLoad` even if it is done loading, because the
+            // association keeps the `Load` alive (`Load`s are
+            // reference-counted; see `Load.onLinkSetFail`).
+            let depLoad = $MapGet(this.loader.@loads, fullName);
+            this.addLoad(depLoad);
+        }
+    }
+
+    // **`addLoad`** - Add a `load` to this `LinkSet`.
+    //
+    // P1 ISSUE: whether to keep a per-LinkSet copy of the relevant slice of
+    // the module registry, to avoid the LinkSet, as an algorithm, sharing
+    // mutable state with other LinkSets and user code.
+    //
     addLoad(load) {
+        // This case can happen in `import`, for example if a `resolve` or
+        // `fetch` hook throws.
         if (load.status === "failed")
             return this.fail(load.exception);
 
         if (!$SetHas(this.loads, load)) {
-            if (load.status === "loading")
-                this.loadingCount++;
             $SetAdd(this.loads, load);
             $SetAdd(load.linkSets, this);
+            if (load.status === "loading") {
+                this.loadingCount++;
+            } else {
+                // Transitively add not-yet-linked dependencies.
+                $Assert(load.status == "loaded");
+                for (let i = 0; i < load.dependencies.length; i++)
+                    this.addLoadByName(load.dependencies[i]);
+            }
         }
     }
 
