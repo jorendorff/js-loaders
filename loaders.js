@@ -368,7 +368,7 @@ export class Loader {
     //
     eval(src, options) {
         // Unpack options. Only one option is supported: `options.url`.
-        let url = this.@unpackUrlOption(options, null);
+        let url = Loader.@unpackUrlOption(options, null);
 
         src = this.translate(src, {
             normalized: null,
@@ -391,7 +391,7 @@ export class Loader {
     }
 
     // TODO - comment, distinguish sync vs. async errors
-    @unpackUrlOption(options, errback) {
+    static @unpackUrlOption(options, errback) {
         if (options !== undefined && "url" in options) {
             let url = options.url;
             if (typeof url !== "string") {
@@ -469,7 +469,7 @@ export class Loader {
         // if (typeof errback !== "function")
         //     throw $TypeError("Loader.load: error callback must be a function");
 
-        let url = this.@unpackUrlOption(options, errback);
+        let url = Loader.@unpackUrlOption(options, errback);
         if (url === undefined)
             return;
 
@@ -578,7 +578,7 @@ export class Loader {
          options = undefined)
     {
         // Build a referer object.
-        let opturl = this.@unpackUrlOption(options, errback);
+        let opturl = Loader.@unpackUrlOption(options, errback);
         if (opturl === undefined)
             return;
         let referer = {name: null, url: opturl};
@@ -622,7 +622,7 @@ export class Loader {
                 return;
             }
         }
-        let url = this.@unpackUrlOption(options, errback);
+        let url = Loader.@unpackUrlOption(options, errback);
         if (url === undefined)
             return;
         let referer = {name, url};
