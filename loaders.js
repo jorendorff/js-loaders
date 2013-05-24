@@ -4,7 +4,8 @@
 // proposal in terms of ES6 plus a few primitives meant to be exposed by the
 // implementation.
 //
-// Source code is on github: [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
+// Source code is on github:
+// [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
 //
 //
 // ## Why JS is different
