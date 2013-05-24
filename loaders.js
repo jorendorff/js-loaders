@@ -453,10 +453,10 @@ export class Loader {
         // since the TypeError if they are not functions happens much later
         // and with an empty stack.  But Futures don't do it.  Assuming no.
         //
-        // if (typeof callback !== "function")
-        //     throw $TypeError("Loader.load: callback must be a function");
-        // if (typeof errback !== "function")
-        //     throw $TypeError("Loader.load: error callback must be a function");
+        //     if (typeof callback !== "function")
+        //         throw $TypeError("Loader.load: callback must be a function");
+        //     if (typeof errback !== "function")
+        //         throw $TypeError("Loader.load: error callback must be a function");
 
         let address = Loader.@unpackAddressOption(options, errback);
         if (address === undefined)
