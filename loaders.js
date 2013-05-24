@@ -500,7 +500,7 @@ export class Loader {
     }
 
     // **`@callFetch`** - Call the fetch hook.  Handle any errors.
-    @callFetch(url, callback, errback, options) {
+    @callFetch(load, url, callback, options) {
         // *Rationale for `fetchCompleted`:* The fetch hook is user code.
         // Callbacks the Loader passes to it are subject to every variety of
         // misuse; the system must be robust against these hooks being called
@@ -519,6 +519,7 @@ export class Loader {
                 throw $TypeError("fetch() fulfill callback: fetch already completed");
             fetchCompleted = true;
 
+            let errback = exc => load.fail(exc);
             if (typeof src !== "string") {
                 let msg = "fulfill callback: first argument must be a string";
                 AsyncCall(errback, $TypeError(msg));
@@ -598,7 +599,7 @@ export class Loader {
         new LinkSet(this, load, run, errback);
         let fulfill = (src, actualAddress) =>
             this.@onFulfill(load, null, metadata, "script", src, actualAddress);
-        return this.@callFetch(url, fulfill, exc => load.fail(exc), fetchOptions);
+        return this.@callFetch(load, url, fulfill, fetchOptions);
     }
 
     // **`import`** - Asynchronously load, link, and execute a module and any
@@ -894,7 +895,7 @@ export class Loader {
         let fulfill = (src, actualAddress) =>
                           this.@onFulfill(load, normalized, metadata, type,
                                           src, actualAddress);
-        this.@callFetch(url, fulfill, exc => load.fail(exc), options);
+        this.@callFetch(load, url, fulfill, options);
 
         return normalized;
     }
