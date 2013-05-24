@@ -1492,7 +1492,7 @@ class Load {
     //
     finish(loader, actualAddress, script, sync) {
         $Assert(this.status === "loading");
-        $Assert($SetSize(this.linkSets) === 0);
+        $Assert($SetSize(this.linkSets) !== 0);
 
         loader.@checkModuleDeclarations(script, this);
 
