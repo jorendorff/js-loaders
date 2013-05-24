@@ -414,9 +414,8 @@ export class Loader {
     // On success, these methods each schedule the success callback to be
     // called with a single argument (the result of the operation).
     //
-    // These three methods never throw. Instead, on error, the exception
-    // is stored until the next event loop turn and then passed to the
-    // failure callback.
+    // These three methods never throw. Instead, on error, the exception is
+    // saved and passed to failure callback asynchronously.
     //
     // Both arguments are optional.  The default success callback does
     // nothing.  The default failure callback throws its argument.
