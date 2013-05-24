@@ -1488,14 +1488,15 @@ class Load {
             this.status = "loading";
             this.fullNames = namesOrScript;
             this.script = null;
+            this.dependencies = null;
         } else {
             this.status = "loaded";
             this.fullNames = $ScriptDeclaredModuleNames(script);
             this.script = script;
+            this.dependencies = throw TODO;
         }
         this.linkSets = $SetNew();
         this.factory = null;
-        this.dependencies = null;
         this.exception = null;
     }
 
@@ -1689,16 +1690,14 @@ class LinkSet {
     // the graph.  On success, commit all the modules in this LinkSet to the
     // loader's module registry.
     link() {
-        // TODO - need a starting {script, dependencyFullNames} pair.
-        let {script, dependencies} = throw TODO;
-
         let linkedNames = [];
         let linkedModules = [];
         let seen = $SetNew();
 
         // Depth-first walk of the import tree, stopping at already-linked
         // modules.
-        function walk(load, script, deps) {
+        function walk(load) {
+            let script = load.script;
             $SetAdd(seen, script);
 
             // First, note all modules declared in this script.
@@ -1745,23 +1744,24 @@ class LinkSet {
             // Intervening calls to Loader.set() or Loader.delete() can
             // cause things to be missing.
             //
+            let deps = load.dependencies;
             let mods = [];
             for (let i = 0; i < deps.length; i++) {
                 let fullName = deps[i];
                 let mod = $MapGet(this.loader.@modules, fullName);
                 if (mod !== undefined) {
-                    let load = $MapGet(this.loader.@loads, fullName);
-                    if (load === undefined || load.status !== "loaded") {
+                    let depLoad = $MapGet(this.loader.@loads, fullName);
+                    if (depLoad === undefined || depLoad.status !== "loaded") {
                         throw $SyntaxError(
                             "module \"" + fullName + "\" was deleted from the loader");
                     }
-                    mod = $ScriptGetDeclaredModule(load.script, fullName);
+                    mod = $ScriptGetDeclaredModule(depLoad.script, fullName);
                     if (mod === undefined) {
                         throw $SyntaxError(
                             "module \"" + fullName + "\" was deleted from the loader");
                     }
-                    if (!$SetHas(seen, load.script))
-                        walk(load, load.script, load.dependencies);
+                    if (!$SetHas(seen, depLoad.script))
+                        walk(depLoad);
                 }
                 $ArrayPush(mods, mod);
             }
@@ -1778,7 +1778,7 @@ class LinkSet {
         // rollback any linking we already did up to that point.  Linkage must
         // either happen for all scripts and modules, or fail, atomically.
         // Per dherman, 2013 May 15.
-        walk(undefined, script, dependencies);
+        walk(this.startingLoad);
 
         // Move the fully linked modules from the `@loads` table to the
         // `@modules` table.
