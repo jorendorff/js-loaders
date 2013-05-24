@@ -608,6 +608,7 @@ export class Loader {
         // TypeError).
         //
         let fetchCompleted = false;
+        let thisLoader = this;
 
         // Note that the fetch hook may call fulfill() and the other hooks
         // synchronously; see comment on fetch().
@@ -625,7 +626,7 @@ export class Loader {
                 AsyncCall(errback, $TypeError(msg));
             }
 
-            this.@evalAsync(src, callback, errback, actualAddress);
+            thisLoader.@evalAsync(src, callback, errback, actualAddress);
         }
 
         function reject(exc) {
