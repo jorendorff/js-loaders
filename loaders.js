@@ -1414,12 +1414,10 @@ export class Loader {
 
 // ## Dependency loading
 //
-// The goal of a Load is to resolve, fetch, translate, link, and compile a
-// single module (or a collection of modules that all live in the same script).
+// The goal of a `Load` is to resolve, fetch, translate, and parse a single
+// module (or a collection of modules that all live in the same script).
 //
-// Load objects are the values in a Loader's .@loads map.
-//
-// It is in one of four states:
+// A `Load` is in one of four states:
 //
 // 1.  Loading:  Source is not available yet.
 //
@@ -1435,18 +1433,18 @@ export class Loader {
 //     `load`; and `linkSet.loads` is the `Set` of all `Load`s that `linkSet`
 //     requires.
 //
-// 2.  Loaded: Source is available and has been "translated"; syntax has been
-//     checked; dependencies have been identified.  But the module hasn't been
-//     linked or executed yet.  We are waiting for dependencies.
+// 2.  Loaded:  Source is available and has been translated and parsed.
+//     Dependencies have been identified.  But the module hasn't been linked or
+//     executed yet.  We are waiting for dependencies.
 //
-//     This implementation treats the Module object as already existing at this
-//     point (except for factory-made modules).  But it has not been linked and
-//     thus must not be exposed to script yet.
+//     This implementation treats the `Module` object as already existing at
+//     this point (except for factory-made modules).  But it has not been
+//     linked and thus must not be exposed to script yet.
 //
-//     The "loaded" state says nothing about the status of the dependencies;
-//     they may all be linked and executed and yet there may not be any LinkSet
-//     that's ready to link and execute this module.  The LinkSet may be
-//     waiting for unrelated dependencies to load.
+//     The `"loaded"` state says nothing about the status of the dependencies;
+//     they may all be linked and executed and yet there may not be any
+//     `LinkSet` that's ready to link and execute this module.  The `LinkSet`
+//     may be waiting for unrelated dependencies to load.
 //
 //         .status === "loaded"
 //         .script is a script or null
@@ -1455,19 +1453,19 @@ export class Loader {
 //
 //     Exactly one of `[.script, .factory]` is non-null.
 //
-//     The load leaves this state when a LinkSet successfully links the module
-//     and moves it into the loader's module registry.
+//     The load leaves this state when a `LinkSet` successfully links the
+//     module and moves it into the loader's module registry.
 //
 // 3.  Done:  The module has been linked and added to the loader's module
 //     registry.  Its body may or may not have been executed yet (see
-//     @ensureExecuted).
+//     `ensureExecuted`).
 //
 //         .status === "linked"
 //
 //     (TODO: this is speculation) Loads that enter this state are removed from
-//     the loader.@loads table and from all LinkSets; they become garbage.
+//     the `loader.@loads` table and from all `LinkSet`s; they become garbage.
 //
-// 4.  Failed:  The load failed. The load never leaves this state.
+// 4.  Failed:  The load failed.  The load never leaves this state.
 //
 //         .status === "failed"
 //         .exception is an exception value
@@ -1486,19 +1484,19 @@ class Load {
     // call `finish()` manually.
     //
     constructor(namesOrScript) {
-        this.fullNames = fullNames;
         if ($IsArray(namesOrScript)) {
-            this.fullNames = namesOrScript;
             this.status = "loading";
+            this.fullNames = namesOrScript;
             this.script = null;
         } else {
-            this.fullNames = $ScriptDeclaredModuleNames(script);
             this.status = "loaded";
+            this.fullNames = $ScriptDeclaredModuleNames(script);
             this.script = script;
         }
         this.linkSets = $SetNew();
         this.factory = null;
         this.dependencies = null;
+        this.exception = null;
     }
 
     // **`finish`** - The loader calls this after the last loader hook (the
