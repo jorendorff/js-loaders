@@ -28,12 +28,6 @@
 //
 // ## References
 //
-// The loader proposal is standard-track, but no detailed specification text
-// has been written yet.  I started here:
-//
-//   * [ES6 Modules](https://docs.google.com/document/d/1FL3VF_OEwMPQ1mZKjxgR-R-hkieyyZO-8Q_eNTiyNFs/edit#)
-//     (Google docs) by Sam Tobin-Hochstadt and David Herman
-//
 //   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
 //     by Yehuda Katz
 //
