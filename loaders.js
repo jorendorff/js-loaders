@@ -390,7 +390,7 @@ export class Loader {
         return ensureExecuted(script);
     }
 
-    // TODO - comment, distinguish sync vs. async errors
+    // **`@unpackUrlOption`** - TODO - comment this method
     static @unpackUrlOption(options, errback) {
         if (options !== undefined && "url" in options) {
             let url = options.url;
@@ -404,9 +404,8 @@ export class Loader {
             return url;
         }
 
-        // P1 ISSUE: What default address should be used here, if baseURL is
-        // going away? null, per samth 2013 May 24.
-        return this.@baseURL;
+        // The default address is null, per samth 2013 May 24.
+        return null;
     }
 
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
