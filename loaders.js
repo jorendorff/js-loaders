@@ -1749,7 +1749,7 @@ class LinkSet {
             for (let i = 0; i < deps.length; i++) {
                 let fullName = deps[i];
                 let mod = $MapGet(this.loader.@modules, fullName);
-                if (mod !== undefined) {
+                if (mod === undefined) {
                     let depLoad = $MapGet(this.loader.@loads, fullName);
                     if (depLoad === undefined || depLoad.status !== "loaded") {
                         throw $SyntaxError(
