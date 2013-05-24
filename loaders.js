@@ -368,15 +368,21 @@ export class Loader {
     // P4 ISSUE:  What about letting the user set the line number?
     // samth is receptive.  2013 April 22.
     //
-    // **Loader hooks:**  This calls only the translate hook.  TODO: implement
-    // that.  per samth, 2013 April 22.  See rationale in the comment for
-    // `evalAsync()`.
+    // **Loader hooks:**  This calls only the translate hook.  per samth,
+    // 2013 April 22.  See rationale in the comment for `evalAsync()`.
     //
     // P2 ISSUE: #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
         // Unpack options. Only one option is supported: `options.url`.
         let url = this.@unpackUrlOption(options);
+
+        src = this.translate(src, {
+            normalized: null,
+            actualAddress: url,
+            metadata: {},
+            type: "script"
+        });
 
         let script = $Compile(this, src, null, url, this.@strict);
 
