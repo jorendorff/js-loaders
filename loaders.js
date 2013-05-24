@@ -877,8 +877,6 @@ export class Loader {
             return normalized;
         }
 
-        load.type = type;
-
         // Start the fetch.
         // P3 ISSUE: type makes sense here, yes?
         // P3 ISSUE: what about "extra"?
@@ -1132,8 +1130,9 @@ export class Loader {
     //     module.
     //
     //   - an object that has a `.address` property which is a string, the
-    //     resource address.  The object may also have a `.type` property,
-    //     which if present must be either `"script"` or `"module"`.
+    //     resource address.  The object may also have a `.extra` property,
+    //     which if present must be an iterable of strings, the names of the
+    //     modules defined in the script at the given address.
     //
     // **When this hook is called:**  For all imports, immediately after the
     // `normalize` hook returns successfully, unless the module is already
