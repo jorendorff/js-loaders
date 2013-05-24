@@ -223,6 +223,11 @@ export class Loader {
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
         // they need only once.
         //
+        // TODO - Rename this, since it is misleading - the `LoadTask`s in it can
+        // be "loading" or "loaded".
+        //
+        // TODO - Rename `LoadTask` to `Load`.
+        //
         this.@loading = $MapNew();
 
         // Various configurable options.
@@ -1323,6 +1328,94 @@ export class Loader {
 }
 
 
+// ## Notes on error handling
+//
+// Most errors that can occur during a load, asyncEval, or import are related
+// to either a specific in-flight `LoadTask` (in `loader.@loading`) or a specific
+// `LinkSet`.
+//
+// When such an error occurs:
+//
+//  1. Compute the set F of `LinkSet`s we are going to fail.
+//
+//       * If the error is related to a single `LinkSet` (that is, it
+//         is a link error or an execution error in a module or script),
+//         then F = a set containing just that `LinkSet`.
+//
+//       * If the error is related to an in-flight `LoadTask` (that is, it has
+//         to do with a hook throwing, returning an invalid value, calling a
+//         fulfill callback inorrectly, or calling the reject callback),
+//         then F = the set of LinkSets that needed that module.
+//
+//  2. Let M = the set of all in-flight modules (in loader.@loading)
+//     that are not needed by any LinkSet other than those in F.
+//
+//     P3 ISSUE #20: Can the set M be computed efficiently?
+//
+//  3. Remove all modules in M from `loader.@loading`.  If any are in "loading"
+//     state, neuter the fetch hook's fulfill/reject callbacks so that they
+//     become no-ops.
+//
+//     P4 ISSUE: It would be nice to cancel those fetches, if possible.
+//
+//  4. Call the `errback` for each `LinkSet` in F.
+//
+//     P5 ISSUE:  Ordering.  We can spec the order to be the order of
+//     the `import()/load()/evalAsync()` calls, wouldn't be hard.
+//
+// After that, we drop the failed `LinkSet`s and they become garbage.
+//
+// Note that any modules that are already linked and committed to the module
+// registry are unaffected by the error.
+
+
+// ### Encyclopedia of errors
+//
+// For reference, here are all the kinds of errors that can
+// occur. This list is meant to be exhaustive.
+//
+// Errors related to a `LoadTask`:
+//
+//   - For each module, we call all five loader hooks, any of which
+//     can throw or return an invalid value.
+//
+//   - The `normalize`, `resolve`, and `link` hooks may return objects that are
+//     then destructured.  These objects could throw from a getter or `Proxy`
+//     trap during destructuring.
+//
+//   - The fetch hook can report an error via the `reject()` callback.
+//
+//   - We can fetch bad code and get a `SyntaxError` trying to parse it.
+//
+// Errors related to a `LinkSet`:
+//
+//   - During linking, we can find that a factory-made module is
+//     involved in an import cycle. This is an error.
+//
+//   - A "static" linking error: a script or module X tries to import
+//     a binding from a module Y that isn't among Y's exports.
+//
+//   - A factory function can throw or return an invalid value.
+//
+//   - After linking, we add all modules to the registry.  This fails if
+//     there's already an entry for any of the module names.
+//
+//   - Execution of a module body or a script can throw.
+//
+// Other:
+//
+//   - The `normalize` hook throws or returns an invalid value.  This happens
+//     so early in the load process that there is no `LoadTask` yet.  We can
+//     directly call the `errback` hook.  TODO see if this really fits in
+//     here...
+//
+//   - The `fetch` hook errors described above can happen when fetching script
+//     code for a `load()` call. Again, this happens very early in the process;
+//     no `LinkSet`s and no modules are involved. We can skip the complex
+//     error-handling process and just directly call the `errback` hook. (But
+//     TODO - it might make more sense to make `load()` use a `LinkSet` too.)
+
+
 // ## Dependency loading
 //
 // The goal of a LoadTask is to resolve, fetch, translate, link, and compile
@@ -1501,107 +1594,6 @@ class LoadTask {
         for (let i = 0; i < sets.length; i++)
             sets[i].onLoad(this);
     }
-
-    // ## Error handling
-    //
-    // Every error that can occur throughout the process (with one
-    // exception; see exhaustive list in the next comment, below XXX TODO
-    // update this comment) is related to either a specific in-flight
-    // LoadTask (in loader.@loading) or a specific LinkSet.
-    //
-    // When such an error occurs:
-    //
-    //  1. Compute the set F of LinkSets we are going to fail, as
-    //     follows:
-    //
-    //       * If the error is related to a single LinkSet (that is, it
-    //         is a link error or an execution error in a module or script),
-    //         let F = a set containing just that LinkSet.
-    //
-    //       * If the error is related to an in-flight LoadTask (that is, it
-    //         has to do with a hook throwing, returning an invalid value,
-    //         calling a fulfill callback inorrectly, or calling the reject
-    //         callback), let F = the set of LinkSets that needed that
-    //         module.
-    //
-    //  2. Let M = the set of all in-flight modules (in loader.@loading)
-    //     that are not needed by any LinkSet other than those in F.
-    //
-    //     P3 ISSUE #20: Can the set M be computed efficiently?
-    //
-    //  3. TODO revise this super-hand-wavy pseudo-formal spec:
-    //
-    //     Silently try linking all these remaining modules in M.  If any
-    //     have link errors, or have dependencies (transitively) that have
-    //     link errors, or have dependencies that aren't compiled yet, or
-    //     have dependencies that are neither in M nor in the registry,
-    //     throw those away; but no exception is thrown, nor error reported
-    //     anywhere, for link errors in this stage.  Commit those that do
-    //     link successfully to the registry. (They'll execute on demand
-    //     later.  This whole step is just using the registry as a cache.)
-    //
-    //  4. Remove all other in-flight modules found in step 2 from
-    //     loader.@loading.  If any are in "loading" state, neuter the fetch
-    //     hook's fulfill/reject/skip callbacks so that they become no-ops.
-    //     Cancel those fetches if possible.
-    //
-    //     P4 ISSUE: cancellation and fetch hooks
-    //
-    //  5. Call the errback hooks for each LinkSet in F.
-    //
-    //     P5 ISSUE:  Ordering.  We can spec the order to be the order of
-    //     the `import()/load()/evalAsync()` calls, wouldn't be hard.
-    //
-    // After that, we drop the failed LinkSets and they become garbage.
-    //
-    // Note that any modules that are already linked and committed to
-    // the module registry (loader.@modules) are unaffected by the error.
-
-    // For reference, here are all the kinds of errors that can
-    // occur. This list is meant to be exhaustive.
-    //
-    // Errors related to a LoadTask:
-    //
-    // - For each module, we call all five loader hooks, any of which
-    //   can throw or return an invalid value.
-    //
-    // - The normalize, resolve, and link hooks may return objects that are
-    //   then destructured.  These objects could throw from a getter or
-    //   Proxy trap during destructuring.
-    //
-    // - The fetch hook can report an error via the reject() callback
-    //   (and perhaps skip() though it's not clear to me what that is).
-    //
-    // - We can fetch bad code and get a SyntaxError trying to compile
-    //   it.
-    //
-    // Errors related to a LinkSet:
-    //
-    // - During linking, we can find that a factory-made module is
-    //   involved in an import cycle. This is an error.
-    //
-    // - A "static" linking error: a script or module X tries to import
-    //   a binding from a module Y that isn't among Y's exports.
-    //
-    // - A factory function can throw or return an invalid value.
-    //
-    // - After linking, we add all modules to the registry.  This fails if
-    //   there's already an entry for any of the module names.
-    //
-    // - Execution of a module body or a script can throw.
-    //
-    // Other:
-    //
-    // - The normalize hook throws or returns an invalid value.  This
-    //   happens so early in the load process that there is no LoadTask yet.
-    //   We can directly call the errback hook.  TODO see if this really fits
-    //   in here...
-    //
-    // - The fetch hook errors described above can happen when fetching
-    //   script code for a load() call. Again, this happens very early in
-    //   the process; no LinkSets and no modules are involved. We can skip
-    //   the complex error-handling process and just directly call the
-    //   errback hook.
 
     // **`fail`** - Fail this load task. All `LinkSet`s that require it also
     // fail.
