@@ -489,6 +489,10 @@ export class Loader {
 
     // **`@callFetch`** - Call the fetch hook.  Handle any errors.
     @callFetch(load, address, referer, metadata, normalized, type) {
+        // P3 ISSUE: type makes sense here, yes?
+        //
+        // P3 ISSUE: what about "extra"?
+        //
         let options = {referer, metadata, normalized, type};
         let errback = exc => load.fail(exc);
 
@@ -878,8 +882,6 @@ export class Loader {
         }
 
         // Start the fetch.
-        // P3 ISSUE: type makes sense here, yes?
-        // P3 ISSUE: what about "extra"?
         this.@callFetch(load, address, referer, metadata, normalized, type);
 
         return normalized;
