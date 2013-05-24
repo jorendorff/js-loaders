@@ -94,17 +94,17 @@ import {
 
     // Now on to the core JS language implementation intrinsics.
 
-    // * `$Compile(loader, src, moduleName, address, strict)` parses a script
-    //   or module body. If `moduleName` is null, then `src` is parsed as an
-    //   ES6 Program; otherwise `moduleName` is a string, and `src` is parsed
-    //   as a module body.  `$Compile` detects ES "early errors" and throws
-    //   `SyntaxError`. On success, it returns a script object, and this is the
-    //   only way script objects are created. (Script objects are never exposed
-    //   to end users; they are for use with the following intrinsics only.)
+    // * `$Parse(loader, src, moduleName, address, strict)` parses a script or
+    //   module body. If `moduleName` is null, then `src` is parsed as an ES6
+    //   Program; otherwise `moduleName` is a string, and `src` is parsed as a
+    //   module body.  `$Parse` detects ES "early errors" and throws
+    //   `SyntaxError`.  On success, it returns a script object.  This is the
+    //   only way script objects are created.  (Script objects are never exposed
+    //   to user code; they are for use with the following intrinsics only.)
     //
     //   Note that this does not execute any of the code in `src`.
     //
-    $Compile,
+    $Parse,
 
     // * `$ScriptDeclaredModuleNames(script)` returns an array of strings, the
     //   names of all modules declared in the script.
@@ -154,8 +154,6 @@ import {
     $CodeGetLinkedModules
 } from "implementation-intrinsics";
 
-// TODO: Rename `$Compile` to `$Parse`.
-//
 // TODO: Merge `$ScriptDeclaredModuleNames` and `$ScriptGetDeclaredModule` into
 // a single function that returns an array of pairs.
 //
@@ -350,8 +348,8 @@ export class Loader {
     //
     // (`options.url` may also be stored in the script and used for
     // `Error().fileName`, `Error().stack`, and the debugger, and we anticipate
-    // doing so via `$Compile`; but such use is outside the scope of the
-    // language standard.)
+    // doing so via `$Parse`; but such use is outside the scope of the language
+    // standard.)
     //
     // P5 SECURITY ISSUE: Make sure that is OK.
     //
@@ -379,7 +377,7 @@ export class Loader {
             type: "script"
         });
 
-        let script = $Compile(this, src, null, url, this.@strict);
+        let script = $Parse(this, src, null, url, this.@strict);
 
         let load = new Load([]);
         let linkSet = new LinkSet(this, load, null, null);
@@ -471,7 +469,7 @@ export class Loader {
     // **`@evalAsync`** - Shared implementation of `evalAsync()` and the
     // post-fetch part of `load()`.
     @evalAsync(src, callback, errback, srcurl) {
-        // Compile and check the script.
+        // Translate and parse the script.
         let script;
         try {
             src = this.translate(src, {
@@ -481,7 +479,7 @@ export class Loader {
                 type: "script"
             });
 
-            script = $Compile(this, src, null, srcurl, this.@strict);
+            script = $Parse(this, src, null, srcurl, this.@strict);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
@@ -957,7 +955,7 @@ export class Loader {
 
             // Interpret `linkResult`.  See comment on the `link()` method.
             if (linkResult === undefined) {
-                let script = $Compile(this, src, normalized, actualAddress, this.@strict);
+                let script = $Parse(this, src, normalized, actualAddress, this.@strict);
                 load.finish(this, actualAddress, script, false);
             } else if (!IsObject(linkResult)) {
                 throw $TypeError("link hook must return an object or undefined");
@@ -1246,8 +1244,8 @@ export class Loader {
     // linking behavior.  There are three options.
     //
     //  1. The link hook may return `undefined`. The loader then uses the
-    //     default linking behavior.  It compiles src as an ES module, looks
-    //     at its imports, loads all dependencies asynchronously, and
+    //     default linking behavior.  It parses src as a script or module body,
+    //     looks at its imports, loads all dependencies asynchronously, and
     //     finally links them as a unit and adds them to the registry.
     //
     //     The module bodies will then be executed on demand; see
@@ -1404,7 +1402,7 @@ export class Loader {
 //         .status === "loading"
 //         .linkSets is a Set of LinkSets
 //
-//     The load leaves this state when the source is successfully compiled, or
+//     The load leaves this state when the source is successfully parsed, or
 //     an error causes the load to fail.
 //
 //     `Load`s in this state are associated with one or more `LinkSet`s in a
