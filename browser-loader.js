@@ -138,12 +138,12 @@ $ObjectDefineProperty(System, "baseURL", {
 
 System.@baseURL = document.baseURI;
 
-// **`System.@ondemandTable`** - Maps urls (strings) to resource contents (a
+// **`System.@ondemandTable`** - Maps URLs (strings) to resource contents (a
 // string, the module name; or an Array of strings, a list of module
 // names). Updated by `System.ondemand()`.
 System.@ondemandTable = $MapNew();
 
-// **`System.@locations`** - Maps module names to urls, a copy of the data in
+// **`System.@locations`** - Maps module names to URLs, a copy of the data in
 // `this.@ondemand` tuned for lookup by module name. (This is purely a
 // performance hack, a cache.  Whenever `@ondemandTable` is modified, we
 // discard `@locations`.)
