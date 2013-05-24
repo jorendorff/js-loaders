@@ -500,7 +500,10 @@ export class Loader {
     }
 
     // **`@callFetch`** - Call the fetch hook.  Handle any errors.
-    @callFetch(load, url, callback, options) {
+    @callFetch(load, url, referer, metadata, normalized, type) {
+        let options = {referer, metadata, normalized, type};
+        let errback = exc => load.fail(exc);
+
         // *Rationale for `fetchCompleted`:* The fetch hook is user code.
         // Callbacks the Loader passes to it are subject to every variety of
         // misuse; the system must be robust against these hooks being called
@@ -519,7 +522,6 @@ export class Loader {
                 throw $TypeError("fetch() fulfill callback: fetch already completed");
             fetchCompleted = true;
 
-            let errback = exc => load.fail(exc);
             if (typeof src !== "string") {
                 let msg = "fulfill callback: first argument must be a string";
                 AsyncCall(errback, $TypeError(msg));
@@ -536,7 +538,8 @@ export class Loader {
             // may call it from a nonempty stack, even synchronously.
             // Therefore use `AsyncCall` here, at the cost of an extra event
             // loop turn.
-            AsyncCall(callback, src, actualAddress);
+            AsyncCall(() =>
+                this.@onFulfill(load, normalized, metadata, type, src, actualAddress));
         }
 
         function reject(exc) {
@@ -592,14 +595,11 @@ export class Loader {
         // Loader.
         //
         let metadata = {};
-        let fetchOptions = {referer, metadata, normalized: null, type: "script"};
 
         let load = new Load([]);
         let run = Loader.makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
-        let fulfill = (src, actualAddress) =>
-            this.@onFulfill(load, null, metadata, "script", src, actualAddress);
-        return this.@callFetch(load, url, fulfill, fetchOptions);
+        return this.@callFetch(load, url, referer, metadata, null, "script");
     }
 
     // **`import`** - Asynchronously load, link, and execute a module and any
@@ -891,11 +891,7 @@ export class Loader {
         // Start the fetch.
         // P3 ISSUE: type makes sense here, yes?
         // P3 ISSUE: what about "extra"?
-        let options = {referer, metadata, normalized, type};
-        let fulfill = (src, actualAddress) =>
-                          this.@onFulfill(load, normalized, metadata, type,
-                                          src, actualAddress);
-        this.@callFetch(load, url, fulfill, options);
+        this.@callFetch(load, url, referer, metadata, normalized, type);
 
         return normalized;
     }
