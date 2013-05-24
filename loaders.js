@@ -375,7 +375,7 @@ export class Loader {
     //
     eval(src, options) {
         // Unpack options. Only one option is supported: `options.url`.
-        let url = this.@unpackUrlOption(options);
+        let url = this.@unpackUrlOption(options, null);
 
         src = this.translate(src, {
             normalized: null,
@@ -398,11 +398,16 @@ export class Loader {
     }
 
     // TODO - comment, distinguish sync vs. async errors
-    @unpackUrlOption(options) {
+    @unpackUrlOption(options, errback) {
         if (options !== undefined && "url" in options) {
             let url = options.url;
-            if (typeof url !== "string")
-                throw $TypeError("options.url must be a string, if present");
+            if (typeof url !== "string") {
+                let exc = $TypeError("options.url must be a string, if present");
+                if (errback === null)
+                    throw exc;
+                AsyncCall(errback, exc);
+                return undefined;
+            }
             return url;
         }
 
@@ -461,7 +466,9 @@ export class Loader {
               errback = exc => { throw exc; },
               options = undefined)
     {
-        let url = this.@unpackUrlOption(options);
+        let url = this.@unpackUrlOption(options, errback);
+        if (url === undefined)
+            return;
 
         return this.@evalAsync(src, callback, errback, url);
     }
@@ -592,7 +599,9 @@ export class Loader {
         //    complexity.)
 
         // Build a referer object.
-        let opturl = this.@unpackUrlOption(options);
+        let opturl = this.@unpackUrlOption(options, errback);
+        if (opturl === undefined)
+            return;
         let referer = {name: null, url: opturl};
 
         // P4 ISSUE: Check callability of callbacks here (and everywhere
@@ -640,13 +649,17 @@ export class Loader {
            options = undefined)
     {
         // Build referer.
-        let name = null
+        let name = null;
         if (options !== undefined && "module" in options) {
             name = options.module;
-            if (typeof name !== "string")
-                throw $TypeError("import: options.module must be a string");
+            if (typeof name !== "string") {
+                AsyncCall(errback, $TypeError("import: options.module must be a string"));
+                return;
+            }
         }
-        let url = this.@unpackUrlOption(options);
+        let url = this.@unpackUrlOption(options, errback);
+        if (url === undefined)
+            return;
         let referer = {name, url};
 
         // this.@import starts us along the pipeline.
