@@ -368,19 +368,15 @@ export class Loader {
     // P4 ISSUE:  What about letting the user set the line number?
     // samth is receptive.  2013 April 22.
     //
-    // **Loader hooks:**  This calls only the translate hook.  per samth,
-    // 2013 April 22.  See rationale in the comment for `evalAsync()`.
+    // **Loader hooks:**  This calls only the translate hook.  TODO: implement
+    // that.  per samth, 2013 April 22.  See rationale in the comment for
+    // `evalAsync()`.
     //
     // P2 ISSUE: #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
         // Unpack options. Only one option is supported: `options.url`.
-        let url = this.@baseURL;  // P4 ISSUE: is baseURL the right default?
-        if (options !== undefined && "url" in options) {
-            url = options.url;
-            if (typeof url !== "string")
-                throw $TypeError("eval: options.url must be a string");
-        }
+        let url = this.@unpackUrlOption(options);
 
         let script = $Compile(this, src, null, url, this.@strict);
 
@@ -393,6 +389,19 @@ export class Loader {
         // have not been executed yet, then execute script.  Any script or
         // module body can throw.
         return ensureExecuted(script);
+    }
+
+    @unpackUrlOption(options) {
+        if (options !== undefined && "url" in options) {
+            let url = options.url;
+            if (typeof url !== "string")
+                throw $TypeError("options.url must be a string, if present");
+            return url;
+        }
+
+        // P1 ISSUE: What default address should be used here, if baseURL is
+        // going away? Perhaps null.
+        return this.@baseURL;
     }
 
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
@@ -445,12 +454,7 @@ export class Loader {
               errback = exc => { throw exc; },
               options = undefined)
     {
-        let url = undefined;
-        if ("url" in options) {
-            url = options.url;
-            if (url !== undefined && typeof url !== "string")
-                throw $TypeError("options.url must be a string or undefined");
-        }
+        let url = this.@unpackUrlOption(options);
 
         return this.@evalAsync(src, callback, errback, url);
     }
@@ -577,19 +581,7 @@ export class Loader {
         //    complexity.)
 
         // Build a referer object.
-        let opturl;
-        if (options !== undefined && "url" in options) {
-            opturl = options.url;
-            if (opturl !== undefined && typeof opturl !== "string") {
-                let msg = "load: options.url must be a string or undefined";
-                AsyncCall(errback, $TypeError(msg));
-                return;
-            }
-        }
-        // P2 ISSUE: What default address should be used here, if baseURL is
-        // going away? Perhaps null.
-        if (opturl === undefined)
-            opturl = this.@baseURL;
+        let opturl = this.@unpackUrlOption(options);
         let referer = {name: null, url: opturl};
 
         // P4 ISSUE: Check callability of callbacks here (and everywhere
@@ -637,19 +629,13 @@ export class Loader {
            options = undefined)
     {
         // Build referer.
-        let name = null, url = this.@baseURL;
-        if (options !== undefined) {
-            if ("module" in options) {
-                name = options.module;
-                if (typeof name !== "string")
-                    throw $TypeError("import: options.module must be a string");
-            }
-            if ("url" in options) {
-                url = options.url;
-                if (typeof url !== "string")
-                    throw $TypeError("import: options.url must be a string");
-            }
+        let name = null
+        if (options !== undefined && "module" in options) {
+            name = options.module;
+            if (typeof name !== "string")
+                throw $TypeError("import: options.module must be a string");
         }
+        let url = this.@unpackUrlOption(options);
         let referer = {name, url};
 
         // this.@import starts us along the pipeline.
