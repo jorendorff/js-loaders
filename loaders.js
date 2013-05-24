@@ -645,7 +645,7 @@ export class Loader {
         };
 
         try {
-            this.fetch(null, fulfill, reject, fetchOptions);
+            this.fetch(url, fulfill, reject, fetchOptions);
         } catch (exc) {
             // Some care is taken here to prevent even a badly-behaved fetch
             // hook from causing errback() to be called twice or not to be
