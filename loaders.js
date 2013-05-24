@@ -217,16 +217,14 @@ export class Loader {
         this.@modules = $MapNew();
 
         // `this.@loading` stores information about modules that are loading
-        // and not yet linked.  It maps module names to LoadTask objects.
+        // and not yet linked.  It maps module names to `Load` objects.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
         // they need only once.
         //
-        // TODO - Rename this, since it is misleading - the `LoadTask`s in it can
+        // TODO - Rename this, since it is misleading - the `Load`s in it can
         // be "loading" or "loaded".
-        //
-        // TODO - Rename `LoadTask` to `Load`.
         //
         this.@loading = $MapNew();
 
@@ -323,8 +321,8 @@ export class Loader {
     // we know one of the two module "x" declarations must fail.  Instead,
     // the second evalAsync fails immediately.  Per meeting, 2013 April 26.
     //
-    @checkModuleDeclarations(script, loadTask) {
-        // TODO - Unify this with very similar code in LoadTask.finish()
+    @checkModuleDeclarations(script, load) {
+        // TODO - Unify this with very similar code in Load.finish()
         // and LinkSet.link().
         let declared = $ScriptDeclaredModuleNames(script);
         for (let i = 0; i < declared.length; i++) {
@@ -335,10 +333,10 @@ export class Loader {
             }
             let pendingLoad = $MapGet(this.@loading, fullName);
             if (pendingLoad === undefined) {
-                if (loadTask === null)
-                    loadTask = new LoadTask(declared, script);
-                $MapSet(this.@loading, fullName, loadTask);
-            } else if (pendingLoad !== loadTask) {
+                if (load === null)
+                    load = new Load(declared, script);
+                $MapSet(this.@loading, fullName, load);
+            } else if (pendingLoad !== load) {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
                                    "which is already loading");
             }
@@ -386,7 +384,7 @@ export class Loader {
 
         let script = $Compile(this, src, null, url, this.@strict);
 
-        // TODO - BUG - This creates a LoadTask and stores it in @loading, but
+        // TODO - BUG - This creates a Load and stores it in @loading, but
         // those entries are not removed if linking fails.
         this.@checkModuleDeclarations(script, null);
 
@@ -522,7 +520,7 @@ export class Loader {
         // Arrange for any dependencies to be loaded and linked with
         // script.  Once the script is linked, the LinkSet will call the
         // run() function below.
-        let loaded = new LoadTask(script);
+        let loaded = new Load(script);
         let linkSet = new LinkSet(this, loaded, run, errback);
 
         function run() {
@@ -752,8 +750,8 @@ export class Loader {
     // 2.  The `normalize` hook returns the name of a module that is already in
     //     the registry.  `@import` returns the normalized name.
     //
-    // 3.  In all other cases, either a new `LoadTask` is started or we can
-    //     join one already in flight.  `@import` returns the normalized name.
+    // 3.  In all other cases, either a new `Load` is started or we can join
+    //     one already in flight.  `@import` returns the normalized name.
     //
     // `referer` provides information about the context of the `import()` call
     // or import-declaration.  This information is passed to all the loader
@@ -848,11 +846,11 @@ export class Loader {
         if ($MapHas(this.@loading, normalized))
             return normalized;
 
-        // Create a `LoadTask` object for this module load.  Once this object
-        // is in `this.@loading`, `LinkSets` may add themselves to its set of
-        // waiting link sets.  Errors must be reported to `loadTask.fail()`.
-        let loadTask = new LoadTask([normalized]);
-        $MapSet(this.@loading, normalized, loadTask);
+        // Create a `Load` object for this module load.  Once this object is in
+        // `this.@loading`, `LinkSets` may add themselves to its set of waiting
+        // link sets.  Errors must be reported to `load.fail()`.
+        let load = new Load([normalized]);
+        $MapSet(this.@loading, normalized, load);
 
         let url, type;
         try {
@@ -916,9 +914,9 @@ export class Loader {
 
                             let existingLoad = $MapGet(this.@loading, name);
                             if (existingLoad === undefined) {
-                                $ArrayPush(loadTask.fullNames, name);
-                                $MapSet(this.@loading, name, loadTask);
-                            } else if (existingLoad !== loadTask) {
+                                $ArrayPush(load.fullNames, name);
+                                $MapSet(this.@loading, name, load);
+                            } else if (existingLoad !== load) {
                                 throw $TypeError(
                                     "loader.resolve hook claims module \"" +
                                     name + "\" is at <" + url + "> but " +
@@ -934,32 +932,32 @@ export class Loader {
                                  "string or an object with .url");
             }
         } catch (exc) {
-            // `loadTask` is responsible for firing error callbacks and
-            // removing itself from `this.@loading`.
-            loadTask.fail(exc);
+            // `load` is responsible for firing error callbacks and removing
+            // itself from `this.@loading`.
+            load.fail(exc);
             return normalized;
         }
 
-        loadTask.type = type;
+        load.type = type;
 
         // Start the fetch.
         // P3 ISSUE: type makes sense here, yes?
         // P3 ISSUE: what about "extra"?
         let options = {referer, metadata, normalized, type};
         let fulfill = (src, actualAddress) =>
-                          this.@onFulfill(loadTask, normalized, metadata, type,
+                          this.@onFulfill(load, normalized, metadata, type,
                                           src, actualAddress);
-        this.@callFetch(url, fulfill, exc => loadTask.fail(exc), options);
+        this.@callFetch(url, fulfill, exc => load.fail(exc), options);
 
         return normalized;
     }
 
     // **`@onFulfill`** - This is called once a fetch succeeds.
-    @onFulfill(loadTask, normalized, metadata, type, src, actualAddress) {
-        // If `loadTask` is no longer needed by any `LinkSet`, do nothing.
-        // When one load in a LinkSet fails, we shouldn't continue loading
+    @onFulfill(load, normalized, metadata, type, src, actualAddress) {
+        // If `load` is no longer needed by any `LinkSet`, do nothing.  When
+        // one load in a LinkSet fails, we shouldn't continue loading
         // dependencies anyway.
-        if ($SetSize(loadTask.linkSets) === 0)
+        if ($SetSize(load.linkSets) === 0)
             return;
 
         try {
@@ -982,7 +980,7 @@ export class Loader {
             // Interpret `linkResult`.  See comment on the `link()` method.
             if (linkResult === undefined) {
                 let script = $Compile(this, src, normalized, actualAddress, this.@strict);
-                loadTask.finish(this, actualAddress, script);
+                load.finish(this, actualAddress, script);
             } else if (!IsObject(linkResult)) {
                 throw $TypeError("link hook must return an object or undefined");
             } else if ($IsModule(linkResult)) {
@@ -993,7 +991,7 @@ export class Loader {
                 }
                 let mod = linkResult;
                 $MapSet(this.@modules, normalized, mod);
-                loadTask.onEndRun();
+                load.onEndRun();
             } else {
                 let mod = null;
                 let imports = linkResult.imports;
@@ -1007,7 +1005,7 @@ export class Loader {
                 throw TODO;
             }
         } catch (exc) {
-            loadTask.fail(exc);
+            load.fail(exc);
         }
     }
 
@@ -1331,7 +1329,7 @@ export class Loader {
 // ## Notes on error handling
 //
 // Most errors that can occur during a load, asyncEval, or import are related
-// to either a specific in-flight `LoadTask` (in `loader.@loading`) or a specific
+// to either a specific in-flight `Load` (in `loader.@loading`) or a specific
 // `LinkSet`.
 //
 // When such an error occurs:
@@ -1342,10 +1340,10 @@ export class Loader {
 //         is a link error or an execution error in a module or script),
 //         then F = a set containing just that `LinkSet`.
 //
-//       * If the error is related to an in-flight `LoadTask` (that is, it has
-//         to do with a hook throwing, returning an invalid value, calling a
-//         fulfill callback inorrectly, or calling the reject callback),
-//         then F = the set of LinkSets that needed that module.
+//       * If the error is related to an in-flight `Load` (that is, it has to
+//         do with a hook throwing, returning an invalid value, calling a
+//         fulfill callback inorrectly, or calling the reject callback), then F
+//         = the set of LinkSets that needed that module.
 //
 //  2. Let M = the set of all in-flight modules (in loader.@loading)
 //     that are not needed by any LinkSet other than those in F.
@@ -1374,7 +1372,7 @@ export class Loader {
 // For reference, here are all the kinds of errors that can
 // occur. This list is meant to be exhaustive.
 //
-// Errors related to a `LoadTask`:
+// Errors related to a `Load`:
 //
 //   - For each module, we call all five loader hooks, any of which
 //     can throw or return an invalid value.
@@ -1405,7 +1403,7 @@ export class Loader {
 // Other:
 //
 //   - The `normalize` hook throws or returns an invalid value.  This happens
-//     so early in the load process that there is no `LoadTask` yet.  We can
+//     so early in the load process that there is no `Load` yet.  We can
 //     directly call the `errback` hook.  TODO see if this really fits in
 //     here...
 //
@@ -1418,11 +1416,10 @@ export class Loader {
 
 // ## Dependency loading
 //
-// The goal of a LoadTask is to resolve, fetch, translate, link, and compile
-// a single module (or a collection of modules that all live in the same
-// script).
+// The goal of a Load is to resolve, fetch, translate, link, and compile a
+// single module (or a collection of modules that all live in the same script).
 //
-// LoadTask objects are the values in a Loader's .@loading map.
+// Load objects are the values in a Loader's .@loading map.
 //
 // It is in one of four states:
 //
@@ -1431,14 +1428,14 @@ export class Loader {
 //         .status === "loading"
 //         .linkSets is a Set of LinkSets
 //
-//     The task leaves this state when the source is successfully compiled, or
+//     The load leaves this state when the source is successfully compiled, or
 //     an error causes the load to fail.
 //
-//     `LoadTask`s in this state are associated with one or more `LinkSet`s in
-//     a many-to-many relation. This implementation stores both directions of
-//     the relation: `loadTask.linkSets` is the `Set` of all `LinkSet`s that
-//     require `loadTask`; and `linkSet.loads` is the `Set` of all `LoadTask`s
-//     that `linkSet` requires.
+//     `Load`s in this state are associated with one or more `LinkSet`s in a
+//     many-to-many relation. This implementation stores both directions of the
+//     relation: `load.linkSets` is the `Set` of all `LinkSet`s that require
+//     `load`; and `linkSet.loads` is the `Set` of all `Load`s that `linkSet`
+//     requires.
 //
 // 2.  Loaded: Source is available and has been "translated"; syntax has been
 //     checked; dependencies have been identified.  But the module hasn't been
@@ -1460,7 +1457,7 @@ export class Loader {
 //
 //     Exactly one of `[.script, .factory]` is non-null.
 //
-//     The task leaves this state when a LinkSet successfully links the module
+//     The load leaves this state when a LinkSet successfully links the module
 //     and moves it into the loader's module registry.
 //
 // 3.  Done:  The module has been linked and added to the loader's module
@@ -1469,27 +1466,26 @@ export class Loader {
 //
 //         .status === "linked"
 //
-//     (TODO: this is speculation) LoadTasks that enter this state are removed
-//     from the loader.@loading table and from all LinkSets; they become
-//     garbage.
+//     (TODO: this is speculation) Loads that enter this state are removed from
+//     the loader.@loading table and from all LinkSets; they become garbage.
 //
-// 4.  Failed:  The load failed. The task never leaves this state.
+// 4.  Failed:  The load failed. The load never leaves this state.
 //
 //         .status === "failed"
 //         .exception is an exception value
 //
-class LoadTask {
+class Load {
     // If the constructor argument is an array, it is the array of module names
-    // that we're loading; the task begins in the `"loading"` state.
+    // that we're loading; the `Load` begins in the `"loading"` state.
     //
-    // If the argument is a script, the task begins in the `"loaded"`
+    // If the argument is a script, the new `Load` begins in the `"loaded"`
     // state. This happens in `eval()` and `evalAsync()`: the eval script does
     // not need to go through the `"loading"` part of the pipeline, but it must
     // be linked.
     //
     // TODO - consider instead of allowing directly creating `"loaded"`
-    // `LoadTask`s, having the caller create it, add it to the `LinkSet`, and
-    // then call `finish()` manually.
+    // `Load`s, having the caller create it, add it to the `LinkSet`, and then
+    // call `finish()` manually.
     //
     constructor(namesOrScript) {
         this.fullNames = fullNames;
@@ -1518,7 +1514,7 @@ class LoadTask {
     //   3. Call `.onLoad` on any listening `LinkSet`s (see that method for the
     //      conclusion of the load/link/run process).
     //
-    // On success, this transitions the `LoadTask` from `"loading"` status to
+    // On success, this transitions the `Load` from `"loading"` status to
     // `"loaded"`.
     //
     finish(loader, actualAddress, script) {
@@ -1569,9 +1565,9 @@ class LoadTask {
             fullNames[i] = fullName;
 
             if (!$MapHas(this.@modules, fullName)) {
-                // Add the new LoadTask to each LinkSet even if it is done
-                // loading, because the association keeps the LoadTask alive
-                // (LoadTasks are reference-counted; see onLinkSetFail).
+                // Add the new `Load` to each `LinkSet` even if it is done
+                // loading, because the association keeps the `Load` alive
+                // (`Load`s are reference-counted; see `onLinkSetFail`).
                 //
                 // ISSUE: whether to keep a copy
                 //
@@ -1595,8 +1591,7 @@ class LoadTask {
             sets[i].onLoad(this);
     }
 
-    // **`fail`** - Fail this load task. All `LinkSet`s that require it also
-    // fail.
+    // **`fail`** - Fail this load. All `LinkSet`s that require it also fail.
     fail(exc) {
         $Assert(this.status === "loading");
         this.status = "failed";
@@ -1637,28 +1632,28 @@ class LinkSet {
 
         this.loads = $SetNew();
 
-        // Invariant: `this.loadingCount` is the number of `LoadTask`s in
+        // Invariant: `this.loadingCount` is the number of `Load`s in
         // `this.loads` whose `.status` is `"loading"`.
         this.loadingCount = 0;
 
         this.addLoad(startingLoad);
     }
 
-    addLoad(loadTask) {
-        if (loadTask.status === "failed")
-            return this.fail(loadTask.exception);
+    addLoad(load) {
+        if (load.status === "failed")
+            return this.fail(load.exception);
 
-        if (!$SetHas(this.loads, loadTask)) {
-            if (loadTask.status === "loading")
+        if (!$SetHas(this.loads, load)) {
+            if (load.status === "loading")
                 this.loadingCount++;
-            $SetAdd(this.loads, loadTask);
-            $SetAdd(loadTask.linkSets, this);
+            $SetAdd(this.loads, load);
+            $SetAdd(load.linkSets, this);
         }
     }
 
-    // **`onLoad`** - `LoadTask.prototype.finish` calls this after one
-    // `LoadTask` successfully finishes, and after kicking off loads for all
-    // its dependencies.
+    // **`onLoad`** - `Load.prototype.finish` calls this after one `Load`
+    // successfully finishes, and after kicking off loads for all its
+    // dependencies.
     //
     // If this `LinkSet` is completely satisfied (that is, all dependencies
     // have loaded) then we link the modules and fire the success callback.
@@ -1677,9 +1672,9 @@ class LinkSet {
     // determinism in common cases&mdash;though it is easy to trigger
     // non-determinism since multiple link sets can be in-flight at once.
     //
-    onLoad(loadTask) {
-        $Assert($SetHas(this.loads, loadTask));
-        $Assert(loadTask.status === "loaded" || loadTask.status === "linked");
+    onLoad(load) {
+        $Assert($SetHas(this.loads, load));
+        $Assert(load.status === "loaded" || load.status === "linked");
         if (--this.loadingCount === 0) {
             // Link, then schedule the success callback.
             try {
@@ -1707,7 +1702,7 @@ class LinkSet {
 
         // Depth-first walk of the import tree, stopping at already-linked
         // modules.
-        function walk(task, script, deps) {
+        function walk(load, script, deps) {
             $SetAdd(seen, script);
 
             // First, note all modules declared in this script.
@@ -1721,7 +1716,7 @@ class LinkSet {
                         "script declares module \"" + fullName + "\", " +
                         "which is already loaded");
                 }
-                if (task === undefined) {
+                if (load === undefined) {
                     if ($MapHas(this.loader.@loading, fullName)) {
                         throw $SyntaxError(
                             "script declares module \"" + fullName + "\", " +
