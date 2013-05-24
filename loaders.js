@@ -476,7 +476,7 @@ export class Loader {
         let load = new Load([]);
         let run = Loader.makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
-        this.@onFulfill(load, null, {}, "script", src, url);
+        this.@onFulfill(load, {}, null, "script", src, url);
     }
 
     // **`makeEvalCallback`** - Create and return a callback, to be called
@@ -539,7 +539,7 @@ export class Loader {
             // Therefore use `AsyncCall` here, at the cost of an extra event
             // loop turn.
             AsyncCall(() =>
-                this.@onFulfill(load, normalized, metadata, type, src, actualAddress));
+                this.@onFulfill(load, metadata, normalized, type, src, actualAddress));
         }
 
         function reject(exc) {
@@ -897,7 +897,7 @@ export class Loader {
     }
 
     // **`@onFulfill`** - This is called once a fetch succeeds.
-    @onFulfill(load, normalized, metadata, type, src, actualAddress) {
+    @onFulfill(load, metadata, normalized, type, src, actualAddress) {
         // If `load` is no longer needed by any `LinkSet`, do nothing.  When
         // one load in a LinkSet fails, we shouldn't continue loading
         // dependencies anyway.
@@ -916,7 +916,7 @@ export class Loader {
             }
 
             // Call the `translate` hook.
-            src = this.translate(src, {normalized, actualAddress, metadata, type});
+            src = this.translate(src, {metadata, normalized, type, actualAddress});
             if (typeof src !== "string")
                 throw $TypeError("translate hook must return a string");
 
@@ -925,7 +925,7 @@ export class Loader {
             // Perhaps once per module?
             let linkResult =
                 type === "module"
-                ? this.link(src, {normalized, actualAddress, metadata, type})
+                ? this.link(src, {metadata, normalized, type, actualAddress})
                 : undefined;
 
             // Interpret `linkResult`.  See comment on the `link()` method.
