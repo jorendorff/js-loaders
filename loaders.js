@@ -224,7 +224,6 @@ export class Loader {
         // Various configurable options.
         this.@global = options.global;  // P4 ISSUE: ToObject here?
         this.@strict = ToBoolean(options.strict);
-        this.@baseURL = $ToString(options.baseURL);
 
         // P4 ISSUE: Detailed behavior of hooks.
         //
@@ -272,15 +271,6 @@ export class Loader {
     // loaded by this loader is treated as strict-mode code.
     get strict() {
         return this.@strict;
-    }
-
-    // **`baseURL`** - Used for auto-mapping module names to URLs.
-    get baseURL() {
-        return this.@baseURL;
-    }
-
-    set baseURL(url) {
-        this.@baseURL = $ToString(url);
     }
 
 

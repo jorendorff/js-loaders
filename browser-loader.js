@@ -28,6 +28,7 @@ import {
     $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
     $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
     $MapPairs,      // $MapPairs(map) ~= [...map]
+    $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
     $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
     $StringSplit,   // $StringSplit(s, delim) ~= s.split(delim)
     $TypeError      // $TypeError(msg) ~= new TypeError(msg)
@@ -125,6 +126,17 @@ System.normalize = function normalize(name, options) {
         append(segments[i]);
     return rest;
 };
+
+// **`System.baseURL`** - Used in `System.resolve` to map module names to URLs
+// when there is no matching entry in the `@ondemandTable`.
+$ObjectDefineProperty(System, "baseURL", {
+    configurable: true,
+    enumerable: false,
+    get: function baseURL() { return this.@baseURL; }
+    set: function baseURL(url) { this.@baseURL = $ToString(url); }
+});
+
+System.@baseURL = document.baseURI;
 
 // **`System.@ondemandTable`** - Maps urls (strings) to resource contents (a
 // string, the module name; or an Array of strings, a list of module
