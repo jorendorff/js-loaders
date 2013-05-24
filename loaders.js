@@ -521,9 +521,9 @@ export class Loader {
                 return;
             }
 
-            // Even though `fulfill()` will *typically* called asynchronously
-            // from an empty or nearly empty stack already, the `fetch` hook
-            // may call it from a nonempty stack, even synchronously.
+            // Even though `fulfill()` will *typically* be called
+            // asynchronously from an empty or nearly empty stack, the `fetch`
+            // hook may call it from a nonempty stack, even synchronously.
             // Therefore use `AsyncCall` here, at the cost of an extra event
             // loop turn.
             AsyncCall(() =>
@@ -571,15 +571,15 @@ export class Loader {
             return;
         let referer = {name: null, address: refererAddress};
 
-        // *Rationale for creating an empty object for metadata:* The
-        // `normalize` hook only makes sense for modules; `load()` loads
-        // scripts.  But we do want `load()` to use the `fetch` hook, which
-        // means we must come up with a metadata value of some kind (this is
-        // ordinarily the `normalize` hook's responsibility).
+        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+        // only makes sense for modules; `load()` loads scripts.  But we do
+        // want `load()` to use the `fetch` hook, which means we must come up
+        // with a metadata value of some kind (this is ordinarily the
+        // `normalize` hook's responsibility).
         //
-        // `metadata` is created using the intrinsics of the enclosing
-        // loader class, not the Loader's intrinsics, because it is for the
-        // loader hooks to use. It is never exposed to code loaded by this
+        // `metadata` is created using the intrinsics of the enclosing loader
+        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
+        // loader hooks to use.  It is never exposed to code loaded by this
         // Loader.
         //
         let metadata = {};
@@ -769,7 +769,7 @@ export class Loader {
 
         // If we can't wait for the module to load, we are done.
         if (sync) {
-            // Rationale for throwing a `SyntaxError`: `SyntaxError` is already
+            // Throw a `SyntaxError`. *Rationale:* `SyntaxError` is already
             // used for a few conditions that can be detected statically
             // (before a script begins to execute) but are not really syntax
             // errors per se.  Reusing it seems better than inventing a new
