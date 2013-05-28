@@ -838,7 +838,6 @@ export class Loader {
                             "loader.resolve hook must be an object");
                     }
 
-                    // P4 ISSUE: confirm iterable rather than array
                     let names = [...extra];
 
                     // Record a load in progress for all other modules defined
@@ -912,7 +911,7 @@ export class Loader {
                 throw $TypeError("translate hook must return a string");
 
             // Call the `link` hook, if we are loading a module.
-            // P1 ISSUE: Should this hook be called when loading a script?
+            // P1 ISSUE #28: Should this hook be called when loading a script?
             // Perhaps once per module?
             let linkResult =
                 type === "module"
@@ -1139,10 +1138,6 @@ export class Loader {
     // **When this hook is called:**  For all imports, immediately after the
     // `normalize` hook returns successfully, unless the module is already
     // loaded or loading.
-    //
-    // P1 ISSUE #4:  Relative module names.
-    //
-    // P1 ISSUE #14:  Define how the ondemand table gets consulted.
     //
     // **Default behavior:**  Return the module name unchanged.
     //
