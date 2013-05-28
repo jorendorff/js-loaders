@@ -323,9 +323,8 @@ export class Loader {
         // During the **load phase**, code is loaded and parsed, and import
         // dependencies are traversed.
 
-        // A synchronous `eval` cannot fetch code.  But a `Load` is more than
-        // just fetching.  Below, we will call `load.finish` which actually
-        // does most of the work.
+        // The `Load` object here is *pro forma*; `eval` is synchronous and
+        // thus cannot fetch code.
         let load = new Load([]);
         let linkSet = new LinkSet(this, load, null, null);
 
