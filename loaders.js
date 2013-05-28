@@ -385,16 +385,16 @@ export class Loader {
     //
     // Both arguments are optional.  The default success callback does
     // nothing.  The default failure callback throws its argument.
-    // (*Rationale:*  the event loop will then treat it like any other
-    // unhandled exception.)
+    // *Rationale:*  The event loop will then treat it like any other
+    // unhandled exception.
     //
     // Success and failure callbacks are always called in a fresh event
     // loop turn.  This means they will not be called until after
-    // evalAsync returns, and they are always called directly from the
+    // `evalAsync` returns, and they are always called directly from the
     // event loop:  except in the case of nested event loops, these
     // callbacks are never called while user code is on the stack.
     //
-    // **Options:** The comment on `eval()` explains `options`.
+    // **Options:**  A comment in `eval()` explains `options`.
     //
     // **Loader hooks:**  For the script `src`, the `normalize`, `resolve`,
     // `fetch`, and `link` hooks are not called.  The `fetch` hook is for
@@ -406,7 +406,7 @@ export class Loader {
     //
     // **Future directions:**  `evalAsync`, `import`, `load`, and the `fetch`
     // hook all take callbacks and currently return `undefined`.  They are
-    // designed to be upwards-compatible to Futures.  per samth, 2013 April 22.
+    // designed to be upwards-compatible to `Future`s.  per samth, 2013 April 22.
     //
     evalAsync(src,
               callback = value => undefined,
@@ -441,7 +441,7 @@ export class Loader {
     // callback.  The comment on `evalAsync()` explains `callback` and
     // `errback`.
     //
-    // The comment on `eval()` explains `options`.
+    // A comment in `eval()` explains `options`.
     //
     load(address,
          callback = value => undefined,
