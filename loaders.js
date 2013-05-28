@@ -301,22 +301,7 @@ export class Loader {
     // P2 ISSUE #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
-        // **Options:** `eval()`, `evalAsync()`, and `load()` all accept an
-        // optional `options` object. `options.address`, if present, is passed to
-        // each loader hook, for each module loaded, as `options.referer.address`.
-        // (The default loader hooks ignore it, though.)
-        //
-        // (`options.address` may also be stored in the script and used for
-        // `Error().fileName`, `Error().stack`, and developer tools; but such use
-        // is outside the scope of the language standard.)
-        //
-        // P5 SECURITY ISSUE: Make sure that is OK.
-        //
-        // P2 ISSUE #31: Consider `options.module`.
-        //
-        // P4 ISSUE:  What about letting the user set the line number?
-        // samth is receptive.  2013 April 22.
-        //
+        // See @unpackAddressOption for more about `options`.
         let address = Loader.@unpackAddressOption(options, null);
 
         // The loader works in three basic phases: load, link, and execute.
@@ -529,6 +514,22 @@ export class Loader {
 
     // **`@unpackAddressOption`** - Used by several Loader methods to get
     // `options.address` and check that if present, it is a string.
+    //
+    // `eval()`, `evalAsync()`, and `load()` all accept an optional `options`
+    // object. `options.address`, if present, is passed to each loader hook,
+    // for each module loaded, as `options.referer.address`.  (The default
+    // loader hooks ignore it, though.)
+    //
+    // (`options.address` may also be stored in the script and used for
+    // `Error().fileName`, `Error().stack`, and developer tools; but such use
+    // is outside the scope of the language standard.)
+    //
+    // P5 SECURITY ISSUE: Make sure that is OK.
+    //
+    // P2 ISSUE #31: Consider `options.module`.
+    //
+    // P2 ISSUE #32:  Consider `options.lineNumber`.
+    //
     static @unpackAddressOption(options, errback) {
         if (options !== undefined && "address" in options) {
             let address = options.address;
