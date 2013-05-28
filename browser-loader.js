@@ -224,7 +224,7 @@ function ondemandTableLookup(loader, normalized) {
 // module name, return the key.  If any array value in the table contains an
 // element that matches the module name, return {address: key, type: "script"}.
 //
-System.resolve = function resolve(normalized, referer) {
+System.resolve = function resolve(normalized, options) {
     let address = ondemandTableLookup(this, normalized);
     if (address !== undefined) {
         // Relative URLs in the ondemand table are resolved relative to
