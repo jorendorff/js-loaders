@@ -1144,8 +1144,7 @@ export class Loader {
     // (The browser's System.resolve hook is considerably more complex.)
     //
     resolve(normalized, options) {
-        var address = this.@ondemandTableLookup(normalized, options.referer);
-        return address === undefined ? normalized : address;
+        return normalized;
     }
 
     // **`fetch`** hook - Asynchronously fetch the requested source from the
