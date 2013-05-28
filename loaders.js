@@ -314,8 +314,6 @@ export class Loader {
             }
             let pendingLoad = $MapGet(this.@loads, fullName);
             if (pendingLoad === undefined) {
-                if (load === null)
-                    load = new Load(script);
                 $MapSet(this.@loads, fullName, load);
             } else if (pendingLoad !== load) {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
