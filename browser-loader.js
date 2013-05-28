@@ -235,9 +235,9 @@ System.resolve = function resolve(normalized, options) {
         return address;
     }
 
-    // Otherwise, percent-encode each segment of the module name, add ".js" to the
-    // last segment, resolve that relative to this.@baseURL, and return the resolved
-    // URL.
+    // Otherwise, percent-encode each segment of the module name, add `".js"`
+    // to the last segment, resolve that relative to `this.@baseURL`, and
+    // return the resolved URL.
     //
     // TODO:  Implement percent-encoding.
     //
@@ -256,6 +256,13 @@ System.resolve = function resolve(normalized, options) {
     // behavior should try to return an absolute URL.  If the user overrides it
     // to return a relative URL, the default fetch behavior should cope with
     // that.
+    //
+    // The URL is relative to `loader.baseURL`, not `options.referer.address`.
+    // *Rationale:*  Module names are not URLs.  From a module
+    // `mypackage/basics` in the file `scripts/mypackage/basics.js`, importing
+    // `wunderbar` will import the module `wunderbar`, not
+    // `mypackage/wunderbar`.  Therefore it should load `scripts/wunderbar.js`,
+    // not `scripts/mypackage/wunderbar.js`.
     //
     // P5 ISSUE: Do we care if "." and ".." end up being sent in URL paths?
     // Empty segments ("x//y")?  I think we should try to produce valid URLs or
