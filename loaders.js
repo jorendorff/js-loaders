@@ -1509,6 +1509,7 @@ class Load {
         }
 
         this.status = "loaded";
+        this.script = script;
         this.dependencies = fullNames;
         if (!sync) {
             for (let i = 0; i < sets.length; i++)
@@ -1659,6 +1660,7 @@ class LinkSet {
         // Depth-first walk of the import tree, stopping at already-linked
         // modules.
         function walk(load) {
+            // XXX TODO - assert something about load.status here
             let script = load.script;
             $SetAdd(seen, script);
 
