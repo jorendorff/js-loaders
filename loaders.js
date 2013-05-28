@@ -276,52 +276,63 @@ export class Loader {
     //
     // The major methods of `Loader` are for loading and running code:
     //
-    //   * `eval(src)` - Synchronously run some code.  Never loads modules, but
-    //     `src` may import already-loaded modules.
+    //   * `eval(src, options)` - Synchronously run some code.  Never loads
+    //     modules, but `src` may import already-loaded modules.
     //
     //   * `import(moduleName, callback, errback)` - Asynchronously load a
     //     module and its dependencies.
     //
-    //   * `evalAsync(src, callback, errback)` - Asynchronously run some code.
-    //     Loads imported modules.
+    //   * `evalAsync(src, callback, errback, options)` - Asynchronously run
+    //     some code.  Loads imported modules.
     //
-    //   * `load(address, callback, errback)` - Asynchronously load and run a
-    //     script.  Loads imported modules.
+    //   * `load(address, callback, errback, options)` - Asynchronously load
+    //     and run a script.  Loads imported modules.
 
-    // **`eval`** - Execute the program `src`.
+    // P1 ISSUE #30: the callback and errback arguments should be last.
+
+    // **`eval`** - Evaluate the program `src`.
     //
     // `src` may import modules, but if it imports a module that is not
     // already loaded, a `SyntaxError` is thrown.
     //
-    // **Options:** `eval()`, `evalAsync()`, and `load()` all accept an
-    // optional `options` object. `options.address`, if present, is passed to
-    // each loader hook, for each module loaded, as `options.referer.address`.
-    // (The default loader hooks ignore it, though.)
-    //
-    // (`options.address` may also be stored in the script and used for
-    // `Error().fileName`, `Error().stack`, and developer tools; but such use
-    // is outside the scope of the language standard.)
-    //
-    // P5 SECURITY ISSUE: Make sure that is OK.
-    //
-    // (The google doc mentions another option, `options.module`, which
-    // would be a string and would cause all imports to be normalized
-    // relative to that module name.  per samth, 2013 April 22.  jorendorff
-    // objected to this feature and it is not presently implemented.)
-    //
-    // P4 ISSUE:  What about letting the user set the line number?
-    // samth is receptive.  2013 April 22.
-    //
-    // **Loader hooks:**  This calls only the translate hook.  per samth,
+    // **Loader hooks:**  This calls only the `translate` hook.  per samth,
     // 2013 April 22.  See rationale in the comment for `evalAsync()`.
     //
-    // P2 ISSUE: #8: Does global.eval go through the translate hook?
+    // P2 ISSUE #8: Does global.eval go through the translate hook?
+    //
+    // TODO - Consider rewriting the translate part of this in terms of
+    // onFulfill.
     //
     eval(src, options) {
-        // Unpack options. Only one option is supported: `options.address`.
+        // **Options:** `eval()`, `evalAsync()`, and `load()` all accept an
+        // optional `options` object. `options.address`, if present, is passed to
+        // each loader hook, for each module loaded, as `options.referer.address`.
+        // (The default loader hooks ignore it, though.)
+        //
+        // (`options.address` may also be stored in the script and used for
+        // `Error().fileName`, `Error().stack`, and developer tools; but such use
+        // is outside the scope of the language standard.)
+        //
+        // P5 SECURITY ISSUE: Make sure that is OK.
+        //
+        // P2 ISSUE #31: Consider `options.module`.
+        //
+        // P4 ISSUE:  What about letting the user set the line number?
+        // samth is receptive.  2013 April 22.
+        //
         let address = Loader.@unpackAddressOption(options, null);
 
-        // TODO - Consider rewriting this in terms of onFulfill.
+        // The loader works in three basic phases: load, link, and execute.
+        // During the **load phase**, code is loaded and parsed, and import
+        // dependencies are traversed.
+
+        // A synchronous `eval` cannot fetch code.  But a `Load` is more than
+        // just fetching.  Below, we will call `load.finish` which actually
+        // does most of the work.
+        let load = new Load([]);
+        let linkSet = new LinkSet(this, load, null, null);
+
+        // Translate and parse `src`. Either of these may throw.
         src = this.translate(src, {
             normalized: null,
             actualAddress: address,
@@ -331,25 +342,43 @@ export class Loader {
 
         let script = $Parse(this, src, null, address, this.@strict);
 
-        let load = new Load([]);
-        let linkSet = new LinkSet(this, load, null, null);
+        // Finish loading `src`.  This is the part where, in an *asynchronous*
+        // load, we would trigger further loads for any imported modules that
+        // are not yet loaded.
+        //
+        // Instead, here we pass `true` to `load.finish` to indicate that we're
+        // doing a synchronous load.  This makes `load.finish` throw rather
+        // than trigger any new loads or add any still-loading modules to the
+        // link set.  If `load.finish` doesn't throw, then we have everything
+        // we need and load phase is done.
+        //
         load.finish(this, address, script, true);
+
+        // The **link phase** links each imported name to the corresponding
+        // module or export.
         linkSet.link();
 
-        // Execute any (directly or indirectly imported) module bodies that
-        // have not been executed yet, then execute script.  Any script or
-        // module body can throw.
+        // During the **execute phase**, we first execute module bodies for any
+        // modules needed by `script` that haven't already executed.  Then we
+        // evaluate `script` and return that value.
         return ensureExecuted(script);
     }
 
-    // **`@unpackAddressOption`** - TODO - comment this method
+    // **`@unpackAddressOption`** - Used by several Loader methods to get
+    // `options.address` and check that if present, it is a string.
     static @unpackAddressOption(options, errback) {
         if (options !== undefined && "address" in options) {
             let address = options.address;
             if (typeof address !== "string") {
                 let exc = $TypeError("options.address must be a string, if present");
+
+                // `errback` is null when the caller is synchronous `eval()`.
+                // In that case, just throw.
                 if (errback === null)
                     throw exc;
+
+                // Otherwise, report the error asynchronously.  The caller must
+                // check for `undefined`.
                 AsyncCall(errback, exc);
                 return undefined;
             }
@@ -418,7 +447,7 @@ export class Loader {
         //         throw $TypeError("Loader.load: callback must be a function");
         //     if (typeof errback !== "function")
         //         throw $TypeError("Loader.load: error callback must be a function");
-
+        //
         let address = Loader.@unpackAddressOption(options, errback);
         if (address === undefined)
             return;
@@ -432,7 +461,7 @@ export class Loader {
     // **`makeEvalCallback`** - Create and return a callback, to be called
     // after linking is complete, that executes the script loaded by the given
     // `load`.
-    static makeEvalCallback(load, callback, errback) {
+    static @makeEvalCallback(load, callback, errback) {
         return () => {
             // Tail calls would be equivalent to AsyncCall, except for
             // possibly some imponderable timing details.  This is meant as
@@ -551,7 +580,7 @@ export class Loader {
         let metadata = {};
 
         let load = new Load([]);
-        let run = Loader.makeEvalCallback(load, callback, errback);
+        let run = Loader.@makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
         return this.@callFetch(load, address, referer, metadata, null, "script");
     }
@@ -1508,8 +1537,10 @@ class Load {
 
         this.status = "loaded";
         this.dependencies = fullNames;
-        for (let i = 0; i < sets.length; i++)
-            sets[i].onLoad(this);
+        if (!sync) {
+            for (let i = 0; i < sets.length; i++)
+                sets[i].onLoad(this);
+        }
     }
 
     // **`onEndRun`** - Called when the `link` hook returns a Module object.
