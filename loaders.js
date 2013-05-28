@@ -295,13 +295,9 @@ export class Loader {
     // `src` may import modules, but if it imports a module that is not
     // already loaded, a `SyntaxError` is thrown.
     //
-    // **Loader hooks:**  This calls only the `translate` hook.  per samth,
-    // 2013 April 22.  See rationale in the comment for `evalAsync()`.
-    //
     // P2 ISSUE #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
-        // See @unpackAddressOption for more about `options`.
         let address = Loader.@unpackAddressOption(options, null);
 
         // The loader works in three basic phases: load, link, and execute.
@@ -365,16 +361,6 @@ export class Loader {
     // event loop:  except in the case of nested event loops, these
     // callbacks are never called while user code is on the stack.
     //
-    // **Options:**  A comment in `eval()` explains `options`.
-    //
-    // **Loader hooks:**  For the script `src`, the `normalize`, `resolve`,
-    // `fetch`, and `link` hooks are not called.  The `fetch` hook is for
-    // obtaining code, which we already have, and the other three are relevant
-    // only for modules, not scripts.  It is not yet decided whether the
-    // `translate` hook is called; see the ISSUE comment on the `eval` method.
-    // Of course for modules imported by `src` that are not already loaded, all
-    // the loader hooks can be called.
-    //
     // **Future directions:**  `evalAsync`, `import`, `load`, and the `fetch`
     // hook all take callbacks and currently return `undefined`.  They are
     // designed to be upwards-compatible to `Future`s.  per samth, 2013 April 22.
@@ -409,10 +395,7 @@ export class Loader {
     // linked, and executed.
     //
     // On success, the result of evaluating the script is passed to the success
-    // callback.  The comment on `evalAsync()` explains `callback` and
-    // `errback`.
-    //
-    // A comment in `eval()` explains `options`.
+    // callback.
     //
     load(address,
          callback = value => undefined,
