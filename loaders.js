@@ -907,7 +907,10 @@ export class Loader {
                 throw TODO;
             }
         } catch (exc) {
-            load.fail(exc);
+            if (sync)
+                throw exc;
+            else
+                load.fail(exc);
         }
     }
 
