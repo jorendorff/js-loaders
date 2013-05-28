@@ -154,9 +154,6 @@ import {
     $CodeGetLinkedModules
 } from "implementation-intrinsics";
 
-// TODO: Merge `$ScriptDeclaredModuleNames` and `$ScriptGetDeclaredModule` into
-// a single function that returns an array of pairs.
-//
 // TODO: Consider removing `$ScriptImports` in favor of a `$CodeImports` that
 // we call separately on modules and scripts; `$LinkScript` would become
 // `$CodeLink` and then `$CodeGetLinkedModules` could really be replaced with a
@@ -184,6 +181,7 @@ import {
     $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
     $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
 } from "implementation-builtins";
+
 
 // ## The Loader class
 //
