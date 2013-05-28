@@ -364,31 +364,6 @@ export class Loader {
         return ensureExecuted(script);
     }
 
-    // **`@unpackAddressOption`** - Used by several Loader methods to get
-    // `options.address` and check that if present, it is a string.
-    static @unpackAddressOption(options, errback) {
-        if (options !== undefined && "address" in options) {
-            let address = options.address;
-            if (typeof address !== "string") {
-                let exc = $TypeError("options.address must be a string, if present");
-
-                // `errback` is null when the caller is synchronous `eval()`.
-                // In that case, just throw.
-                if (errback === null)
-                    throw exc;
-
-                // Otherwise, report the error asynchronously.  The caller must
-                // check for `undefined`.
-                AsyncCall(errback, exc);
-                return undefined;
-            }
-            return address;
-        }
-
-        // The default address is null, per samth 2013 May 24.
-        return null;
-    }
-
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
     //
     // `src` may import modules that have not been loaded yet.  In that case,
@@ -453,96 +428,9 @@ export class Loader {
             return;
 
         let load = new Load([]);
-        let run = Loader.makeEvalCallback(load, callback, errback);
+        let run = Loader.@makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
         this.@onFulfill(load, {}, null, "script", src, address);
-    }
-
-    // **`makeEvalCallback`** - Create and return a callback, to be called
-    // after linking is complete, that executes the script loaded by the given
-    // `load`.
-    static @makeEvalCallback(load, callback, errback) {
-        return () => {
-            // Tail calls would be equivalent to AsyncCall, except for
-            // possibly some imponderable timing details.  This is meant as
-            // a reference implementation, so we just literal-mindedly do
-            // what the spec is expected to say.
-            let result;
-            try {
-                result = ensureExecuted(load.script);
-            } catch (exc) {
-                AsyncCall(errback, exc);
-                return;
-            }
-            AsyncCall(callback, result);
-        };
-    }
-
-    // **`@callFetch`** - Call the fetch hook.  Handle any errors.
-    @callFetch(load, address, referer, metadata, normalized, type) {
-        // P3 ISSUE: type makes sense here, yes?
-        //
-        // P3 ISSUE: what about "extra"?
-        //
-        let options = {referer, metadata, normalized, type};
-        let errback = exc => load.fail(exc);
-
-        // *Rationale for `fetchCompleted`:* The fetch hook is user code.
-        // Callbacks the Loader passes to it are subject to every variety of
-        // misuse; the system must be robust against these hooks being called
-        // multiple times.
-        //
-        // Futures treat extra `resolve()` calls after the first as no-ops; we
-        // throw instead, per meeting 2013 April 26.
-        //
-        // P5 ISSUE: what kind of error to throw when that happens (assuming
-        // TypeError).
-        //
-        let fetchCompleted = false;
-
-        function fulfill(src, actualAddress) {
-            if (fetchCompleted)
-                throw $TypeError("fetch() fulfill callback: fetch already completed");
-            fetchCompleted = true;
-
-            if (typeof src !== "string") {
-                let msg = "fulfill callback: first argument must be a string";
-                AsyncCall(errback, $TypeError(msg));
-                return;
-            }
-            if (typeof actualAddress !== "string") {
-                let msg = "fulfill callback: third argument must be a string";
-                AsyncCall(errback, $TypeError(msg));
-                return;
-            }
-
-            // Even though `fulfill()` will *typically* be called
-            // asynchronously from an empty or nearly empty stack, the `fetch`
-            // hook may call it from a nonempty stack, even synchronously.
-            // Therefore use `AsyncCall` here, at the cost of an extra event
-            // loop turn.
-            AsyncCall(() =>
-                this.@onFulfill(load, metadata, normalized, type, src, actualAddress));
-        }
-
-        function reject(exc) {
-            if (fetchCompleted)
-                throw $TypeError("fetch() reject callback: fetch already completed");
-            fetchCompleted = true;
-
-            AsyncCall(errback, exc);
-        }
-
-        try {
-            this.fetch(address, fulfill, reject, options);
-        } catch (exc) {
-            // Some care is taken here to prevent even a badly-behaved fetch
-            // hook from causing errback() to be called twice.
-            if (fetchCompleted)
-                AsyncCall(() => { throw exc; });
-            else
-                AsyncCall(errback, exc);
-        }
     }
 
     // **`load`** - Asynchronously load and run a script.  If the script
@@ -651,6 +539,51 @@ export class Loader {
             }
             return callback(m);
         }
+    }
+
+    // **`@unpackAddressOption`** - Used by several Loader methods to get
+    // `options.address` and check that if present, it is a string.
+    static @unpackAddressOption(options, errback) {
+        if (options !== undefined && "address" in options) {
+            let address = options.address;
+            if (typeof address !== "string") {
+                let exc = $TypeError("options.address must be a string, if present");
+
+                // `errback` is null when the caller is synchronous `eval()`.
+                // In that case, just throw.
+                if (errback === null)
+                    throw exc;
+
+                // Otherwise, report the error asynchronously.  The caller must
+                // check for `undefined`.
+                AsyncCall(errback, exc);
+                return undefined;
+            }
+            return address;
+        }
+
+        // The default address is null, per samth 2013 May 24.
+        return null;
+    }
+
+    // **`@makeEvalCallback`** - Create and return a callback, to be called
+    // after linking is complete, that executes the script loaded by the given
+    // `load`.
+    static @makeEvalCallback(load, callback, errback) {
+        return () => {
+            // Tail calls would be equivalent to AsyncCall, except for
+            // possibly some imponderable timing details.  This is meant as
+            // a reference implementation, so we just literal-mindedly do
+            // what the spec is expected to say.
+            let result;
+            try {
+                result = ensureExecuted(load.script);
+            } catch (exc) {
+                AsyncCall(errback, exc);
+                return;
+            }
+            AsyncCall(callback, result);
+        };
     }
 
     // **`@import`** - The common implementation of the `import()` method and the
@@ -875,6 +808,73 @@ export class Loader {
         this.@callFetch(load, address, referer, metadata, normalized, type);
 
         return normalized;
+    }
+
+    // **`@callFetch`** - Call the fetch hook.  Handle any errors.
+    @callFetch(load, address, referer, metadata, normalized, type) {
+        // P3 ISSUE: type makes sense here, yes?
+        //
+        // P3 ISSUE: what about "extra"?
+        //
+        let options = {referer, metadata, normalized, type};
+        let errback = exc => load.fail(exc);
+
+        // *Rationale for `fetchCompleted`:* The fetch hook is user code.
+        // Callbacks the Loader passes to it are subject to every variety of
+        // misuse; the system must be robust against these hooks being called
+        // multiple times.
+        //
+        // Futures treat extra `resolve()` calls after the first as no-ops; we
+        // throw instead, per meeting 2013 April 26.
+        //
+        // P5 ISSUE: what kind of error to throw when that happens (assuming
+        // TypeError).
+        //
+        let fetchCompleted = false;
+
+        function fulfill(src, actualAddress) {
+            if (fetchCompleted)
+                throw $TypeError("fetch() fulfill callback: fetch already completed");
+            fetchCompleted = true;
+
+            if (typeof src !== "string") {
+                let msg = "fulfill callback: first argument must be a string";
+                AsyncCall(errback, $TypeError(msg));
+                return;
+            }
+            if (typeof actualAddress !== "string") {
+                let msg = "fulfill callback: third argument must be a string";
+                AsyncCall(errback, $TypeError(msg));
+                return;
+            }
+
+            // Even though `fulfill()` will *typically* be called
+            // asynchronously from an empty or nearly empty stack, the `fetch`
+            // hook may call it from a nonempty stack, even synchronously.
+            // Therefore use `AsyncCall` here, at the cost of an extra event
+            // loop turn.
+            AsyncCall(() =>
+                this.@onFulfill(load, metadata, normalized, type, src, actualAddress));
+        }
+
+        function reject(exc) {
+            if (fetchCompleted)
+                throw $TypeError("fetch() reject callback: fetch already completed");
+            fetchCompleted = true;
+
+            AsyncCall(errback, exc);
+        }
+
+        try {
+            this.fetch(address, fulfill, reject, options);
+        } catch (exc) {
+            // Some care is taken here to prevent even a badly-behaved fetch
+            // hook from causing errback() to be called twice.
+            if (fetchCompleted)
+                AsyncCall(() => { throw exc; });
+            else
+                AsyncCall(errback, exc);
+        }
     }
 
     // **`@onFulfill`** - This is called once a fetch succeeds.
