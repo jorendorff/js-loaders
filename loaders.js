@@ -288,40 +288,6 @@ export class Loader {
     //   * `load(address, callback, errback)` - Asynchronously load and run a
     //     script.  Loads imported modules.
 
-    // **`@checkModuleDeclarations`** - Check to see if script declares any
-    // modules that are already loaded or loading.  If so, throw a
-    // `SyntaxError`.  If not, add entries to the @loads map for each declared
-    // module.
-    //
-    // *Rationale:* Consider two evalAsync calls.
-    //
-    //     System.evalAsync('module "x" { import "y" as y; }', ok, err);
-    //     System.evalAsync('module "x" { import "z" as z; }', ok, err);
-    //
-    // It seemed perverse to let them race trying to load "y" and "z" after
-    // we know one of the two module "x" declarations must fail.  Instead,
-    // the second evalAsync fails immediately.  Per meeting, 2013 April 26.
-    //
-    @checkModuleDeclarations(script, load) {
-        // TODO - Unify this with very similar code in Load.finish()
-        // and LinkSet.link().
-        let declared = $ScriptDeclaredModuleNames(script);
-        for (let i = 0; i < declared.length; i++) {
-            let fullName = declared[i];
-            if ($MapHas(this.@modules, fullName)) {
-                throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                                   "which is already loaded");
-            }
-            let pendingLoad = $MapGet(this.@loads, fullName);
-            if (pendingLoad === undefined) {
-                $MapSet(this.@loads, fullName, load);
-            } else if (pendingLoad !== load) {
-                throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                                   "which is already loading");
-            }
-        }
-    }
-
     // **`eval`** - Execute the program `src`.
     //
     // `src` may import modules, but if it imports a module that is not
@@ -1454,7 +1420,37 @@ class Load {
         $Assert(this.status === "loading");
         $Assert($SetSize(this.linkSets) !== 0);
 
-        loader.@checkModuleDeclarations(script, this);
+        // Check to see if `script` declares any modules that are already loaded or
+        // loading.  If so, throw a `SyntaxError`.  If not, add entries to
+        // `loader.@loads` for each declared module.
+        //
+        // *Rationale:* Consider two `evalAsync` calls.
+        //
+        //     System.evalAsync('module "x" { import "y" as y; }', ok, err);
+        //     System.evalAsync('module "x" { import "z" as z; }', ok, err);
+        //
+        // There's no sense in letting them race trying to load "y" and "z"
+        // after we know one of the two `module "x"` declarations must fail.
+        // Instead, the second `evalAsync` fails immediately.  Per meeting,
+        // 2013 April 26.
+        //
+        // TODO - Consider unifying this with similar code in LinkSet.link().
+        //
+        let declared = $ScriptDeclaredModuleNames(script);
+        for (let i = 0; i < declared.length; i++) {
+            let fullName = declared[i];
+            if ($MapHas(loader.@modules, fullName)) {
+                throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                                   "which is already loaded");
+            }
+            let pendingLoad = $MapGet(loader.@loads, fullName);
+            if (pendingLoad === undefined) {
+                $MapSet(loader.@loads, fullName, this);
+            } else if (pendingLoad !== this) {
+                throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                                   "which is already loading");
+            }
+        }
 
         // `$ScriptImports` returns an array of `[client, request]` pairs.
         //
