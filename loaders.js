@@ -300,9 +300,6 @@ export class Loader {
     //
     // P2 ISSUE #8: Does global.eval go through the translate hook?
     //
-    // TODO - Consider rewriting the translate part of this in terms of
-    // onFulfill.
-    //
     eval(src, options) {
         // **Options:** `eval()`, `evalAsync()`, and `load()` all accept an
         // optional `options` object. `options.address`, if present, is passed to
@@ -332,27 +329,17 @@ export class Loader {
         let load = new Load([]);
         let linkSet = new LinkSet(this, load, null, null);
 
-        // Translate and parse `src`. Either of these may throw.
-        src = this.translate(src, {
-            normalized: null,
-            actualAddress: address,
-            metadata: {},
-            type: "script"
-        });
-
-        let script = $Parse(this, src, null, address, this.@strict);
-
         // Finish loading `src`.  This is the part where, in an *asynchronous*
         // load, we would trigger further loads for any imported modules that
         // are not yet loaded.
         //
-        // Instead, here we pass `true` to `load.finish` to indicate that we're
-        // doing a synchronous load.  This makes `load.finish` throw rather
-        // than trigger any new loads or add any still-loading modules to the
-        // link set.  If `load.finish` doesn't throw, then we have everything
-        // we need and load phase is done.
+        // Instead, here we pass `true` to `@onFulfill` to indicate that we're
+        // doing a synchronous load.  This makes it throw rather than trigger
+        // any new loads or add any still-loading modules to the link set.  If
+        // this doesn't throw, then we have everything we need and load phase
+        // is done.
         //
-        load.finish(this, address, script, true);
+        this.@onFulfill(load, {}, null, "script", true, src, address);
 
         // The **link phase** links each imported name to the corresponding
         // module or export.
@@ -430,7 +417,7 @@ export class Loader {
         let load = new Load([]);
         let run = Loader.@makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
-        this.@onFulfill(load, {}, null, "script", src, address);
+        this.@onFulfill(load, {}, null, "script", false, src, address);
     }
 
     // **`load`** - Asynchronously load and run a script.  If the script
@@ -854,7 +841,7 @@ export class Loader {
             // Therefore use `AsyncCall` here, at the cost of an extra event
             // loop turn.
             AsyncCall(() =>
-                this.@onFulfill(load, metadata, normalized, type, src, actualAddress));
+                this.@onFulfill(load, metadata, normalized, type, false, src, actualAddress));
         }
 
         function reject(exc) {
@@ -878,7 +865,7 @@ export class Loader {
     }
 
     // **`@onFulfill`** - This is called once a fetch succeeds.
-    @onFulfill(load, metadata, normalized, type, src, actualAddress) {
+    @onFulfill(load, metadata, normalized, type, sync, src, actualAddress) {
         // If `load` is no longer needed by any `LinkSet`, do nothing.  When
         // one load in a LinkSet fails, we shouldn't continue loading
         // dependencies anyway.
@@ -912,7 +899,7 @@ export class Loader {
             // Interpret `linkResult`.  See comment on the `link()` method.
             if (linkResult === undefined) {
                 let script = $Parse(this, src, normalized, actualAddress, this.@strict);
-                load.finish(this, actualAddress, script, false);
+                load.finish(this, actualAddress, script, sync);
             } else if (!IsObject(linkResult)) {
                 throw $TypeError("link hook must return an object or undefined");
             } else if ($IsModule(linkResult)) {
