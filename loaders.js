@@ -311,7 +311,8 @@ export class Loader {
            errback = exc => { throw exc; },
            options = undefined)
     {
-        // Build referer.
+        // Unpack `options`.  Build the referer object that we will pass to
+        // `@import`.
         let name = null;
         if (options !== undefined && "module" in options) {
             name = options.module;
@@ -325,36 +326,28 @@ export class Loader {
             return;
         let referer = {name, address};
 
-        // this.@import starts us along the pipeline.
-        let fullName;
+        // `this.@import` starts us along the pipeline.
+        let fullName, load;
         try {
-            fullName = this.@import(referer, moduleName, false);
+            [fullName, load] = this.@import(referer, moduleName, false);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
         }
 
-        let m = $MapGet(this.@modules, fullName);
-        if (m !== undefined) {
+        if (load.status === "linked") {
             // We already had this module in the registry.
-            AsyncCall(success, m);
+            AsyncCall(success);
         } else {
-            // TODO - BUG - if @import failed, the load will have removed
-            // itself from this.@loads.
-
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
-            let load = $MapGet(this.@loads, fullName);
-
-            // We will look the module up again. Since callbacks are async,
-            // something may have happened to it. TODO: pull it out of
-            // load.script instead.
-            let callback = () => success($MapGet(this.@modules, fullName));
-
-            new LinkSet(this, load, callback, errback);
+            new LinkSet(this, load, success, errback);
         }
 
-        function success(m) {
+        function success() {
+            let m = load.status === "linked"
+                    ? load.module
+                    : $ScriptGetDeclaredModule(load.script, fullName);
             try {
                 if (m === undefined) {
                     throw $TypeError("import(): module \"" + fullName +
@@ -642,13 +635,14 @@ export class Loader {
 
         // If the module has already been linked, we are done.
         // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
-        if ($MapHas(this.@modules, normalized))
-            return normalized;
+        let existingModule = $MapGet(this.@modules, normalized);
+        if (existingModule !== undefined)
+            return [normalized, {status: "linked", module: existingModule});
 
         // If the module is already loaded, we are done.
         let load = $MapGet(this.@loads, normalized);
         if (load !== undefined && load.status === "loaded")
-            return normalized;
+            return [normalized, load];
 
         // If we can't wait for the module to load, we are done.
         if (sync) {
@@ -663,7 +657,7 @@ export class Loader {
         // If the module is already loading, we are done.
         if (load !== undefined) {
             $Assert(load.status === "loading");
-            return normalized;
+            return [normalized, load];
         }
 
         // From this point `@import` cannot throw.
@@ -756,13 +750,13 @@ export class Loader {
             // `load` is responsible for firing error callbacks and removing
             // itself from `this.@loads`.
             load.fail(exc);
-            return normalized;
+            return [normalized, load];
         }
 
         // Start the fetch.
         this.@callFetch(load, address, referer, metadata, normalized, type);
 
-        return normalized;
+        return [normalized, load];
     }
 
     // **`@callFetch`** - Call the fetch hook.  Handle any errors.
@@ -1312,14 +1306,9 @@ export class Loader {
 //         .status === "loading"
 //         .linkSets is a Set of LinkSets
 //
-//     The load leaves this state when the source is successfully parsed, or
-//     an error causes the load to fail.
-//
-//     `Load`s in this state are associated with one or more `LinkSet`s in a
-//     many-to-many relation. This implementation stores both directions of the
-//     relation: `load.linkSets` is the `Set` of all `LinkSet`s that require
-//     `load`; and `linkSet.loads` is the `Set` of all `Load`s that `linkSet`
-//     requires.
+//     The load leaves this state when (a) the source is successfully parsed;
+//     (b) an error causes the load to fail; or (c) the `link` loader hook
+//     returns a Module object.
 //
 // 2.  Loaded:  Source is available and has been translated and parsed.
 //     Dependencies have been identified.  But the module hasn't been linked or
@@ -1350,8 +1339,10 @@ export class Loader {
 //
 //         .status === "linked"
 //
-//     (TODO: this is speculation) Loads that enter this state are removed from
-//     the `loader.@loads` table and from all `LinkSet`s; they become garbage.
+//     (TODO: this might not be true in the case of the `link` loader hook
+//     returning a Module object; maybe want a separate status for that) Loads
+//     that enter this state are removed from the `loader.@loads` table and
+//     from all `LinkSet`s; they become garbage.
 //
 // 4.  Failed:  The load failed.  The load never leaves this state.
 //
@@ -1481,16 +1472,18 @@ class Load {
         for (let i = 0; i < pairs.length; i++) {
             let [client, request] = pairs[i];
             let referer = {name: client, address: actualAddress};
-            let fullName;
+            let fullName, load;
             try {
-                fullName = loader.@import(referer, request, sync);
+                [fullName, load] = loader.@import(referer, request, sync);
             } catch (exc) {
                 return this.fail(exc);
             }
             fullNames[i] = fullName;
 
-            for (let j = 0; j < sets.length; j++)
-                sets[j].addLoadByName(fullName);
+            if (load.status !== "linked") {
+                for (let j = 0; j < sets.length; j++)
+                    sets[j].addLoad(load);
+            }
         }
 
         this.status = "loaded";
