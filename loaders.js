@@ -170,6 +170,9 @@ import {
 // and running modules and scripts.
 //
 export class Loader {
+    // TODO these methods need to check the this-value carefully.  This can
+    // be done with a private symbol.
+
     // Create a new Loader.
     //
     // P3 ISSUE #10: Is the parent argument necessary?
@@ -1026,9 +1029,6 @@ export class Loader {
     //
     //   * `link(src, options)` - Determine dependencies of a module; optionally
     //     convert an AMD/npm/other module to an ES Module object.
-
-    // TODO these methods need to check the this-value carefully.  This can
-    // be done with a private symbol.
 
     // **`normalize`** hook - For each `import()` call or import-declaration,
     // the Loader first calls `loader.normalize(name, options)` passing the
