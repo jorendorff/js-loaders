@@ -276,6 +276,74 @@ export class Loader {
 
     // P1 ISSUE #30: the callback and errback arguments should be last.
 
+    // **`import`** - Asynchronously load, link, and execute a module and any
+    // dependencies it imports.  On success, pass the `Module` object to the
+    // success callback.
+    //
+    // The comment on `evalAsync()` explains `callback` and `errback`.
+    //
+    import(moduleName,
+           callback = () => undefined,
+           errback = exc => { throw exc; },
+           options = undefined)
+    {
+        // Build referer.
+        let name = null;
+        if (options !== undefined && "module" in options) {
+            name = options.module;
+            if (typeof name !== "string") {
+                AsyncCall(errback, $TypeError("import: options.module must be a string"));
+                return;
+            }
+        }
+        let address = Loader.@unpackAddressOption(options, errback);
+        if (address === undefined)
+            return;
+        let referer = {name, address};
+
+        // this.@import starts us along the pipeline.
+        let fullName;
+        try {
+            fullName = this.@import(referer, moduleName, false);
+        } catch (exc) {
+            AsyncCall(errback, exc);
+            return;
+        }
+
+        let m = $MapGet(this.@modules, fullName);
+        if (m !== undefined) {
+            // We already had this module in the registry.
+            AsyncCall(success, m);
+        } else {
+            // TODO - BUG - if @import failed, the load will have removed
+            // itself from this.@loads.
+
+            // The module is now loading.  When it loads, it may have more
+            // imports, requiring further loads, so put it in a LinkSet.
+            let load = $MapGet(this.@loads, fullName);
+
+            // We will look the module up again. Since callbacks are async,
+            // something may have happened to it. TODO: pull it out of
+            // load.script instead.
+            let callback = () => success($MapGet(this.@modules, fullName));
+
+            new LinkSet(this, load, callback, errback);
+        }
+
+        function success(m) {
+            try {
+                if (m === undefined) {
+                    throw $TypeError("import(): module \"" + fullName +
+                                     "\" was deleted from the loader");
+                }
+                ensureExecuted(m);
+            } catch (exc) {
+                return errback(exc);
+            }
+            return callback(m);
+        }
+    }
+
     // **`eval`** - Evaluate the program `src`.
     //
     // `src` may import modules, but if it imports a module that is not
@@ -411,74 +479,6 @@ export class Loader {
         let run = Loader.@makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
         return this.@callFetch(load, address, referer, metadata, null, "script");
-    }
-
-    // **`import`** - Asynchronously load, link, and execute a module and any
-    // dependencies it imports.  On success, pass the `Module` object to the
-    // success callback.
-    //
-    // The comment on `evalAsync()` explains `callback` and `errback`.
-    //
-    import(moduleName,
-           callback = () => undefined,
-           errback = exc => { throw exc; },
-           options = undefined)
-    {
-        // Build referer.
-        let name = null;
-        if (options !== undefined && "module" in options) {
-            name = options.module;
-            if (typeof name !== "string") {
-                AsyncCall(errback, $TypeError("import: options.module must be a string"));
-                return;
-            }
-        }
-        let address = Loader.@unpackAddressOption(options, errback);
-        if (address === undefined)
-            return;
-        let referer = {name, address};
-
-        // this.@import starts us along the pipeline.
-        let fullName;
-        try {
-            fullName = this.@import(referer, moduleName, false);
-        } catch (exc) {
-            AsyncCall(errback, exc);
-            return;
-        }
-
-        let m = $MapGet(this.@modules, fullName);
-        if (m !== undefined) {
-            // We already had this module in the registry.
-            AsyncCall(success, m);
-        } else {
-            // TODO - BUG - if @import failed, the load will have removed
-            // itself from this.@loads.
-
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            let load = $MapGet(this.@loads, fullName);
-
-            // We will look the module up again. Since callbacks are async,
-            // something may have happened to it. TODO: pull it out of
-            // load.script instead.
-            let callback = () => success($MapGet(this.@modules, fullName));
-
-            new LinkSet(this, load, callback, errback);
-        }
-
-        function success(m) {
-            try {
-                if (m === undefined) {
-                    throw $TypeError("import(): module \"" + fullName +
-                                     "\" was deleted from the loader");
-                }
-                ensureExecuted(m);
-            } catch (exc) {
-                return errback(exc);
-            }
-            return callback(m);
-        }
     }
 
     // **`@unpackAddressOption`** - Used by several Loader methods to get
