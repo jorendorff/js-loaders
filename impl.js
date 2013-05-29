@@ -135,6 +135,10 @@ class LoaderImpl {
     //
     // P3 ISSUE #10: Is the parent argument necessary?
     //
+    // TODO: make LoaderImpl objects (and others) not inherit from
+    // Object.prototype, for isolation; or else use symbols for all these; or
+    // else (most likely) use Object.define().
+    //
     constructor(loader, parent, options) {
         this.loader = loader;
 
@@ -149,8 +153,8 @@ class LoaderImpl {
         this.modules = $MapNew();
 
         // **`this.loads`** stores information about modules that are loading
-        // or loaded but not yet linked.  It maps full module names to `Load`
-        // objects.
+        // or loaded but not yet linked.  (TODO - fix that sentence for
+        // `onEndRun`.)  It maps full module names to `Load` objects.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
@@ -972,30 +976,16 @@ class LoaderImpl {
 //         .exception is an exception value
 //
 class Load {
-    // If the constructor argument is an array, it is the array of module names
-    // that we're loading; the `Load` begins in the `"loading"` state.
+    // A new `Load` begins in the `"loading"` state.
     //
-    // If the argument is a script, the new `Load` begins in the `"loaded"`
-    // state. This happens in `eval()` and `evalAsync()`: the eval script does
-    // not need to go through the `"loading"` part of the pipeline, but it must
-    // be linked.
+    // The constructor argument is an array of the module names that we're
+    // loading.
     //
-    // TODO - consider instead of allowing directly creating `"loaded"`
-    // `Load`s, having the caller create it, add it to the `LinkSet`, and then
-    // call `finish()` manually.
-    //
-    constructor(namesOrScript) {
-        if ($IsArray(namesOrScript)) {
-            this.status = "loading";
-            this.fullNames = namesOrScript;
-            this.script = null;
-            this.dependencies = null;
-        } else {
-            this.status = "loaded";
-            this.fullNames = $ScriptDeclaredModuleNames(script);
-            this.script = script;
-            this.dependencies = throw TODO;
-        }
+    constructor(fullNames) {
+        this.status = "loading";
+        this.fullNames = fullNames;
+        this.script = null;
+        this.dependencies = null;
         this.linkSets = $SetNew();
         this.factory = null;
         this.exception = null;
@@ -1157,8 +1147,6 @@ class Load {
 // `.import()`.
 class LinkSet {
     constructor(loaderImpl, startingLoad, callback, errback) {
-        // TODO: make LinkSets not inherit from Object.prototype, for isolation;
-        // or else use symbols for all these; or else use define(). :-P
         this.loaderImpl = loaderImpl;
         this.startingLoad = startingLoad;
         this.callback = callback;

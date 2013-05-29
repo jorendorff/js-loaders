@@ -452,7 +452,7 @@ export class Loader {
     link(src, options) {
     }
 
-    // ## Globals, builtins, and intrinsics
+    // ### Globals, builtins, and intrinsics
 
     // Define all the built-in objects and functions of the ES6 standard
     // library associated with this loader's intrinsics as properties on
