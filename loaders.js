@@ -344,6 +344,43 @@ export class Loader {
         }
     }
 
+    // **`load`** - Asynchronously load and run a script.  If the script
+    // contains import declarations, this can cause modules to be loaded,
+    // linked, and executed.
+    //
+    // On success, the result of evaluating the script is passed to the success
+    // callback.
+    //
+    load(address,
+         callback = value => undefined,
+         errback = exc => { throw exc; },
+         options = undefined)
+    {
+        // Build a referer object.
+        let refererAddress = Loader.@unpackAddressOption(options, errback);
+        if (refererAddress === undefined)
+            return;
+        let referer = {name: null, address: refererAddress};
+
+        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+        // only makes sense for modules; `load()` loads scripts.  But we do
+        // want `load()` to use the `fetch` hook, which means we must come up
+        // with a metadata value of some kind (this is ordinarily the
+        // `normalize` hook's responsibility).
+        //
+        // `metadata` is created using the intrinsics of the enclosing loader
+        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
+        // loader hooks to use.  It is never exposed to code loaded by this
+        // Loader.
+        //
+        let metadata = {};
+
+        let load = new Load([]);
+        let run = Loader.@makeEvalCallback(load, callback, errback);
+        new LinkSet(this, load, run, errback);
+        return this.@callFetch(load, address, referer, metadata, null, "script");
+    }
+
     // **`eval`** - Evaluate the program `src`.
     //
     // `src` may import modules, but if it imports a module that is not
@@ -442,43 +479,6 @@ export class Loader {
         let run = Loader.@makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
         this.@onFulfill(load, {}, null, "script", false, src, address);
-    }
-
-    // **`load`** - Asynchronously load and run a script.  If the script
-    // contains import declarations, this can cause modules to be loaded,
-    // linked, and executed.
-    //
-    // On success, the result of evaluating the script is passed to the success
-    // callback.
-    //
-    load(address,
-         callback = value => undefined,
-         errback = exc => { throw exc; },
-         options = undefined)
-    {
-        // Build a referer object.
-        let refererAddress = Loader.@unpackAddressOption(options, errback);
-        if (refererAddress === undefined)
-            return;
-        let referer = {name: null, address: refererAddress};
-
-        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
-        // only makes sense for modules; `load()` loads scripts.  But we do
-        // want `load()` to use the `fetch` hook, which means we must come up
-        // with a metadata value of some kind (this is ordinarily the
-        // `normalize` hook's responsibility).
-        //
-        // `metadata` is created using the intrinsics of the enclosing loader
-        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
-        // loader hooks to use.  It is never exposed to code loaded by this
-        // Loader.
-        //
-        let metadata = {};
-
-        let load = new Load([]);
-        let run = Loader.@makeEvalCallback(load, callback, errback);
-        new LinkSet(this, load, run, errback);
-        return this.@callFetch(load, address, referer, metadata, null, "script");
     }
 
     // **`@unpackAddressOption`** - Used by several Loader methods to get
