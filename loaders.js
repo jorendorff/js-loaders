@@ -406,12 +406,12 @@ export class Loader {
     // linking behavior.  There are three options.
     //
     //  1. The link hook may return `undefined`. The loader then uses the
-    //     default linking behavior.  It parses src as a script or module body,
-    //     looks at its imports, loads all dependencies asynchronously, and
-    //     finally links them as a unit and adds them to the registry.
+    //     default linking behavior.  It parses `src` as a script or module
+    //     body, looks at its imports, loads all dependencies asynchronously,
+    //     and finally links them as a unit and adds them to the registry.
     //
     //     The module bodies will then be executed on demand; see
-    //     ensureExecuted.
+    //     `ensureExecuted` in impl.js.
     //
     //  2. The hook may return a full `Module` instance object.  The loader then
     //     simply adds that module to the registry.
