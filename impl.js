@@ -107,6 +107,7 @@ import {
     $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
     $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
     $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
+    $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
     $IsArray,       // $IsArray(v) ~= Array.isArray(v)
     $ArrayPush,     // $ArrayPush(arr, v) ~= arr.push(v)
     $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
@@ -139,38 +140,36 @@ export function newLoaderImpl(loader, parent, options) {
 }
 
 class LoaderImpl {
-    // Create a new Loader.
-    //
-    // TODO: make LoaderImpl objects (and others) not inherit from
-    // Object.prototype, for isolation; or else use symbols for all these; or
-    // else (most likely) use Object.define().
-    //
+    // Create a new loader.
     constructor(loader, parent, options) {
-        this.loader = loader;
+        define(this, {
+            loader: loader,
 
-        // **`this.modules`** is the module registry.  It maps full module
-        // names to `Module` objects.
-        //
-        // This map only ever contains `Module` objects that have been fully
-        // linked.  However it can contain modules whose bodies have not yet
-        // started to execute.  Except in the case of cyclic imports, such
-        // modules are not exposed to user code.  See `ensureExecuted()`.
-        //
-        this.modules = $MapNew();
+            // **`this.modules`** is the module registry.  It maps full module
+            // names to `Module` objects.
+            //
+            // This map only ever contains `Module` objects that have been
+            // fully linked.  However it can contain modules whose bodies have
+            // not yet started to execute.  Except in the case of cyclic
+            // imports, such modules are not exposed to user code.  See
+            // `ensureExecuted()`.
+            //
+            modules: $MapNew(),
 
-        // **`this.loads`** stores information about modules that are loading
-        // or loaded but not yet linked.  (TODO - fix that sentence for
-        // `onEndRun`.)  It maps full module names to `Load` objects.
-        //
-        // This is stored in the loader so that multiple calls to
-        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
-        // they need only once.
-        //
-        this.loads = $MapNew();
+            // **`this.loads`** stores information about modules that are
+            // loading or loaded but not yet linked.  (TODO - fix that sentence
+            // for `onEndRun`.)  It maps full module names to `Load` objects.
+            //
+            // This is stored in the loader so that multiple calls to
+            // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
+            // what they need only once.
+            //
+            loads: $MapNew(),
 
-        // Various configurable options.
-        this.global = options.global;  // P4 ISSUE: ToObject here?
-        this.strict = ToBoolean(options.strict);
+            // Various configurable options.
+            global: options.global,  // P4 ISSUE: ToObject here?
+            strict: ToBoolean(options.strict)
+        });
     }
 
     // ## Loading and running code
@@ -988,13 +987,15 @@ class Load {
     // loading.
     //
     constructor(fullNames) {
-        this.status = "loading";
-        this.fullNames = fullNames;
-        this.script = null;
-        this.dependencies = null;
-        this.linkSets = $SetNew();
-        this.factory = null;
-        this.exception = null;
+        define(this, {
+            status: "loading",
+            fullNames: fullNames,
+            script: null,
+            dependencies: null,
+            linkSets: $SetNew(),
+            factory: null,
+            exception: null
+        });
     }
 
     // **`finish`** - The loader calls this after the last loader hook (the
@@ -1153,16 +1154,17 @@ class Load {
 // `.import()`.
 class LinkSet {
     constructor(loaderImpl, startingLoad, callback, errback) {
-        this.loaderImpl = loaderImpl;
-        this.startingLoad = startingLoad;
-        this.callback = callback;
-        this.errback = errback;
+        define(this, {
+            loaderImpl: loaderImpl,
+            startingLoad: startingLoad,
+            callback: callback,
+            errback: errback,
+            loads: $SetNew(),
 
-        this.loads = $SetNew();
-
-        // Invariant: `this.loadingCount` is the number of `Load`s in
-        // `this.loads` whose `.status` is `"loading"`.
-        this.loadingCount = 0;
+            // Invariant: `this.loadingCount` is the number of `Load`s in
+            // `this.loads` whose `.status` is `"loading"`.
+            loadingCount: 0
+        });
 
         this.addLoad(startingLoad);
     }
@@ -1526,4 +1528,20 @@ function IsObject(v) {
 //
 function AsyncCall(fn, ...args) {
     $QueueTask(() => fn(...args));
+}
+
+// **`define`** - Define all properties of `source` on `target`.  We use this
+// rather than property assignment in constructors, to isolate these objects
+// from setters defined on `Object.prototype`.
+function define(target, source) {
+    let keys = $ObjectKeys(source);
+    for (let i = 0; i < keys.length; i++) {
+        let name = keys[i];
+        $ObjectDefineProperty(target, name, {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: source[name]
+        });
+    }
 }
