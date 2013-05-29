@@ -159,53 +159,35 @@ import {
     $MapGet,        // $MapGet(map, key) ~= map.get(key)
     $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
     $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
+    $WeakMapNew,    // $WeakMapNew() ~= new WeakMap
+    $WeakMapGet,    // $WeakMapGet(map, key) ~= map.get(key)
+    $WeakMapSet,    // $WeakMapSet(map, key, value) ~= map.set(key, value)
     $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
     $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
 } from "implementation-builtins";
 
+let loaderImplMap = $WeakMapNew();
+
+function impl(loader) {
+    let li = $WeakMapGet(loaderImplMap, loader);
+    if (li === undefined)
+        throw $TypeError("method called on incompatible object");
+    return li;
+}
 
 // ## The Loader class
 //
+// The public API of the module loader system is the `Loader` class.
 // A Loader is responsible for asynchronously finding, fetching, linking,
 // and running modules and scripts.
 //
 export class Loader {
-    // TODO these methods need to check the this-value carefully.  This can
-    // be done with a private symbol.
-
-    // Create a new Loader.
-    //
-    // P3 ISSUE #10: Is the parent argument necessary?
-    //
+    // **`new Loader(parent, options)`** - Create a new `Loader`.
     constructor(parent, options) {
-        // **`this.@modules`** is the module registry.  It maps full module
-        // names to `Module` objects.
-        //
-        // This map only ever contains `Module` objects that have been fully
-        // linked.  However it can contain modules whose bodies have not yet
-        // started to execute.  Except in the case of cyclic imports, such
-        // modules are not exposed to user code.  See `ensureExecuted()`.
-        //
-        // **Notation.** This weird `loader.@modules` syntax is not part of the
-        // JS language. It is only meant to indicate that the `@modules`
-        // property is private.  TODO: Instead, implement private state with a
-        // `WeakMap`.
-        //
-        this.@modules = $MapNew();
-
-        // **`this.@loads`** stores information about modules that are loading
-        // or loaded but not yet linked.  It maps full module names to `Load`
-        // objects.
-        //
-        // This is stored in the loader so that multiple calls to
-        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
-        // they need only once.
-        //
-        this.@loads = $MapNew();
-
-        // Various configurable options.
-        this.@global = options.global;  // P4 ISSUE: ToObject here?
-        this.@strict = ToBoolean(options.strict);
+        // Since ES6 does not have support for private state or private
+        // methods, we use a WeakMap to map `Loader` objects to `LoaderImpl`
+        // objects which are not accessible from user code.
+        $WeakMapSet(loaderImplMap, this, new LoaderImpl(this, parent, options));
 
         // P4 ISSUE: Detailed behavior of hooks.
         //
@@ -241,22 +223,18 @@ export class Loader {
     }
 
 
-    // ## Configuration
+    // ### Configuration
 
     // **`global`** - The global object associated with this loader.  All code
     // loaded by this loader runs in the scope of this object.
-    get global() {
-        return this.@global;
-    }
+    get global() { return impl(this).global; }
 
     // **`strict`** - The loader's strictness setting.  If true, all code
     // loaded by this loader is treated as strict-mode code.
-    get strict() {
-        return this.@strict;
-    }
+    get strict() { return impl(this).strict; }
 
 
-    // ## Loading and running code
+    // ### High-level API for loading and running code.
     //
     // The high-level interface of `Loader` consists of four methods for
     // loading and running code:
@@ -272,10 +250,6 @@ export class Loader {
     //
     //   * `eval(src, options)` - Synchronously run some code.  Never fetches
     //     modules, but `src` may import already-loaded modules.
-    //
-    // These are implemented in terms of slightly lower-level building blocks.
-    // Each of the four methods creates a `LinkSet` object, which is in charge
-    // of linking, and at least one `Load`.
     //
     // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
     // `.load()`, and `.import()` all take two callback arguments, `callback`
@@ -308,60 +282,12 @@ export class Loader {
     // **`import`** - Asynchronously load, link, and execute a module and any
     // dependencies it imports.  On success, pass the `Module` object to the
     // success callback.
-    //
     import(moduleName,
-           callback = () => undefined,
+           callback = module => {},
            errback = exc => { throw exc; },
            options = undefined)
     {
-        // Unpack `options`.  Build the referer object that we will pass to
-        // `@import`.
-        let name = null;
-        if (options !== undefined && "module" in options) {
-            name = options.module;
-            if (typeof name !== "string") {
-                AsyncCall(errback, $TypeError("import: options.module must be a string"));
-                return;
-            }
-        }
-        let address = Loader.@unpackAddressOption(options, errback);
-        if (address === undefined)
-            return;
-        let referer = {name, address};
-
-        // `this.@import` starts us along the pipeline.
-        let fullName, load;
-        try {
-            [fullName, load] = this.@import(referer, moduleName, false);
-        } catch (exc) {
-            AsyncCall(errback, exc);
-            return;
-        }
-
-        if (load.status === "linked") {
-            // We already had this module in the registry.
-            AsyncCall(success);
-        } else {
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            new LinkSet(this, load, success, errback);
-        }
-
-        function success() {
-            let m = load.status === "linked"
-                    ? load.module
-                    : $ScriptGetDeclaredModule(load.script, fullName);
-            try {
-                if (m === undefined) {
-                    throw $TypeError("import(): module \"" + fullName +
-                                     "\" was deleted from the loader");
-                }
-                ensureExecuted(m);
-            } catch (exc) {
-                return errback(exc);
-            }
-            return callback(m);
-        }
+        impl(this).import(moduleName, callback, errback, options);
     }
 
     // **`load`** - Asynchronously load and run a script.  If the script
@@ -372,64 +298,24 @@ export class Loader {
     // callback.
     //
     load(address,
-         callback = value => undefined,
+         callback = value => {},
          errback = exc => { throw exc; },
          options = undefined)
     {
-        // Build a referer object.
-        let refererAddress = Loader.@unpackAddressOption(options, errback);
-        if (refererAddress === undefined)
-            return;
-        let referer = {name: null, address: refererAddress};
-
-        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
-        // only makes sense for modules; `load()` loads scripts.  But we do
-        // want `load()` to use the `fetch` hook, which means we must come up
-        // with a metadata value of some kind (this is ordinarily the
-        // `normalize` hook's responsibility).
-        //
-        // `metadata` is created using the intrinsics of the enclosing loader
-        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
-        // loader hooks to use.  It is never exposed to code loaded by this
-        // Loader.
-        //
-        let metadata = {};
-
-        let load = new Load([]);
-        let run = Loader.@makeEvalCallback(load, callback, errback);
-        new LinkSet(this, load, run, errback);
-        return this.@callFetch(load, address, referer, metadata, null, "script");
+        impl(this).load(address, callback, errback, options);
     }
 
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
     //
-    // This is the same as `load` but without fetching the initial script.
-    // On success, the result of evaluating the program is passed to
-    // `callback`.
+    // This is the same as `load` but without fetching the initial script.  On
+    // success, the result of evaluating the program is passed to `callback`.
     //
     evalAsync(src,
-              callback = value => undefined,
+              callback = value => {},
               errback = exc => { throw exc; },
               options = undefined)
     {
-        // P4 ISSUE: Check callability of callbacks here (and everywhere
-        // success/failure callbacks are provided)?  It would be a mercy,
-        // since the TypeError if they are not functions happens much later
-        // and with an empty stack.  But Futures don't do it.  Assuming no.
-        //
-        //     if (typeof callback !== "function")
-        //         throw $TypeError("Loader.load: callback must be a function");
-        //     if (typeof errback !== "function")
-        //         throw $TypeError("Loader.load: error callback must be a function");
-        //
-        let address = Loader.@unpackAddressOption(options, errback);
-        if (address === undefined)
-            return;
-
-        let load = new Load([]);
-        let run = Loader.@makeEvalCallback(load, callback, errback);
-        new LinkSet(this, load, run, errback);
-        this.@onFulfill(load, {}, null, "script", false, src, address);
+        impl(this).evalAsync(src, callback, errback, options);
     }
 
     // **`eval`** - Evaluate the program `src`.
@@ -440,464 +326,11 @@ export class Loader {
     // P2 ISSUE #8: Does global.eval go through the translate hook?
     //
     eval(src, options) {
-        let address = Loader.@unpackAddressOption(options, null);
-
-        // The loader works in three basic phases: load, link, and execute.
-        // During the **load phase**, code is loaded and parsed, and import
-        // dependencies are traversed.
-
-        // The `Load` object here is *pro forma*; `eval` is synchronous and
-        // thus cannot fetch code.
-        let load = new Load([]);
-        let linkSet = new LinkSet(this, load, null, null);
-
-        // Finish loading `src`.  This is the part where, in an *asynchronous*
-        // load, we would trigger further loads for any imported modules that
-        // are not yet loaded.
-        //
-        // Instead, here we pass `true` to `@onFulfill` to indicate that we're
-        // doing a synchronous load.  This makes it throw rather than trigger
-        // any new loads or add any still-loading modules to the link set.  If
-        // this doesn't throw, then we have everything we need and load phase
-        // is done.
-        //
-        this.@onFulfill(load, {}, null, "script", true, src, address);
-
-        // The **link phase** links each imported name to the corresponding
-        // module or export.
-        linkSet.link();
-
-        // During the **execute phase**, we first execute module bodies for any
-        // modules needed by `script` that haven't already executed.  Then we
-        // evaluate `script` and return that value.
-        return ensureExecuted(script);
-    }
-
-    // **`@unpackAddressOption`** - Used by several Loader methods to get
-    // `options.address` and check that if present, it is a string.
-    //
-    // `eval()`, `evalAsync()`, and `load()` all accept an optional `options`
-    // object. `options.address`, if present, is passed to each loader hook,
-    // for each module loaded, as `options.referer.address`.  (The default
-    // loader hooks ignore it, though.)
-    //
-    // (`options.address` may also be stored in the script and used for
-    // `Error().fileName`, `Error().stack`, and developer tools; but such use
-    // is outside the scope of the language standard.)
-    //
-    // P5 SECURITY ISSUE: Make sure that is OK.
-    //
-    // P2 ISSUE #31: Consider `options.module`.
-    //
-    // P2 ISSUE #32:  Consider `options.lineNumber`.
-    //
-    static @unpackAddressOption(options, errback) {
-        if (options !== undefined && "address" in options) {
-            let address = options.address;
-            if (typeof address !== "string") {
-                let exc = $TypeError("options.address must be a string, if present");
-
-                // `errback` is null when the caller is synchronous `eval()`.
-                // In that case, just throw.
-                if (errback === null)
-                    throw exc;
-
-                // Otherwise, report the error asynchronously.  The caller must
-                // check for `undefined`.
-                AsyncCall(errback, exc);
-                return undefined;
-            }
-            return address;
-        }
-
-        // The default address is null, per samth 2013 May 24.
-        return null;
-    }
-
-    // **`@makeEvalCallback`** - Create and return a callback, to be called
-    // after linking is complete, that executes the script loaded by the given
-    // `load`.
-    static @makeEvalCallback(load, callback, errback) {
-        return () => {
-            // Tail calls would be equivalent to AsyncCall, except for
-            // possibly some imponderable timing details.  This is meant as
-            // a reference implementation, so we just literal-mindedly do
-            // what the spec is expected to say.
-            let result;
-            try {
-                result = ensureExecuted(load.script);
-            } catch (exc) {
-                AsyncCall(errback, exc);
-                return;
-            }
-            AsyncCall(callback, result);
-        };
+        return impl(this).eval(src, options);
     }
 
 
-    // ## The loader pipeline
-
-    // **`@import`** - The common implementation of the `import()` method and the
-    // processing of `import` declarations in ES code.
-    //
-    // There are several possible outcomes:
-    //
-    // 1.  Getting `this.normalize` throws, or the `normalize` hook isn't
-    //     callable, or it throws an exception, or it returns an invalid value.
-    //     In these cases, `@import` throws.
-    //
-    // 2.  The `normalize` hook returns the name of a module that is already in
-    //     the registry.  `@import` returns the normalized name.
-    //
-    // 3.  This is a synchronous import (for `eval()`) and the module is not
-    //     yet loaded.  `@import` throws.
-    //
-    // 4.  In all other cases, either a new `Load` is started or we can join
-    //     one already in flight.  `@import` returns the normalized name.
-    //
-    // `referer` provides information about the context of the `import()` call
-    // or import-declaration.  This information is passed to all the loader
-    // hooks.
-    //
-    // `name` is the (pre-normalize) name of the module to be imported, as it
-    // appears in the import-declaration or as the argument to
-    // loader.import().
-    //
-    // TODO:  Suggest alternative name for `referer`.  It is really nothing to
-    // do with the nasty Referer HTTP header.  Perhaps `importContext`,
-    // `importer`, `client`.
-    //
-    @import(referer, name, sync) {
-        // Call the `normalize` hook to get a normalized module name and
-        // metadata.  See the comment on `normalize()`.
-        //
-        // Errors that happen during this step propagate to the caller.
-        //
-        let normalized, metadata;
-        {
-            // P4 ISSUE: Here `referer` is passed to the `normalize` hook and
-            // later it is passed to the `resolve` hook, and so on.  Should we
-            // create a new object each time?  (I think it's OK to pass the
-            // same referer object to successive hooks within a single load;
-            // but `eval()` creates a new referer object for each call to the
-            // `normalize()` hook, since they are not abstractly all part of a
-            // single load.)
-            let result = this.normalize(request, {referer});
-
-            // Interpret the `result`.
-            //
-            // It must a string or an object with a `.normalized` property
-            // whose value is a string.  Otherwise a `TypeError` is thrown.
-            // per samth, 2013 April 22, and issue #13.
-            //
-            if (typeof result === "string") {
-                normalized = result;
-                metadata = {};
-            } else if (!IsObject(result)) {
-                // The result is `null`, a boolean, a number, or (if symbols
-                // somehow get defined as primitives) a symbol. Throw.
-                //
-                // *Rationale:*  Both a string and an object are possibly valid
-                // return values.  We could use `ToString` or `ToObject` to
-                // coerce this value.  But neither is the slightest bit
-                // compelling or useful.  So throw instead.
-                //
-                throw $TypeError(
-                    "Loader.normalize hook must return undefined, " +
-                    "a string, or an object");
-            } else {
-                // Several hooks, including the `normalize` hook, may return
-                // multiple values, by returning an object where several
-                // properties are significant.  In all these cases, the object
-                // is just a temporary record.  The loader immediately gets the
-                // data it wants out of the returned object and then discards
-                // it.
-                //
-                // In this case, we care about two properties on the returned
-                // object, `.normalized` and `.metadata`, but only
-                // `.normalized` is required.
-                //
-                if (!("normalized" in result)) {
-                    throw $TypeError(
-                        "Result of loader.normalize hook must be undefined, a string, or " +
-                        "an object with a .normalized property");
-                }
-
-                normalized = result.normalized;  // can throw
-
-                // Do not use `$ToString` here, per samth, 2013 April 22.
-                if (typeof normalized !== "string") {
-                    throw $TypeError(
-                        "Object returned by loader.normalize hook must have " +
-                        "a string .normalized property");
-                }
-
-                metadata = result.metadata;  // can throw
-            }
-        }
-
-        // If the module has already been linked, we are done.
-        // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
-        let existingModule = $MapGet(this.@modules, normalized);
-        if (existingModule !== undefined)
-            return [normalized, {status: "linked", module: existingModule});
-
-        // If the module is already loaded, we are done.
-        let load = $MapGet(this.@loads, normalized);
-        if (load !== undefined && load.status === "loaded")
-            return [normalized, load];
-
-        // If we can't wait for the module to load, we are done.
-        if (sync) {
-            // Throw a `SyntaxError`. *Rationale:* `SyntaxError` is already
-            // used for a few conditions that can be detected statically
-            // (before a script begins to execute) but are not really syntax
-            // errors per se.  Reusing it seems better than inventing a new
-            // Error subclass.
-            throw $SyntaxError("eval: module not loaded: \"" + normalized + "\"");
-        }
-
-        // If the module is already loading, we are done.
-        if (load !== undefined) {
-            $Assert(load.status === "loading");
-            return [normalized, load];
-        }
-
-        // From this point `@import` cannot throw.
-
-        // Create a `Load` object for this module load.  Once this object is in
-        // `this.@loads`, `LinkSets` may add themselves to its set of waiting
-        // link sets.  Errors must be reported to `load.fail()`.
-        load = new Load([normalized]);
-        $MapSet(this.@loads, normalized, load);
-
-        let address, type;
-        try {
-            // Call the `resolve` hook.
-            let result = this.resolve(normalized, {referer, metadata});
-
-            // Interpret the result.
-            type = "module";
-            if (typeof result === "string") {
-                address = result;
-            } else if (IsObject(result)) {
-                // `result.address` must be present and must be a string.
-                if (!("address" in result)) {
-                    throw $TypeError("Object returned from loader.resolve hook " +
-                                     "must have a .address property");
-                }
-                address = result.address;
-                if (typeof address !== "string") {
-                    throw $TypeError(".address property of object returned from " +
-                                     "loader.resolve hook must be a string");
-                }
-
-                // `result.extra` is optional, but if present must be an
-                // iterable object, a collection of module names.  It indicates
-                // that the resource at `result.address` is a script containing
-                // those modules.  (The module we're loading, named by
-                // `normalized`, may be present in `result.extra` or not.)
-                //
-                // This means the loader can merge the following imports in
-                // a single load:
-                //
-                //     import "a" as a, "b" as b;
-                //
-                // if it knows in advance the address of a script that contains
-                // module declarations for both `a` and `b`.
-                //
-                if ("extra" in result) {
-                    let extra = result.extra;
-                    if (!IsObject(extra)) {
-                        throw $TypeError(
-                            ".extra property of object returned from " +
-                            "loader.resolve hook must be an object");
-                    }
-
-                    let names = [...extra];
-
-                    // Record a load in progress for all other modules defined
-                    // in the same script.
-                    for (let i = 0; i < names.length; i++) {
-                        let name = names[i];
-                        if (typeof name !== "string")
-                            throw $TypeError("module names must be strings");
-                        if (name !== normalized) {
-                            if ($MapHas(this.@modules, name)) {
-                                throw $TypeError(
-                                    "loader.resolve hook claims module \"" +
-                                    name + "\" is at <" + address + "> but " +
-                                    "it is already loaded");
-                            }
-
-                            let existingLoad = $MapGet(this.@loads, name);
-                            if (existingLoad === undefined) {
-                                $ArrayPush(load.fullNames, name);
-                                $MapSet(this.@loads, name, load);
-                            } else if (existingLoad !== load) {
-                                throw $TypeError(
-                                    "loader.resolve hook claims module \"" +
-                                    name + "\" is at <" + address + "> but " +
-                                    "it is already loading or loaded");
-                            }
-                        }
-                    }
-
-                    type = "script";
-                }
-            } else {
-                throw $TypeError("loader.resolve hook must return a " +
-                                 "string or an object with .address");
-            }
-        } catch (exc) {
-            // `load` is responsible for firing error callbacks and removing
-            // itself from `this.@loads`.
-            load.fail(exc);
-            return [normalized, load];
-        }
-
-        // Start the fetch.
-        this.@callFetch(load, address, referer, metadata, normalized, type);
-
-        return [normalized, load];
-    }
-
-    // **`@callFetch`** - Call the fetch hook.  Handle any errors.
-    @callFetch(load, address, referer, metadata, normalized, type) {
-        // P3 ISSUE: type makes sense here, yes?
-        //
-        // P3 ISSUE: what about "extra"?
-        //
-        let options = {referer, metadata, normalized, type};
-        let errback = exc => load.fail(exc);
-
-        // *Rationale for `fetchCompleted`:* The fetch hook is user code.
-        // Callbacks the Loader passes to it are subject to every variety of
-        // misuse; the system must be robust against these hooks being called
-        // multiple times.
-        //
-        // Futures treat extra `resolve()` calls after the first as no-ops; we
-        // throw instead, per meeting 2013 April 26.
-        //
-        // P5 ISSUE: what kind of error to throw when that happens (assuming
-        // TypeError).
-        //
-        let fetchCompleted = false;
-
-        function fulfill(src, actualAddress) {
-            if (fetchCompleted)
-                throw $TypeError("fetch() fulfill callback: fetch already completed");
-            fetchCompleted = true;
-
-            if (typeof src !== "string") {
-                let msg = "fulfill callback: first argument must be a string";
-                AsyncCall(errback, $TypeError(msg));
-                return;
-            }
-            if (typeof actualAddress !== "string") {
-                let msg = "fulfill callback: third argument must be a string";
-                AsyncCall(errback, $TypeError(msg));
-                return;
-            }
-
-            // Even though `fulfill()` will *typically* be called
-            // asynchronously from an empty or nearly empty stack, the `fetch`
-            // hook may call it from a nonempty stack, even synchronously.
-            // Therefore use `AsyncCall` here, at the cost of an extra event
-            // loop turn.
-            AsyncCall(() =>
-                this.@onFulfill(load, metadata, normalized, type, false, src, actualAddress));
-        }
-
-        function reject(exc) {
-            if (fetchCompleted)
-                throw $TypeError("fetch() reject callback: fetch already completed");
-            fetchCompleted = true;
-
-            AsyncCall(errback, exc);
-        }
-
-        try {
-            this.fetch(address, fulfill, reject, options);
-        } catch (exc) {
-            // Some care is taken here to prevent even a badly-behaved fetch
-            // hook from causing errback() to be called twice.
-            if (fetchCompleted)
-                AsyncCall(() => { throw exc; });
-            else
-                AsyncCall(errback, exc);
-        }
-    }
-
-    // **`@onFulfill`** - This is called once a fetch succeeds.
-    @onFulfill(load, metadata, normalized, type, sync, src, actualAddress) {
-        // If `load` is no longer needed by any `LinkSet`, do nothing.  When
-        // one load in a LinkSet fails, we shouldn't continue loading
-        // dependencies anyway.
-        if ($SetSize(load.linkSets) === 0)
-            return;
-
-        try {
-            // Check arguments to `fulfill` callback.
-            if (typeof src !== "string") {
-                throw $TypeError("fetch hook fulfill callback: " +
-                                 "first argument must be a string");
-            }
-            if (typeof actualAddress !== "string") {
-                throw $TypeError("fetch hook fulfill callback: " +
-                                 "second argument must be a string");
-            }
-
-            // Call the `translate` hook.
-            src = this.translate(src, {metadata, normalized, type, actualAddress});
-            if (typeof src !== "string")
-                throw $TypeError("translate hook must return a string");
-
-            // Call the `link` hook, if we are loading a module.
-            // P1 ISSUE #28: Should this hook be called when loading a script?
-            // Perhaps once per module?
-            let linkResult =
-                type === "module"
-                ? this.link(src, {metadata, normalized, type, actualAddress})
-                : undefined;
-
-            // Interpret `linkResult`.  See comment on the `link()` method.
-            if (linkResult === undefined) {
-                let script = $Parse(this, src, normalized, actualAddress, this.@strict);
-                load.finish(this, actualAddress, script, sync);
-            } else if (!IsObject(linkResult)) {
-                throw $TypeError("link hook must return an object or undefined");
-            } else if ($IsModule(linkResult)) {
-                if ($MapHas(this.@modules, normalized)) {
-                    throw $TypeError("fetched module \"" + normalized + "\" " +
-                                     "but a module with that name is already " +
-                                     "in the registry");
-                }
-                let mod = linkResult;
-                $MapSet(this.@modules, normalized, mod);
-                load.onEndRun();
-            } else {
-                let mod = null;
-                let imports = linkResult.imports;
-
-                // P4 issue: "iterable" vs. "array"
-                if (imports !== undefined)
-                    imports = [...imports];
-                let exports = [...linkResult.exports];
-                let execute = linkResult.execute;
-
-                throw TODO;
-            }
-        } catch (exc) {
-            if (sync)
-                throw exc;
-            else
-                load.fail(exc);
-        }
-    }
-
-
-    // ## Module registry
+    // ### Module registry
     //
     // Each `Loader` has a **module registry**, a cache of already loaded and
     // linked modules.  The Loader uses this map to avoid fetching modules
@@ -910,19 +343,14 @@ export class Loader {
     // **`get`** - Get a module by name from the registry.  The argument `name`
     // is the full module name.
     //
+    // Throw a TypeError if `name` is not a string.
+    //
+    // If the module is in the registry but has never been executed, first
+    // synchronously execute the module and any dependencies that have not
+    // executed yet.
+    //
     get(name) {
-        // Throw a TypeError if `name` is not a string.
-        if (typeof name !== "string")
-            throw $TypeError("module name must be a string");
-
-        let m = $MapGet(this.@modules, name);
-
-        // If the module is in the registry but has never been executed, first
-        // synchronously execute the module and any dependencies that have not
-        // executed yet.
-        if (m !== undefined)
-            Loader.@ensureExecuted(m);
-        return m;
+        return impl(this).get(name);
     }
 
     // **`has`** - Return `true` if a module with the given full name is in the
@@ -931,39 +359,12 @@ export class Loader {
     // This doesn't call any hooks or execute any module code.
     //
     has(name) {
-        if (typeof name !== "string")
-            throw $TypeError("module name must be a string");
-
-        return $MapHas(this.@modules, name);
+        return impl(this).has(name);
     }
 
     // **`set`** - Put a module into the registry.
     set(name, module) {
-        if (typeof name !== "string")
-            throw $TypeError("module name must be a string");
-
-        // Entries in the module registry must actually be `Module`s.
-        // *Rationale:* We use `Module`-specific intrinsics like
-        // `$CodeGetLinkedModules` and `$CodeExecute` on them.  The spec will
-        // do the same.  per samth, 2013 April 22.
-        if (!$IsModule(module))
-            throw $TypeError("Module object required");
-
-        // If there is already a module in the registry with the given full
-        // name, replace it, but any scripts or modules that are linked to the
-        // old module remain linked to it. *Rationale:* Re-linking
-        // already-linked modules might not work, since the new module may
-        // export a different set of names. Also, the new module may be linked
-        // to the old one! This is a convenient way to monkeypatch
-        // modules. Once modules are widespread, this technique can be used for
-        // polyfilling.
-        //
-        // If `name` is in `this.@loads`, `.set()` succeeds, with no immediate
-        // effect on the pending load; but if that load eventually produces a
-        // module-declaration for the same name, that will produce a link-time
-        // error. per samth, 2013 April 22.
-        //
-        $MapSet(this.@modules, name, module);
+        impl(this).set(name, module);
         return this;
     }
 
@@ -997,20 +398,12 @@ export class Loader {
     //    bug.
     //
     delete(name) {
-        // If there is no module with the given name in the registry, this does
-        // nothing.
-        //
-        // `loader.delete("A")` has no effect at all if
-        // `!loader.@modules.has("A")`, even if "A" is currently loading (an
-        // entry exists in `loader.@loads`).  This is analogous to `.set()`.
-        // per (reading between the lines) discussions with dherman, 2013 April
-        // 17, and samth, 2013 April 22.
-        $MapDelete(this.@modules, name);
+        impl(this).delete(name);
         return this;
     }
 
 
-    // ## Loader hooks
+    // ### Loader hooks
     //
     // The import process can be customized by assigning to (or subclassing and
     // overriding) any number of the five loader hooks:
@@ -1037,7 +430,7 @@ export class Loader {
     // for the rest of the import process.  (In particular, modules are stored
     // in the registry under their full module name.)
     //
-    // **When this hook is called:** For all imports, including imports in
+    // **When this hook is called:**  For all imports, including imports in
     // scripts.  It is not called for the main script body executed by a call
     // to loader.load(), .eval(), or .evalAsync().
     //
@@ -1153,10 +546,10 @@ export class Loader {
     //     finally links them as a unit and adds them to the registry.
     //
     //     The module bodies will then be executed on demand; see
-    //     @ensureExecuted.
+    //     ensureExecuted.
     //
-    //  2. The hook may return a full Module instance object. The loader
-    //     then simply adds that module to the registry.
+    //  2. The hook may return a full `Module` instance object.  The loader then
+    //     simply adds that module to the registry.
     //
     //     P3 ISSUE #17: Timing in this case.
     //
@@ -1199,9 +592,706 @@ export class Loader {
     // Define all the built-in objects and functions of the ES6 standard
     // library associated with this loader's intrinsics as properties on
     // `obj`.
-    defineBuiltins(obj = this.@global) {
+    defineBuiltins(obj = impl(this).global) {
         $DefineBuiltins(obj, this);
         return obj;
+    }
+}
+
+class LoaderImpl {
+    // Create a new Loader.
+    //
+    // P3 ISSUE #10: Is the parent argument necessary?
+    //
+    constructor(loader, parent, options) {
+        this.loader = loader;
+
+        // **`this.modules`** is the module registry.  It maps full module
+        // names to `Module` objects.
+        //
+        // This map only ever contains `Module` objects that have been fully
+        // linked.  However it can contain modules whose bodies have not yet
+        // started to execute.  Except in the case of cyclic imports, such
+        // modules are not exposed to user code.  See `ensureExecuted()`.
+        //
+        this.modules = $MapNew();
+
+        // **`this.loads`** stores information about modules that are loading
+        // or loaded but not yet linked.  It maps full module names to `Load`
+        // objects.
+        //
+        // This is stored in the loader so that multiple calls to
+        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch what
+        // they need only once.
+        //
+        this.loads = $MapNew();
+
+        // Various configurable options.
+        this.global = options.global;  // P4 ISSUE: ToObject here?
+        this.strict = ToBoolean(options.strict);
+    }
+
+    // ## Loading and running code
+    //
+    // These are implemented in terms of slightly lower-level building blocks.
+    // Each of the four methods creates a `LinkSet` object, which is in charge
+    // of linking, and at least one `Load`.
+
+    // **`import`** - Asynchronously load, link, and execute a module and any
+    // dependencies it imports.  On success, pass the `Module` object to the
+    // success callback.
+    import(moduleName, callback, errback, options) {
+        // Unpack `options`.  Build the referer object that we will pass to
+        // `startModuleLoad`.
+        let name = null;
+        if (options !== undefined && "module" in options) {
+            name = options.module;
+            if (typeof name !== "string") {
+                AsyncCall(errback, $TypeError("import: options.module must be a string"));
+                return;
+            }
+        }
+        let address = LoaderImpl.unpackAddressOption(options, errback);
+        if (address === undefined)
+            return;
+        let referer = {name, address};
+
+        // `this.startModuleLoad` starts us along the pipeline.
+        let fullName, load;
+        try {
+            [fullName, load] = this.startModuleLoad(referer, moduleName, false);
+        } catch (exc) {
+            AsyncCall(errback, exc);
+            return;
+        }
+
+        if (load.status === "linked") {
+            // We already had this module in the registry.
+            AsyncCall(success);
+        } else {
+            // The module is now loading.  When it loads, it may have more
+            // imports, requiring further loads, so put it in a LinkSet.
+            new LinkSet(this, load, success, errback);
+        }
+
+        function success() {
+            let m = load.status === "linked"
+                    ? load.module
+                    : $ScriptGetDeclaredModule(load.script, fullName);
+            try {
+                if (m === undefined) {
+                    throw $TypeError("import(): module \"" + fullName +
+                                     "\" was deleted from the loader");
+                }
+                ensureExecuted(m);
+            } catch (exc) {
+                return errback(exc);
+            }
+            return callback(m);
+        }
+    }
+
+    // **`load`** - Asynchronously load and run a script.  If the script
+    // contains import declarations, this can cause modules to be loaded,
+    // linked, and executed.
+    //
+    // On success, the result of evaluating the script is passed to the success
+    // callback.
+    //
+    load(address,
+         callback = value => undefined,
+         errback = exc => { throw exc; },
+         options = undefined)
+    {
+        // Build a referer object.
+        let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
+        if (refererAddress === undefined)
+            return;
+        let referer = {name: null, address: refererAddress};
+
+        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+        // only makes sense for modules; `load()` loads scripts.  But we do
+        // want `load()` to use the `fetch` hook, which means we must come up
+        // with a metadata value of some kind (this is ordinarily the
+        // `normalize` hook's responsibility).
+        //
+        // `metadata` is created using the intrinsics of the enclosing loader
+        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
+        // loader hooks to use.  It is never exposed to code loaded by this
+        // Loader.
+        //
+        let metadata = {};
+
+        let load = new Load([]);
+        let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+        new LinkSet(this, load, run, errback);
+        return this.callFetch(load, address, referer, metadata, null, "script");
+    }
+
+    // **`evalAsync`** - Asynchronously evaluate the program `src`.
+    //
+    // This is the same as `load` but without fetching the initial script.
+    // On success, the result of evaluating the program is passed to
+    // `callback`.
+    //
+    evalAsync(src,
+              callback = value => undefined,
+              errback = exc => { throw exc; },
+              options = undefined)
+    {
+        // P4 ISSUE: Check callability of callbacks here (and everywhere
+        // success/failure callbacks are provided)?  It would be a mercy,
+        // since the TypeError if they are not functions happens much later
+        // and with an empty stack.  But Futures don't do it.  Assuming no.
+        //
+        //     if (typeof callback !== "function")
+        //         throw $TypeError("Loader.load: callback must be a function");
+        //     if (typeof errback !== "function")
+        //         throw $TypeError("Loader.load: error callback must be a function");
+        //
+        let address = LoaderImpl.unpackAddressOption(options, errback);
+        if (address === undefined)
+            return;
+
+        let load = new Load([]);
+        let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+        new LinkSet(this, load, run, errback);
+        this.onFulfill(load, {}, null, "script", false, src, address);
+    }
+
+    // **`eval`** - Evaluate the program `src`.
+    //
+    // `src` may import modules, but if it imports a module that is not
+    // already loaded, a `SyntaxError` is thrown.
+    //
+    eval(src, options) {
+        let address = LoaderImpl.unpackAddressOption(options, null);
+
+        // The loader works in three basic phases: load, link, and execute.
+        // During the **load phase**, code is loaded and parsed, and import
+        // dependencies are traversed.
+
+        // The `Load` object here is *pro forma*; `eval` is synchronous and
+        // thus cannot fetch code.
+        let load = new Load([]);
+        let linkSet = new LinkSet(this, load, null, null);
+
+        // Finish loading `src`.  This is the part where, in an *asynchronous*
+        // load, we would trigger further loads for any imported modules that
+        // are not yet loaded.
+        //
+        // Instead, here we pass `true` to `onFulfill` to indicate that we're
+        // doing a synchronous load.  This makes it throw rather than trigger
+        // any new loads or add any still-loading modules to the link set.  If
+        // this doesn't throw, then we have everything we need and load phase
+        // is done.
+        //
+        this.onFulfill(load, {}, null, "script", true, src, address);
+
+        // The **link phase** links each imported name to the corresponding
+        // module or export.
+        linkSet.link();
+
+        // During the **execute phase**, we first execute module bodies for any
+        // modules needed by `script` that haven't already executed.  Then we
+        // evaluate `script` and return that value.
+        return ensureExecuted(script);
+    }
+
+    // **`unpackAddressOption`** - Used by several Loader methods to get
+    // `options.address` and check that if present, it is a string.
+    //
+    // `eval()`, `evalAsync()`, and `load()` all accept an optional `options`
+    // object. `options.address`, if present, is passed to each loader hook,
+    // for each module loaded, as `options.referer.address`.  (The default
+    // loader hooks ignore it, though.)
+    //
+    // (`options.address` may also be stored in the script and used for
+    // `Error().fileName`, `Error().stack`, and developer tools; but such use
+    // is outside the scope of the language standard.)
+    //
+    // P5 SECURITY ISSUE: Make sure that is OK.
+    //
+    // P2 ISSUE #31: Consider `options.module`.
+    //
+    // P2 ISSUE #32:  Consider `options.lineNumber`.
+    //
+    static unpackAddressOption(options, errback) {
+        if (options !== undefined && "address" in options) {
+            let address = options.address;
+            if (typeof address !== "string") {
+                let exc = $TypeError("options.address must be a string, if present");
+
+                // `errback` is null when the caller is synchronous `eval()`.
+                // In that case, just throw.
+                if (errback === null)
+                    throw exc;
+
+                // Otherwise, report the error asynchronously.  The caller must
+                // check for `undefined`.
+                AsyncCall(errback, exc);
+                return undefined;
+            }
+            return address;
+        }
+
+        // The default address is null, per samth 2013 May 24.
+        return null;
+    }
+
+    // **`makeEvalCallback`** - Create and return a callback, to be called
+    // after linking is complete, that executes the script loaded by the given
+    // `load`.
+    static makeEvalCallback(load, callback, errback) {
+        return () => {
+            // Tail calls would be equivalent to AsyncCall, except for
+            // possibly some imponderable timing details.  This is meant as
+            // a reference implementation, so we just literal-mindedly do
+            // what the spec is expected to say.
+            let result;
+            try {
+                result = ensureExecuted(load.script);
+            } catch (exc) {
+                AsyncCall(errback, exc);
+                return;
+            }
+            AsyncCall(callback, result);
+        };
+    }
+
+
+    // ## The loader pipeline
+
+    // **`startModuleLoad`** - The common implementation of the `import()`
+    // method and the processing of `import` declarations in ES code.
+    //
+    // There are several possible outcomes:
+    //
+    // 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
+    //     callable, or it throws an exception, or it returns an invalid value.
+    //     In these cases, `startModuleLoad` throws.
+    //
+    // 2.  The `normalize` hook returns the name of a module that is already in
+    //     the registry.  `startModuleLoad` returns a pair, the normalized name
+    //     and a fake Load object.
+    //
+    // 3.  This is a synchronous import (for `eval()`) and the module is not
+    //     yet loaded.  `startModuleLoad` throws.
+    //
+    // 4.  In all other cases, either a new `Load` is started or we can join
+    //     one already in flight.  `startModuleLoad` returns a pair, the
+    //     normalized name and the `Load` object.
+    //
+    // `referer` provides information about the context of the `import()` call
+    // or import-declaration.  This information is passed to all the loader
+    // hooks.
+    //
+    // `name` is the (pre-normalize) name of the module to be imported, as it
+    // appears in the import-declaration or as the argument to
+    // loader.import().
+    //
+    // TODO:  Suggest alternative name for `referer`.  It is really nothing to
+    // do with the nasty Referer HTTP header.  Perhaps `importContext`,
+    // `importer`, `client`.
+    //
+    startModuleLoad(referer, name, sync) {
+        // Call the `normalize` hook to get a normalized module name and
+        // metadata.  See the comment on `normalize()`.
+        //
+        // Errors that happen during this step propagate to the caller.
+        //
+        let normalized, metadata;
+        {
+            // P4 ISSUE: Here `referer` is passed to the `normalize` hook and
+            // later it is passed to the `resolve` hook, and so on.  Should we
+            // create a new object each time?  (I think it's OK to pass the
+            // same referer object to successive hooks within a single load;
+            // but `eval()` creates a new referer object for each call to the
+            // `normalize()` hook, since they are not abstractly all part of a
+            // single load.)
+            let result = this.loader.normalize(request, {referer});
+
+            // Interpret the `result`.
+            //
+            // It must a string or an object with a `.normalized` property
+            // whose value is a string.  Otherwise a `TypeError` is thrown.
+            // per samth, 2013 April 22, and issue #13.
+            //
+            if (typeof result === "string") {
+                normalized = result;
+                metadata = {};
+            } else if (!IsObject(result)) {
+                // The result is `null`, a boolean, a number, or (if symbols
+                // somehow get defined as primitives) a symbol. Throw.
+                //
+                // *Rationale:*  Both a string and an object are possibly valid
+                // return values.  We could use `ToString` or `ToObject` to
+                // coerce this value.  But neither is the slightest bit
+                // compelling or useful.  So throw instead.
+                //
+                throw $TypeError(
+                    "Loader.normalize hook must return undefined, " +
+                    "a string, or an object");
+            } else {
+                // Several hooks, including the `normalize` hook, may return
+                // multiple values, by returning an object where several
+                // properties are significant.  In all these cases, the object
+                // is just a temporary record.  The loader immediately gets the
+                // data it wants out of the returned object and then discards
+                // it.
+                //
+                // In this case, we care about two properties on the returned
+                // object, `.normalized` and `.metadata`, but only
+                // `.normalized` is required.
+                //
+                if (!("normalized" in result)) {
+                    throw $TypeError(
+                        "Result of loader.normalize hook must be undefined, a string, or " +
+                        "an object with a .normalized property");
+                }
+
+                normalized = result.normalized;  // can throw
+
+                // Do not use `$ToString` here, per samth, 2013 April 22.
+                if (typeof normalized !== "string") {
+                    throw $TypeError(
+                        "Object returned by loader.normalize hook must have " +
+                        "a string .normalized property");
+                }
+
+                metadata = result.metadata;  // can throw
+            }
+        }
+
+        // If the module has already been linked, we are done.
+        // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
+        let existingModule = $MapGet(this.modules, normalized);
+        if (existingModule !== undefined)
+            return [normalized, {status: "linked", module: existingModule});
+
+        // If the module is already loaded, we are done.
+        let load = $MapGet(this.loads, normalized);
+        if (load !== undefined && load.status === "loaded")
+            return [normalized, load];
+
+        // If we can't wait for the module to load, we are done.
+        if (sync) {
+            // Throw a `SyntaxError`. *Rationale:* `SyntaxError` is already
+            // used for a few conditions that can be detected statically
+            // (before a script begins to execute) but are not really syntax
+            // errors per se.  Reusing it seems better than inventing a new
+            // Error subclass.
+            throw $SyntaxError("eval: module not loaded: \"" + normalized + "\"");
+        }
+
+        // If the module is already loading, we are done.
+        if (load !== undefined) {
+            $Assert(load.status === "loading");
+            return [normalized, load];
+        }
+
+        // From this point `startModuleLoad` cannot throw.
+
+        // Create a `Load` object for this module load.  Once this object is in
+        // `this.loads`, `LinkSets` may add themselves to its set of waiting
+        // link sets.  Errors must be reported to `load.fail()`.
+        load = new Load([normalized]);
+        $MapSet(this.loads, normalized, load);
+
+        let address, type;
+        try {
+            // Call the `resolve` hook.
+            let result = this.loader.resolve(normalized, {referer, metadata});
+
+            // Interpret the result.
+            type = "module";
+            if (typeof result === "string") {
+                address = result;
+            } else if (IsObject(result)) {
+                // `result.address` must be present and must be a string.
+                if (!("address" in result)) {
+                    throw $TypeError("Object returned from loader.resolve hook " +
+                                     "must have a .address property");
+                }
+                address = result.address;
+                if (typeof address !== "string") {
+                    throw $TypeError(".address property of object returned from " +
+                                     "loader.resolve hook must be a string");
+                }
+
+                // `result.extra` is optional, but if present must be an
+                // iterable object, a collection of module names.  It indicates
+                // that the resource at `result.address` is a script containing
+                // those modules.  (The module we're loading, named by
+                // `normalized`, may be present in `result.extra` or not.)
+                //
+                // This means the loader can merge the following imports in
+                // a single load:
+                //
+                //     import "a" as a, "b" as b;
+                //
+                // if it knows in advance the address of a script that contains
+                // module declarations for both `a` and `b`.
+                //
+                if ("extra" in result) {
+                    let extra = result.extra;
+                    if (!IsObject(extra)) {
+                        throw $TypeError(
+                            ".extra property of object returned from " +
+                            "loader.resolve hook must be an object");
+                    }
+
+                    let names = [...extra];
+
+                    // Record a load in progress for all other modules defined
+                    // in the same script.
+                    for (let i = 0; i < names.length; i++) {
+                        let name = names[i];
+                        if (typeof name !== "string")
+                            throw $TypeError("module names must be strings");
+                        if (name !== normalized) {
+                            if ($MapHas(this.modules, name)) {
+                                throw $TypeError(
+                                    "loader.resolve hook claims module \"" +
+                                    name + "\" is at <" + address + "> but " +
+                                    "it is already loaded");
+                            }
+
+                            let existingLoad = $MapGet(this.loads, name);
+                            if (existingLoad === undefined) {
+                                $ArrayPush(load.fullNames, name);
+                                $MapSet(this.loads, name, load);
+                            } else if (existingLoad !== load) {
+                                throw $TypeError(
+                                    "loader.resolve hook claims module \"" +
+                                    name + "\" is at <" + address + "> but " +
+                                    "it is already loading or loaded");
+                            }
+                        }
+                    }
+
+                    type = "script";
+                }
+            } else {
+                throw $TypeError("loader.resolve hook must return a " +
+                                 "string or an object with .address");
+            }
+        } catch (exc) {
+            // `load` is responsible for firing error callbacks and removing
+            // itself from `this.loads`.
+            load.fail(exc);
+            return [normalized, load];
+        }
+
+        // Start the fetch.
+        this.callFetch(load, address, referer, metadata, normalized, type);
+
+        return [normalized, load];
+    }
+
+    // **`callFetch`** - Call the fetch hook.  Handle any errors.
+    callFetch(load, address, referer, metadata, normalized, type) {
+        // P3 ISSUE: type makes sense here, yes?
+        //
+        // P3 ISSUE: what about "extra"?
+        //
+        let options = {referer, metadata, normalized, type};
+        let errback = exc => load.fail(exc);
+
+        // *Rationale for `fetchCompleted`:* The fetch hook is user code.
+        // Callbacks the Loader passes to it are subject to every variety of
+        // misuse; the system must be robust against these hooks being called
+        // multiple times.
+        //
+        // Futures treat extra `resolve()` calls after the first as no-ops; we
+        // throw instead, per meeting 2013 April 26.
+        //
+        // P5 ISSUE: what kind of error to throw when that happens (assuming
+        // TypeError).
+        //
+        let fetchCompleted = false;
+
+        function fulfill(src, actualAddress) {
+            if (fetchCompleted)
+                throw $TypeError("fetch() fulfill callback: fetch already completed");
+            fetchCompleted = true;
+
+            if (typeof src !== "string") {
+                let msg = "fulfill callback: first argument must be a string";
+                AsyncCall(errback, $TypeError(msg));
+                return;
+            }
+            if (typeof actualAddress !== "string") {
+                let msg = "fulfill callback: third argument must be a string";
+                AsyncCall(errback, $TypeError(msg));
+                return;
+            }
+
+            // Even though `fulfill()` will *typically* be called
+            // asynchronously from an empty or nearly empty stack, the `fetch`
+            // hook may call it from a nonempty stack, even synchronously.
+            // Therefore use `AsyncCall` here, at the cost of an extra event
+            // loop turn.
+            AsyncCall(() =>
+                this.onFulfill(load, metadata, normalized, type, false, src, actualAddress));
+        }
+
+        function reject(exc) {
+            if (fetchCompleted)
+                throw $TypeError("fetch() reject callback: fetch already completed");
+            fetchCompleted = true;
+
+            AsyncCall(errback, exc);
+        }
+
+        try {
+            this.loader.fetch(address, fulfill, reject, options);
+        } catch (exc) {
+            // Some care is taken here to prevent even a badly-behaved fetch
+            // hook from causing errback() to be called twice.
+            if (fetchCompleted)
+                AsyncCall(() => { throw exc; });
+            else
+                AsyncCall(errback, exc);
+        }
+    }
+
+    // **`onFulfill`** - This is called once a fetch succeeds.
+    onFulfill(load, metadata, normalized, type, sync, src, actualAddress) {
+        // If `load` is no longer needed by any `LinkSet`, do nothing.  When
+        // one load in a LinkSet fails, we shouldn't continue loading
+        // dependencies anyway.
+        if ($SetSize(load.linkSets) === 0)
+            return;
+
+        try {
+            // Check arguments to `fulfill` callback.
+            if (typeof src !== "string") {
+                throw $TypeError("fetch hook fulfill callback: " +
+                                 "first argument must be a string");
+            }
+            if (typeof actualAddress !== "string") {
+                throw $TypeError("fetch hook fulfill callback: " +
+                                 "second argument must be a string");
+            }
+
+            // Call the `translate` hook.
+            src = this.loader.translate(src, {metadata, normalized, type, actualAddress});
+            if (typeof src !== "string")
+                throw $TypeError("translate hook must return a string");
+
+            // Call the `link` hook, if we are loading a module.
+            // P1 ISSUE #28: Should this hook be called when loading a script?
+            // Perhaps once per module?
+            let linkResult =
+                type === "module"
+                ? this.loader.link(src, {metadata, normalized, type, actualAddress})
+                : undefined;
+
+            // Interpret `linkResult`.  See comment on the `link()` method.
+            if (linkResult === undefined) {
+                let script = $Parse(this, src, normalized, actualAddress, this.strict);
+                load.finish(this, actualAddress, script, sync);
+            } else if (!IsObject(linkResult)) {
+                throw $TypeError("link hook must return an object or undefined");
+            } else if ($IsModule(linkResult)) {
+                if ($MapHas(this.modules, normalized)) {
+                    throw $TypeError("fetched module \"" + normalized + "\" " +
+                                     "but a module with that name is already " +
+                                     "in the registry");
+                }
+                let mod = linkResult;
+                $MapSet(this.modules, normalized, mod);
+                load.onEndRun();
+            } else {
+                let mod = null;
+                let imports = linkResult.imports;
+
+                // P4 issue: "iterable" vs. "array"
+                if (imports !== undefined)
+                    imports = [...imports];
+                let exports = [...linkResult.exports];
+                let execute = linkResult.execute;
+
+                throw TODO;
+            }
+        } catch (exc) {
+            if (sync)
+                throw exc;
+            else
+                load.fail(exc);
+        }
+    }
+
+
+    // ## Module registry
+
+    // **`get`** - Get a module by name from the registry.  The argument `name`
+    // is the full module name.
+    get(name) {
+        // Throw a TypeError if `name` is not a string.
+        if (typeof name !== "string")
+            throw $TypeError("module name must be a string");
+
+        let m = $MapGet(this.modules, name);
+
+        // If the module is in the registry but has never been executed, first
+        // synchronously execute the module and any dependencies that have not
+        // executed yet.
+        if (m !== undefined)
+            ensureExecuted(m);
+        return m;
+    }
+
+    // **`has`** - Return `true` if a module with the given full name is in the
+    // registry.
+    has(name) {
+        if (typeof name !== "string")
+            throw $TypeError("module name must be a string");
+
+        return $MapHas(this.modules, name);
+    }
+
+    // **`set`** - Put a module into the registry.
+    set(name, module) {
+        if (typeof name !== "string")
+            throw $TypeError("module name must be a string");
+
+        // Entries in the module registry must actually be `Module`s.
+        // *Rationale:* We use `Module`-specific intrinsics like
+        // `$CodeGetLinkedModules` and `$CodeExecute` on them.  per samth,
+        // 2013 April 22.
+        if (!$IsModule(module))
+            throw $TypeError("Module object required");
+
+        // If there is already a module in the registry with the given full
+        // name, replace it, but any scripts or modules that are linked to the
+        // old module remain linked to it. *Rationale:* Re-linking
+        // already-linked modules might not work, since the new module may
+        // export a different set of names. Also, the new module may be linked
+        // to the old one! This is a convenient way to monkeypatch
+        // modules. Once modules are widespread, this technique can be used for
+        // polyfilling.
+        //
+        // If `name` is in `this.loads`, `.set()` succeeds, with no immediate
+        // effect on the pending load; but if that load eventually produces a
+        // module-declaration for the same name, that will produce a link-time
+        // error. per samth, 2013 April 22.
+        //
+        $MapSet(this.modules, name, module);
+    }
+
+    // **`delete`** - Remove a module from the registry.
+    delete(name) {
+        // If there is no module with the given name in the registry, this does
+        // nothing.
+        //
+        // `loader.delete("A")` has no effect at all if
+        // `!loaderImpl.modules.has("A")`, even if "A" is currently loading (an
+        // entry exists in `loaderImpl.loads`).  This is analogous to `.set()`.
+        // per (reading between the lines) discussions with dherman, 2013 April
+        // 17, and samth, 2013 April 22.
+        $MapDelete(this.modules, name);
     }
 }
 
@@ -1209,7 +1299,7 @@ export class Loader {
 // ## Notes on error handling
 //
 // Most errors that can occur during a load, asyncEval, or import are related
-// to either a specific in-flight `Load` (in `loader.@loads`) or a specific
+// to either a specific in-flight `Load` (in `loader.loads`) or a specific
 // `LinkSet`.
 //
 // When such an error occurs:
@@ -1225,12 +1315,12 @@ export class Loader {
 //         fulfill callback inorrectly, or calling the reject callback), then F
 //         = the set of LinkSets that needed that module.
 //
-//  2. Let M = the set of all in-flight modules (in loader.@loads) that are not
+//  2. Let M = the set of all in-flight modules (in loader.loads) that are not
 //     needed by any LinkSet other than those in F.
 //
 //     P3 ISSUE #20: Can the set M be computed efficiently?
 //
-//  3. Remove all modules in M from `loader.@loads`.  If any are in "loading"
+//  3. Remove all modules in M from `loader.loads`.  If any are in "loading"
 //     state, neuter the fetch hook's fulfill/reject callbacks so that they
 //     become no-ops.
 //
@@ -1341,7 +1431,7 @@ export class Loader {
 //
 //     (TODO: this might not be true in the case of the `link` loader hook
 //     returning a Module object; maybe want a separate status for that) Loads
-//     that enter this state are removed from the `loader.@loads` table and
+//     that enter this state are removed from the `loader.loads` table and
 //     from all `LinkSet`s; they become garbage.
 //
 // 4.  Failed:  The load failed.  The load never leaves this state.
@@ -1400,7 +1490,7 @@ class Load {
 
         // Check to see if `script` declares any modules that are already loaded or
         // loading.  If so, throw a `SyntaxError`.  If not, add entries to
-        // `loader.@loads` for each declared module.
+        // `loader.loads` for each declared module.
         //
         // *Rationale:* Consider two `evalAsync` calls.
         //
@@ -1417,13 +1507,13 @@ class Load {
         let declared = $ScriptDeclaredModuleNames(script);
         for (let i = 0; i < declared.length; i++) {
             let fullName = declared[i];
-            if ($MapHas(loader.@modules, fullName)) {
+            if ($MapHas(loader.modules, fullName)) {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
                                    "which is already loaded");
             }
-            let pendingLoad = $MapGet(loader.@loads, fullName);
+            let pendingLoad = $MapGet(loader.loads, fullName);
             if (pendingLoad === undefined) {
-                $MapSet(loader.@loads, fullName, this);
+                $MapSet(loader.loads, fullName, this);
             } else if (pendingLoad !== this) {
                 throw $SyntaxError("script declares module \"" + fullName + "\", " +
                                    "which is already loading");
@@ -1436,8 +1526,8 @@ class Load {
         // enclosing module, or null for toplevel imports.
         //
         // `request` is the name being imported.  It is not necessarily a full
-        // name; we pass it to `Loader.@import` which will call the `normalize`
-        // hook.
+        // name; we pass it to `Loader.startModuleLoad` which will call the
+        // `normalize` hook.
         //
         let pairs = $ScriptImports(script);
         let fullNames = [];
@@ -1474,7 +1564,7 @@ class Load {
             let referer = {name: client, address: actualAddress};
             let fullName, load;
             try {
-                [fullName, load] = loader.@import(referer, request, sync);
+                [fullName, load] = loader.startModuleLoad(referer, request, sync);
             } catch (exc) {
                 return this.fail(exc);
             }
@@ -1523,9 +1613,9 @@ class Load {
         if ($SetSize(this.linkSets) === 0) {
             for (let i = 0; i < this.fullNames.length; i++) {
                 let fullName = this.fullNames[i];
-                let currentLoad = $MapGet(loader.@loads, fullName);
+                let currentLoad = $MapGet(loader.loads, fullName);
                 if (currentLoad === this)
-                    $MapDelete(loader.@loads, fullName);
+                    $MapDelete(loader.loads, fullName);
             }
         }
     }
@@ -1534,10 +1624,10 @@ class Load {
 // A `LinkSet` represents a call to `loader.evalAsync()`, `.load()`, or
 // `.import()`.
 class LinkSet {
-    constructor(loader, startingLoad, callback, errback) {
+    constructor(loaderImpl, startingLoad, callback, errback) {
         // TODO: make LinkSets not inherit from Object.prototype, for isolation;
         // or else use symbols for all these; or else use define(). :-P
-        this.loader = loader;
+        this.loaderImpl = loaderImpl;
         this.startingLoad = startingLoad;
         this.callback = callback;
         this.errback = errback;
@@ -1554,11 +1644,11 @@ class LinkSet {
     // **`addLoadByName`** - If a module with the given `fullName` is loading
     // or loaded but not linked, add the `Load` to this link set.
     addLoadByName(fullName) {
-        if (!$MapHas(this.loader.@modules, fullName)) {
+        if (!$MapHas(this.loaderImpl.modules, fullName)) {
             // We add `depLoad` even if it is done loading, because the
             // association keeps the `Load` alive (`Load`s are
             // reference-counted; see `Load.onLinkSetFail`).
-            let depLoad = $MapGet(this.loader.@loads, fullName);
+            let depLoad = $MapGet(this.loaderImpl.loads, fullName);
             this.addLoad(depLoad);
         }
     }
@@ -1648,26 +1738,26 @@ class LinkSet {
                 let fullName = declared[i];
                 let mod = $ScriptGetDeclaredModule(script, fullName);
 
-                if ($MapHas(this.loader.@modules, fullName)) {
+                if ($MapHas(this.loaderImpl.modules, fullName)) {
                     throw $SyntaxError(
                         "script declares module \"" + fullName + "\", " +
                         "which is already loaded");
                 }
                 if (load === undefined) {
-                    if ($MapHas(this.loader.@loads, fullName)) {
+                    if ($MapHas(this.loaderImpl.loads, fullName)) {
                         throw $SyntaxError(
                             "script declares module \"" + fullName + "\", " +
                             "which is already loading");
                     }
                 } else {
-                    let current = $MapGet(this.loader.@loads, fullName);
+                    let current = $MapGet(this.loaderImpl.loads, fullName);
 
                     // These two cases can happen if a script unexpectedly
                     // declares modules not named by resolve().other.
                     if (current === undefined) {
                         // Make sure no other script in the same LinkSet
                         // declares it too.
-                        $MapSet(this.loader.@loads, fullName, this);
+                        $MapSet(this.loaderImpl.loads, fullName, this);
                     } else if (current !== this) {
                         throw $SyntaxError(
                             "script declares module \"" + fullName + "\", " +
@@ -1681,18 +1771,18 @@ class LinkSet {
 
             // Second, find modules imported by this script.
             //
-            // The loader process walks the whole graph, so all imported
-            // modules should be loaded, but it is an asynchronous process.
-            // Intervening calls to Loader.set() or Loader.delete() can
+            // The load phase walks the whole graph, so all imported modules
+            // should be loaded, but it is an asynchronous process.
+            // Intervening calls to `loader.set()` or `loader.delete()` can
             // cause things to be missing.
             //
             let deps = load.dependencies;
             let mods = [];
             for (let i = 0; i < deps.length; i++) {
                 let fullName = deps[i];
-                let mod = $MapGet(this.loader.@modules, fullName);
+                let mod = $MapGet(this.loaderImpl.modules, fullName);
                 if (mod === undefined) {
-                    let depLoad = $MapGet(this.loader.@loads, fullName);
+                    let depLoad = $MapGet(this.loaderImpl.loads, fullName);
                     if (depLoad === undefined || depLoad.status !== "loaded") {
                         throw $SyntaxError(
                             "module \"" + fullName + "\" was deleted from the loader");
@@ -1722,11 +1812,11 @@ class LinkSet {
         // Per dherman, 2013 May 15.
         walk(this.startingLoad);
 
-        // Move the fully linked modules from the `@loads` table to the
-        // `@modules` table.
+        // Move the fully linked modules from the `loads` table to the
+        // `modules` table.
         for (let i = 0; i < linkedNames.length; i++) {
-            $MapDelete(this.loader.@loads, linkedNames[i]);
-            $MapSet(this.loader.@modules, linkedNames[i], linkedModules[i]);
+            $MapDelete(this.loaderImpl.loads, linkedNames[i]);
+            $MapSet(this.loaderImpl.modules, linkedNames[i], linkedModules[i]);
         }
     }
 
@@ -1735,7 +1825,7 @@ class LinkSet {
     fail(exc) {
         let loads = $SetElements(this.loads);
         for (let i = 0; i < loads.length; i++)
-            loads[i].onLinkSetFail(this.loader, this);
+            loads[i].onLinkSetFail(this.loaderImpl, this);
         AsyncCall(this.errback, exc);
     }
 }
