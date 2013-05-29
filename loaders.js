@@ -273,14 +273,38 @@ export class Loader {
     // These are implemented in terms of slightly lower-level building blocks.
     // Each of the four methods creates a `LinkSet` object, which is in charge
     // of linking, and at least one `Load`.
-
+    //
+    // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
+    // `.load()`, and `.import()` all take two callback arguments, `callback`
+    // and `errback`, the success and failure callbacks respectively.
+    //
+    // On success, these methods each schedule the success callback to be
+    // called with a single argument (the result of the operation).
+    //
+    // These three methods never throw. Instead, on error, the exception is
+    // saved and passed to failure callback asynchronously.
+    //
+    // Both arguments are optional.  The default success callback does
+    // nothing.  The default failure callback throws its argument.
+    // *Rationale:*  The event loop will then treat it like any other
+    // unhandled exception.
+    //
+    // Success and failure callbacks are always called in a fresh event
+    // loop turn.  This means they will not be called until after
+    // `evalAsync` returns, and they are always called directly from the
+    // event loop:  except in the case of nested event loops, these
+    // callbacks are never called while user code is on the stack.
+    //
+    // **Future directions:**  `evalAsync`, `import`, and `load` (as well as
+    // the `fetch` loader hook, described later) all take callbacks and
+    // currently return `undefined`.  They are designed to be
+    // upwards-compatible to `Future`s.  per samth, 2013 April 22.
+    //
     // P1 ISSUE #30: the callback and errback arguments should be last.
 
     // **`import`** - Asynchronously load, link, and execute a module and any
     // dependencies it imports.  On success, pass the `Module` object to the
     // success callback.
-    //
-    // The comment on `evalAsync()` explains `callback` and `errback`.
     //
     import(moduleName,
            callback = () => undefined,
@@ -383,37 +407,9 @@ export class Loader {
 
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
     //
-    // `src` may import modules that have not been loaded yet.  In that case,
-    // load all those modules, and their imports, transitively, before
-    // evaluating the script.
-    //
+    // This is the same as `load` but without fetching the initial script.
     // On success, the result of evaluating the program is passed to
     // `callback`.
-    //
-    // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
-    // `.load()`, and `.import()` all take two callback arguments, `callback`
-    // and `errback`, the success and failure callbacks respectively.
-    //
-    // On success, these methods each schedule the success callback to be
-    // called with a single argument (the result of the operation).
-    //
-    // These three methods never throw. Instead, on error, the exception is
-    // saved and passed to failure callback asynchronously.
-    //
-    // Both arguments are optional.  The default success callback does
-    // nothing.  The default failure callback throws its argument.
-    // *Rationale:*  The event loop will then treat it like any other
-    // unhandled exception.
-    //
-    // Success and failure callbacks are always called in a fresh event
-    // loop turn.  This means they will not be called until after
-    // `evalAsync` returns, and they are always called directly from the
-    // event loop:  except in the case of nested event loops, these
-    // callbacks are never called while user code is on the stack.
-    //
-    // **Future directions:**  `evalAsync`, `import`, `load`, and the `fetch`
-    // hook all take callbacks and currently return `undefined`.  They are
-    // designed to be upwards-compatible to `Future`s.  per samth, 2013 April 22.
     //
     evalAsync(src,
               callback = value => undefined,
