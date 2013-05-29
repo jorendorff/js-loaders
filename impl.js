@@ -1,4 +1,12 @@
+// # impl.js - ES6 module loaders illustrated
+//
+// This file implements the ES6 module loader proposal in terms of ES6 plus a
+// few primitives meant to be exposed by the implementation.
+//
+// The API is described in [loaders.js](loaders.html).
+
 "use strict";
+
 
 // ## Primitives
 
@@ -132,8 +140,6 @@ export function newLoaderImpl(loader, parent, options) {
 
 class LoaderImpl {
     // Create a new Loader.
-    //
-    // P3 ISSUE #10: Is the parent argument necessary?
     //
     // TODO: make LoaderImpl objects (and others) not inherit from
     // Object.prototype, for isolation; or else use symbols for all these; or

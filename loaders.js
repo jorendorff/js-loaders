@@ -1,11 +1,14 @@
 // # loaders.js - ES6 module loaders illustrated
 //
-// This is a sample implementation of the ES6 module loader.  It implements the
-// proposal in terms of ES6 plus a few primitives meant to be exposed by the
-// implementation.
+// This is a sample implementation of the ES6 module loader.
 //
 // Source code is on github:
 // [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
+//
+// [View in HTML.](https://people.mozilla.com/~jorendorff/js-loaders/loaders.html)
+//
+// This file, `loaders.js`, describes the `Loader` API.  See
+// [`impl.js`](impl.html) for the implementation.
 //
 //
 // ## References
@@ -59,6 +62,9 @@ import { impl, newLoaderImpl } from "./impl";
 //
 export class Loader {
     // **`new Loader(parent, options)`** - Create a new `Loader`.
+    //
+    // P3 ISSUE #10: Is the parent argument necessary?
+    //
     constructor(parent, options) {
         // Since ES6 does not have support for private state or private
         // methods, everything private is stored on a separate `LoaderImpl`
