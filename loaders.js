@@ -62,9 +62,6 @@ import { impl, newLoaderImpl } from "./impl";
 //
 export class Loader {
     // **`new Loader(parent, options)`** - Create a new `Loader`.
-    //
-    // P3 ISSUE #10: Is the parent argument necessary?
-    //
     constructor(parent, options) {
         // Since ES6 does not have support for private state or private
         // methods, everything private is stored on a separate `LoaderImpl`
@@ -167,8 +164,6 @@ export class Loader {
     // `src` may import modules, but if it directly or indirectly imports a
     // module that is not already loaded, a `SyntaxError` is thrown.
     //
-    // P2 ISSUE #8: Does global.eval go through the translate hook?
-    //
     eval(src, options) {
         return impl(this).eval(src, options);
     }
@@ -198,8 +193,6 @@ export class Loader {
     // the `fetch` loader hook, described later) all take callbacks and
     // currently return `undefined`.  They are designed to be
     // upwards-compatible to `Future`s.  per samth, 2013 April 22.
-    //
-    // P1 ISSUE #30: the callback and errback arguments should be last.
 
 
     // ### Module registry
@@ -369,7 +362,7 @@ export class Loader {
     // `options.type` is the string `"module"` when fetching a standalone
     // module, and `"script"` when fetching a script.
     //
-    // **When this hook is called:** For all modules and scripts whose source
+    // **When this hook is called:**  For all modules and scripts whose source
     // is not directly provided by the caller.  It is not called for the script
     // bodies executed by `loader.eval()` and `.evalAsync()`, since those do
     // not need to be fetched.  `loader.evalAsync()` can trigger this hook, for
@@ -380,16 +373,15 @@ export class Loader {
     // we're loading a script, not a module; but it does call the `fetch` and
     // `translate` hooks, per samth, 2013 April 22.)
     //
-    // **Synchronous calls to `fulfill` and `reject`:** (P2 ISSUE #9) The
-    // `fetch` hook may call the `fulfill` or `reject` callback synchronously
-    // rather than waiting for the next event loop turn.  But in that case
-    // `fulfill` simply schedules the pipeline to resume asynchronously.  Per
-    // meeting, 2013 April 26. *Rationale:* It would be strange for a
-    // synchronous `fulfill` callback to synchronously call `translate`/`link`
-    // hooks before the `fetch` hook has returned. To say nothing of
-    // `normalize`/`resolve`/`fetch` hooks for dependencies.
+    // **Synchronous calls to `fulfill` and `reject`:**  The `fetch` hook may
+    // call the `fulfill` or `reject` callback synchronously rather than
+    // waiting for the next event loop turn.  `fulfill` schedules the pipeline
+    // to resume asynchronously.  Per meeting, 2013 April 26.  *Rationale:*  It
+    // would be strange for a synchronous `fulfill` callback to synchronously
+    // call `translate`/`link` hooks before the `fetch` hook has returned.  To
+    // say nothing of `normalize`/`resolve`/`fetch` hooks for dependencies.
     //
-    // **Default behavior:** Pass a `TypeError` to the `reject` callback.
+    // **Default behavior:**  Pass a `TypeError` to the `reject` callback.
     //
     fetch(resolved, fulfill, reject, options) {
         AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
@@ -402,7 +394,7 @@ export class Loader {
     // not decided whether this is called for direct eval scripts; see issue on
     // Loader.eval().)
     //
-    // **Default behavior:** Return `src` unchanged.
+    // **Default behavior:**  Return `src` unchanged.
     //
     translate(src, options) {
         return src;
@@ -419,12 +411,8 @@ export class Loader {
     //     The module bodies will then be executed on demand; see
     //     `ensureExecuted` in impl.js.
     //
-    //  2. The hook may return a full `Module` instance object.  The loader then
-    //     simply adds that module to the registry.
-    //
-    //     P3 ISSUE #17: Timing in this case.
-    //
-    //     P3 ISSUE #18: link hook returning a Module vs. loader.set().
+    //  2. The hook may return a full `Module` instance object.  The loader
+    //     then simply adds that module to the registry.
     //
     //  3. *(unimplemented)* The hook may return a factory object which the
     //     loader will use to create the module and link it with its clients
@@ -448,7 +436,9 @@ export class Loader {
     //     modules implemented with standard source-level module
     //     declarations can still be statically validated.
     //
-    //     P3 ISSUE #19: how does this work?
+    //     (This feature is provided in order to support using `import` to
+    //     import pre-ES6 modules such as AMD modules. See [issue
+    //     #19](https://github.com/jorendorff/js-loaders/issues/19).)
     //
     // **When this hook is called:**  After the `translate` hook, for modules
     // only.

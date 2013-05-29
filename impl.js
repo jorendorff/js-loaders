@@ -353,10 +353,6 @@ class LoaderImpl {
     //
     // P5 SECURITY ISSUE: Make sure that is OK.
     //
-    // P2 ISSUE #31: Consider `options.module`.
-    //
-    // P2 ISSUE #32:  Consider `options.lineNumber`.
-    //
     static unpackAddressOption(options, errback) {
         if (options !== undefined && "address" in options) {
             let address = options.address;
@@ -454,9 +450,9 @@ class LoaderImpl {
 
             // Interpret the `result`.
             //
-            // It must a string or an object with a `.normalized` property
+            // It must be a string or an object with a `.normalized` property
             // whose value is a string.  Otherwise a `TypeError` is thrown.
-            // per samth, 2013 April 22, and issue #13.
+            // per samth, 2013 April 22, as amended by issue #13.
             //
             if (typeof result === "string") {
                 normalized = result;
@@ -505,7 +501,6 @@ class LoaderImpl {
         }
 
         // If the module has already been linked, we are done.
-        // P3 ISSUE #12:  Loader hooks can't always detect pipeline exit.
         let existingModule = $MapGet(this.modules, normalized);
         if (existingModule !== undefined)
             return [normalized, {status: "linked", module: existingModule});
@@ -723,8 +718,6 @@ class LoaderImpl {
                 throw $TypeError("translate hook must return a string");
 
             // Call the `link` hook, if we are loading a module.
-            // P1 ISSUE #28: Should this hook be called when loading a script?
-            // Perhaps once per module?
             let linkResult =
                 type === "module"
                 ? this.loader.link(src, {metadata, normalized, type, actualAddress})
@@ -1182,11 +1175,6 @@ class LinkSet {
     }
 
     // **`addLoad`** - Add a `load` to this `LinkSet`.
-    //
-    // P1 ISSUE: whether to keep a per-LinkSet copy of the relevant slice of
-    // the module registry, to avoid the LinkSet, as an algorithm, sharing
-    // mutable state with other LinkSets and user code.
-    //
     addLoad(load) {
         // This case can happen in `import`, for example if a `resolve` or
         // `fetch` hook throws.
