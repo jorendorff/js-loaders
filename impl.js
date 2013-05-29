@@ -652,6 +652,9 @@ class LoaderImpl {
                 throw $TypeError("fetch() fulfill callback: fetch already completed");
             fetchCompleted = true;
 
+            if ($SetSize(load.loadSets) === 0)
+                return;
+
             if (typeof src !== "string") {
                 let msg = "fulfill callback: first argument must be a string";
                 AsyncCall(errback, $TypeError(msg));
@@ -676,8 +679,8 @@ class LoaderImpl {
             if (fetchCompleted)
                 throw $TypeError("fetch() reject callback: fetch already completed");
             fetchCompleted = true;
-
-            AsyncCall(errback, exc);
+            if ($SetSize(load.loadSets) !== 0)
+                AsyncCall(errback, exc);
         }
 
         try {
@@ -694,9 +697,7 @@ class LoaderImpl {
 
     // **`onFulfill`** - This is called once a fetch succeeds.
     onFulfill(load, metadata, normalized, type, sync, src, actualAddress) {
-        // If `load` is no longer needed by any `LinkSet`, do nothing.  When
-        // one load in a LinkSet fails, we shouldn't continue loading
-        // dependencies anyway.
+        // If all link sets that required this load have failed, do nothing.
         if ($SetSize(load.linkSets) === 0)
             return;
 
@@ -848,48 +849,54 @@ class LoaderImpl {
 //
 //       * If the error is related to an in-flight `Load` (that is, it has to
 //         do with a hook throwing, returning an invalid value, calling a
-//         fulfill callback inorrectly, or calling the reject callback), then F
-//         = the set of LinkSets that needed that module.
+//         fulfill callback incorrectly, or calling the reject callback), then
+//         F = `load.linkSets`.
 //
-//  2. Let M = the set of all in-flight modules (in loader.loads) that are not
-//     needed by any LinkSet other than those in F.
+//  2. Detach each `LinkSet` in F from all `Load`s it required.
 //
-//     P3 ISSUE #20: Can the set M be computed efficiently?
+//  3. Let M = the set of all in-flight loads (in `loader.loads`) that are no
+//     longer needed by any LinkSet.
 //
-//  3. Remove all modules in M from `loader.loads`.  If any are in "loading"
-//     state, neuter the fetch hook's fulfill/reject callbacks so that they
-//     become no-ops.
+//  4. Remove all loads in M from `loader.loads`.  If any are in `"loading"`
+//     state, make the `fulfill` and `reject` callbacks into no-ops.
 //
 //     P4 ISSUE: It would be nice to cancel those fetches, if possible.
 //
-//  4. Call the `errback` for each `LinkSet` in F.
+//  5. Call the `errback` for each `LinkSet` in F.
 //
-//     P5 ISSUE:  Ordering.  We can spec the order to be the order of
-//     the `import()/load()/evalAsync()` calls, wouldn't be hard.
+//     P5 ISSUE: Ordering.  We can spec the order to be the order of the
+//     `import()/load()/evalAsync()` calls, wouldn't be hard; or explicitly
+//     make it unspecified.
 //
 // After that, we drop the failed `LinkSet`s and they become garbage.
 //
-// Note that any modules that are already linked and committed to the module
-// registry are unaffected by the error.
-
-
+// Modules that are already linked and committed to the module registry are
+// unaffected by the error.
+//
+//
 // ### Encyclopedia of errors
 //
-// For reference, here are all the kinds of errors that can
-// occur. This list is meant to be exhaustive.
+// For reference, here are all the kinds of errors that can occur that are
+// related to on or more loads in progress. This list is meant to be exhaustive.
 //
 // Errors related to a `Load`:
 //
-//   - For each module, we call all five loader hooks, any of which
-//     can throw or return an invalid value.
+//   - For each load, whether we're loading a script or a module, we call one
+//     or more of the loader hooks.  Getting the hook from the Loader object
+//     can trigger a getter that throws.  The value of the hook property can be
+//     non-callable.  The hook can throw.  The hook can return an invalid
+//     return value.
 //
 //   - The `normalize`, `resolve`, and `link` hooks may return objects that are
-//     then destructured.  These objects could throw from a getter or `Proxy`
+//     then destructured.  These objects could throw from a getter or proxy
 //     trap during destructuring.
 //
 //   - The fetch hook can report an error via the `reject()` callback.
 //
 //   - We can fetch bad code and get a `SyntaxError` trying to parse it.
+//
+//   - Once the code is parsed, we call the `normalize` hook for each import in
+//     that code; that hook can throw or return an invalid value.
 //
 // Errors related to a `LinkSet`:
 //
@@ -908,16 +915,9 @@ class LoaderImpl {
 //
 // Other:
 //
-//   - The `normalize` hook throws or returns an invalid value.  This happens
-//     so early in the load process that there is no `Load` yet.  We can
-//     directly call the `errback` hook.  TODO see if this really fits in
-//     here...
-//
-//   - The `fetch` hook errors described above can happen when fetching script
-//     code for a `load()` call. Again, this happens very early in the process;
-//     no `LinkSet`s and no modules are involved. We can skip the complex
-//     error-handling process and just directly call the `errback` hook. (But
-//     TODO - it might make more sense to make `load()` use a `LinkSet` too.)
+//   - The `normalize` hook throws or returns an invalid value when we call it
+//     for `loader.import()`.  This happens so early in the load process that
+//     there is no `Load` yet.  We can directly call the `errback` hook.
 
 
 // ## Dependency loading
