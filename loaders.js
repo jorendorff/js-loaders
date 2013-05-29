@@ -255,19 +255,24 @@ export class Loader {
 
     // ## Loading and running code
     //
-    // The major methods of `Loader` are for loading and running code:
-    //
-    //   * `eval(src, options)` - Synchronously run some code.  Never loads
-    //     modules, but `src` may import already-loaded modules.
+    // The high-level interface of `Loader` consists of four methods for
+    // loading and running code:
     //
     //   * `import(moduleName, callback, errback)` - Asynchronously load a
     //     module and its dependencies.
     //
+    //   * `load(address, callback, errback, options)` - Asynchronously load
+    //     and run a script.  Loads imported modules.
+    //
     //   * `evalAsync(src, callback, errback, options)` - Asynchronously run
     //     some code.  Loads imported modules.
     //
-    //   * `load(address, callback, errback, options)` - Asynchronously load
-    //     and run a script.  Loads imported modules.
+    //   * `eval(src, options)` - Synchronously run some code.  Never fetches
+    //     modules, but `src` may import already-loaded modules.
+    //
+    // These are implemented in terms of slightly lower-level building blocks.
+    // Each of the four methods creates a `LinkSet` object, which is in charge
+    // of linking, and at least one `Load`.
 
     // P1 ISSUE #30: the callback and errback arguments should be last.
 
