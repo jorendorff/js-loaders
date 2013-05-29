@@ -24,7 +24,8 @@
 // This implementation of ES6 module loaders is incomplete and untested.  Some
 // parts are in decent shape:
 //
-//   * the `Loader` constructor;
+//   * the public `Loader` class;
+//   * the `LoaderImpl` constructor;
 //   * the methods for loading and running code:
 //     `eval`, `evalAsync`, `load`, and `import`;
 //   * the methods for directly accessing the module map:
@@ -109,23 +110,63 @@ export class Loader {
     get strict() { return impl(this).strict; }
 
 
-    // ### High-level API for loading and running code.
+    // ### Loading and running code
     //
     // The high-level interface of `Loader` consists of four methods for
     // loading and running code:
+
+    // **`import`** - Asynchronously load a module and its dependencies.
     //
-    //   * `import(moduleName, callback, errback)` - Asynchronously load a
-    //     module and its dependencies.
+    // On success, pass the `Module` object to the success callback.
     //
-    //   * `load(address, callback, errback, options)` - Asynchronously load
-    //     and run a script.  Loads imported modules.
+    import(moduleName,
+           callback = module => {},
+           errback = exc => { throw exc; },
+           options = undefined)
+    {
+        impl(this).import(moduleName, callback, errback, options);
+    }
+
+    // **`load`** - Asynchronously load and run a script.  If the script
+    // contains import declarations, this can cause modules to be loaded.
     //
-    //   * `evalAsync(src, callback, errback, options)` - Asynchronously run
-    //     some code.  Loads imported modules.
+    // On success, pass the result of evaluating the script to the success
+    // callback.
     //
-    //   * `eval(src, options)` - Synchronously run some code.  Never fetches
-    //     modules, but `src` may import already-loaded modules.
+    load(address,
+         callback = value => {},
+         errback = exc => { throw exc; },
+         options = undefined)
+    {
+        impl(this).load(address, callback, errback, options);
+    }
+
+    // **`evalAsync`** - Asynchronously run some code, first loading any
+    // imported modules that aren't already loaded.
     //
+    // This is the same as `load` but with no need to fetch the initial script.
+    // On success, the result of evaluating the program is passed to
+    // the success callback.
+    //
+    evalAsync(src,
+              callback = value => {},
+              errback = exc => { throw exc; },
+              options = undefined)
+    {
+        impl(this).evalAsync(src, callback, errback, options);
+    }
+
+    // **`eval`** - Synchronously run some code.
+    //
+    // `src` may import modules, but if it directly or indirectly imports a
+    // module that is not already loaded, a `SyntaxError` is thrown.
+    //
+    // P2 ISSUE #8: Does global.eval go through the translate hook?
+    //
+    eval(src, options) {
+        return impl(this).eval(src, options);
+    }
+
     // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
     // `.load()`, and `.import()` all take two callback arguments, `callback`
     // and `errback`, the success and failure callbacks respectively.
@@ -153,56 +194,6 @@ export class Loader {
     // upwards-compatible to `Future`s.  per samth, 2013 April 22.
     //
     // P1 ISSUE #30: the callback and errback arguments should be last.
-
-    // **`import`** - Asynchronously load, link, and execute a module and any
-    // dependencies it imports.  On success, pass the `Module` object to the
-    // success callback.
-    import(moduleName,
-           callback = module => {},
-           errback = exc => { throw exc; },
-           options = undefined)
-    {
-        impl(this).import(moduleName, callback, errback, options);
-    }
-
-    // **`load`** - Asynchronously load and run a script.  If the script
-    // contains import declarations, this can cause modules to be loaded,
-    // linked, and executed.
-    //
-    // On success, the result of evaluating the script is passed to the success
-    // callback.
-    //
-    load(address,
-         callback = value => {},
-         errback = exc => { throw exc; },
-         options = undefined)
-    {
-        impl(this).load(address, callback, errback, options);
-    }
-
-    // **`evalAsync`** - Asynchronously evaluate the program `src`.
-    //
-    // This is the same as `load` but without fetching the initial script.  On
-    // success, the result of evaluating the program is passed to `callback`.
-    //
-    evalAsync(src,
-              callback = value => {},
-              errback = exc => { throw exc; },
-              options = undefined)
-    {
-        impl(this).evalAsync(src, callback, errback, options);
-    }
-
-    // **`eval`** - Evaluate the program `src`.
-    //
-    // `src` may import modules, but if it imports a module that is not
-    // already loaded, a `SyntaxError` is thrown.
-    //
-    // P2 ISSUE #8: Does global.eval go through the translate hook?
-    //
-    eval(src, options) {
-        return impl(this).eval(src, options);
-    }
 
 
     // ### Module registry
@@ -383,15 +374,14 @@ export class Loader {
     // we're loading a script, not a module; but it does call the `fetch` and
     // `translate` hooks, per samth, 2013 April 22.)
     //
-    // **Synchronous calls to `fulfill` and `reject`:**  (P2 ISSUE #9)  The
+    // **Synchronous calls to `fulfill` and `reject`:** (P2 ISSUE #9) The
     // `fetch` hook may call the `fulfill` or `reject` callback synchronously
-    // rather than waiting for the next event loop turn.  Per meeting, 2013
-    // April 26.
-    //
-    // I think samth and I agree that a synchronous `fulfill` callback should
-    // not synchronously call `translate`/`link` hooks, much less
-    // `normalize`/`resolve`/`fetch` hooks for dependencies.  TODO:  Code that
-    // up.
+    // rather than waiting for the next event loop turn.  But in that case
+    // `fulfill` simply schedules the pipeline to resume asynchronously.  Per
+    // meeting, 2013 April 26. *Rationale:* It would be strange for a
+    // synchronous `fulfill` callback to synchronously call `translate`/`link`
+    // hooks before the `fetch` hook has returned. To say nothing of
+    // `normalize`/`resolve`/`fetch` hooks for dependencies.
     //
     // **Default behavior:** Pass a `TypeError` to the `reject` callback.
     //
