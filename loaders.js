@@ -381,47 +381,6 @@ export class Loader {
         return this.@callFetch(load, address, referer, metadata, null, "script");
     }
 
-    // **`eval`** - Evaluate the program `src`.
-    //
-    // `src` may import modules, but if it imports a module that is not
-    // already loaded, a `SyntaxError` is thrown.
-    //
-    // P2 ISSUE #8: Does global.eval go through the translate hook?
-    //
-    eval(src, options) {
-        let address = Loader.@unpackAddressOption(options, null);
-
-        // The loader works in three basic phases: load, link, and execute.
-        // During the **load phase**, code is loaded and parsed, and import
-        // dependencies are traversed.
-
-        // The `Load` object here is *pro forma*; `eval` is synchronous and
-        // thus cannot fetch code.
-        let load = new Load([]);
-        let linkSet = new LinkSet(this, load, null, null);
-
-        // Finish loading `src`.  This is the part where, in an *asynchronous*
-        // load, we would trigger further loads for any imported modules that
-        // are not yet loaded.
-        //
-        // Instead, here we pass `true` to `@onFulfill` to indicate that we're
-        // doing a synchronous load.  This makes it throw rather than trigger
-        // any new loads or add any still-loading modules to the link set.  If
-        // this doesn't throw, then we have everything we need and load phase
-        // is done.
-        //
-        this.@onFulfill(load, {}, null, "script", true, src, address);
-
-        // The **link phase** links each imported name to the corresponding
-        // module or export.
-        linkSet.link();
-
-        // During the **execute phase**, we first execute module bodies for any
-        // modules needed by `script` that haven't already executed.  Then we
-        // evaluate `script` and return that value.
-        return ensureExecuted(script);
-    }
-
     // **`evalAsync`** - Asynchronously evaluate the program `src`.
     //
     // `src` may import modules that have not been loaded yet.  In that case,
@@ -479,6 +438,47 @@ export class Loader {
         let run = Loader.@makeEvalCallback(load, callback, errback);
         new LinkSet(this, load, run, errback);
         this.@onFulfill(load, {}, null, "script", false, src, address);
+    }
+
+    // **`eval`** - Evaluate the program `src`.
+    //
+    // `src` may import modules, but if it imports a module that is not
+    // already loaded, a `SyntaxError` is thrown.
+    //
+    // P2 ISSUE #8: Does global.eval go through the translate hook?
+    //
+    eval(src, options) {
+        let address = Loader.@unpackAddressOption(options, null);
+
+        // The loader works in three basic phases: load, link, and execute.
+        // During the **load phase**, code is loaded and parsed, and import
+        // dependencies are traversed.
+
+        // The `Load` object here is *pro forma*; `eval` is synchronous and
+        // thus cannot fetch code.
+        let load = new Load([]);
+        let linkSet = new LinkSet(this, load, null, null);
+
+        // Finish loading `src`.  This is the part where, in an *asynchronous*
+        // load, we would trigger further loads for any imported modules that
+        // are not yet loaded.
+        //
+        // Instead, here we pass `true` to `@onFulfill` to indicate that we're
+        // doing a synchronous load.  This makes it throw rather than trigger
+        // any new loads or add any still-loading modules to the link set.  If
+        // this doesn't throw, then we have everything we need and load phase
+        // is done.
+        //
+        this.@onFulfill(load, {}, null, "script", true, src, address);
+
+        // The **link phase** links each imported name to the corresponding
+        // module or export.
+        linkSet.link();
+
+        // During the **execute phase**, we first execute module bodies for any
+        // modules needed by `script` that haven't already executed.  Then we
+        // evaluate `script` and return that value.
+        return ensureExecuted(script);
     }
 
     // **`@unpackAddressOption`** - Used by several Loader methods to get
