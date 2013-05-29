@@ -60,8 +60,8 @@ export class Loader {
     // **`new Loader(parent, options)`** - Create a new `Loader`.
     constructor(parent, options) {
         // Since ES6 does not have support for private state or private
-        // methods, we use a WeakMap to map `Loader` objects to `LoaderImpl`
-        // objects which are not accessible from user code.
+        // methods, everything private is stored on a separate `LoaderImpl`
+        // object which is not accessible from user code.
         newLoaderImpl(this, parent, options);
 
         // P4 ISSUE: Detailed behavior of hooks.
