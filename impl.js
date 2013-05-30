@@ -126,17 +126,22 @@ import {
     $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
 } from "implementation-builtins";
 
+// Each public `Loader` object has a private `LoaderImpl` object.  The simplest
+// way to connect the two without exposing `LoaderImpl` to user code is to use
+// a `WeakMap`.
 let loaderImplMap = $WeakMapNew();
 
-export function impl(loader) {
-    let li = $WeakMapGet(loaderImplMap, loader);
-    if (li === undefined)
-        throw $TypeError("method called on incompatible object");
-    return li;
+// Create a new `LoaderImpl` and associate it with `loader`, a new `Loader`.
+export function createImpl(loader, parent, options) {
+    $WeakMapSet(loaderImplMap, this, new LoaderImpl(loader, parent, options));
 }
 
-export function newLoaderImpl(loader, parent, options) {
-    $WeakMapSet(loaderImplMap, this, new LoaderImpl(loader, parent, options));
+// Get the `LoaderImpl` for a given `Loader` object.
+export function getImpl(loader) {
+    let li = $WeakMapGet(loaderImplMap, loader);
+    if (li === undefined)
+        throw $TypeError("Loader method called on incompatible object");
+    return li;
 }
 
 class LoaderImpl {

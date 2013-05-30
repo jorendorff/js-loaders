@@ -52,7 +52,7 @@
 
 // The entire implementation is in a separate source file,
 // [impl.js](impl.html).
-import { impl, newLoaderImpl } from "./impl";
+import { createImpl, getImpl } from "./impl";
 
 
 // ## The Loader class
@@ -67,7 +67,7 @@ export class Loader {
         // Since ES6 does not have support for private state or private
         // methods, everything private is stored on a separate `LoaderImpl`
         // object which is not accessible from user code.
-        newLoaderImpl(this, parent, options);
+        createImpl(this, parent, options);
 
         // P4 ISSUE: Detailed behavior of hooks.
         //
@@ -107,11 +107,11 @@ export class Loader {
 
     // **`global`** - The global object associated with this loader.  All code
     // loaded by this loader runs in the scope of this object.
-    get global() { return impl(this).global; }
+    get global() { return getImpl(this).global; }
 
     // **`strict`** - The loader's strictness setting.  If true, all code
     // loaded by this loader is treated as strict-mode code.
-    get strict() { return impl(this).strict; }
+    get strict() { return getImpl(this).strict; }
 
 
     // ### Loading and running code
@@ -125,7 +125,7 @@ export class Loader {
     // module that is not already loaded, a `SyntaxError` is thrown.
     //
     eval(src, options) {
-        return impl(this).eval(src, options);
+        return getImpl(this).eval(src, options);
     }
 
     // **`evalAsync`** - Asynchronously run some code, first loading any
@@ -136,7 +136,7 @@ export class Loader {
               errback = exc => { throw exc; },
               options = undefined)
     {
-        impl(this).evalAsync(src, callback, errback, options);
+        getImpl(this).evalAsync(src, callback, errback, options);
     }
 
     // **`load`** - Asynchronously load and run a script.  If the script
@@ -152,7 +152,7 @@ export class Loader {
          errback = exc => { throw exc; },
          options = undefined)
     {
-        impl(this).load(address, callback, errback, options);
+        getImpl(this).load(address, callback, errback, options);
     }
 
     // **`import`** - Asynchronously load a module and its dependencies.
@@ -164,7 +164,7 @@ export class Loader {
            errback = exc => { throw exc; },
            options = undefined)
     {
-        impl(this).import(moduleName, callback, errback, options);
+        getImpl(this).import(moduleName, callback, errback, options);
     }
 
 
@@ -215,7 +215,7 @@ export class Loader {
     // executed yet.
     //
     get(name) {
-        return impl(this).get(name);
+        return getImpl(this).get(name);
     }
 
     // **`has`** - Return `true` if a module with the given full name is in the
@@ -224,12 +224,12 @@ export class Loader {
     // This doesn't call any hooks or execute any module code.
     //
     has(name) {
-        return impl(this).has(name);
+        return getImpl(this).has(name);
     }
 
     // **`set`** - Put a module into the registry.
     set(name, module) {
-        impl(this).set(name, module);
+        getImpl(this).set(name, module);
         return this;
     }
 
@@ -263,7 +263,7 @@ export class Loader {
     //    bug.
     //
     delete(name) {
-        impl(this).delete(name);
+        getImpl(this).delete(name);
         return this;
     }
 
@@ -452,7 +452,7 @@ export class Loader {
     // Define all the built-in objects and functions of the ES6 standard
     // library associated with this loader's intrinsics as properties on
     // `obj`.
-    defineBuiltins(obj = impl(this).global) {
+    defineBuiltins(obj = getImpl(this).global) {
         $DefineBuiltins(obj, this);
         return obj;
     }
