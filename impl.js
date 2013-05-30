@@ -632,10 +632,6 @@ class LoaderImpl {
 
     // **`callFetch`** - Call the fetch hook.  Handle any errors.
     callFetch(load, address, referer, metadata, normalized, type) {
-        // P3 ISSUE: type makes sense here, yes?
-        //
-        // P3 ISSUE: what about "extra"?
-        //
         let options = {referer, metadata, normalized, type};
         let errback = exc => load.fail(exc);
 
@@ -1390,10 +1386,6 @@ function execute(code) {
 // module executes first can observe the others before they have executed.
 // Simply put, we have to start somewhere: one of the modules in the cycle must
 // run before the others.
-//
-// P3 ISSUE: If you `eval()` or `load()` a script S that declares a module M
-// and imports a module K, and executing K's body throws, then the next script
-// that imports M will cause the body of S to execute. Super weird.
 //
 function ensureExecuted(start) {
     // **Why the graph walk doesn't stop at already-executed modules:**  It's
