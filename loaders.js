@@ -136,18 +136,6 @@ export class Loader {
         impl(this).evalAsync(src, callback, errback, options);
     }
 
-    // **`import`** - Asynchronously load a module and its dependencies.
-    //
-    // On success, pass the `Module` object to the success callback.
-    //
-    import(moduleName,
-           callback = module => {},
-           errback = exc => { throw exc; },
-           options = undefined)
-    {
-        impl(this).import(moduleName, callback, errback, options);
-    }
-
     // **`load`** - Asynchronously load and run a script.  If the script
     // contains import declarations, this can cause modules to be loaded.
     //
@@ -162,6 +150,18 @@ export class Loader {
          options = undefined)
     {
         impl(this).load(address, callback, errback, options);
+    }
+
+    // **`import`** - Asynchronously load a module and its dependencies.
+    //
+    // On success, pass the `Module` object to the success callback.
+    //
+    import(moduleName,
+           callback = module => {},
+           errback = exc => { throw exc; },
+           options = undefined)
+    {
+        impl(this).import(moduleName, callback, errback, options);
     }
 
 
