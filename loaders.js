@@ -288,16 +288,15 @@ export class Loader {
     //   * `link(src, options)` - Determine dependencies of a module; optionally
     //     convert an AMD/npm/other module to an ES Module object.
 
-    // **`normalize`** hook - For each `import()` call or import-declaration,
-    // the Loader first calls `loader.normalize(name, options)` passing the
-    // module name as passed to `import()` or as written in the
-    // import-declaration.  This hook returns a full module name which is used
-    // for the rest of the import process.  (In particular, modules are stored
-    // in the registry under their full module name.)
+    // **`normalize`** hook - This hook receives the module name as passed to
+    // `import()` or as written in the import-declaration. It returns a full
+    // module name which is used for the rest of the import process.  (In
+    // particular, modules are stored in the registry under their full module
+    // name.)
     //
-    // **When this hook is called:**  For all imports, including imports in
+    // *When this hook is called:*  For all imports, including imports in
     // scripts.  It is not called for the main script body executed by a call
-    // to loader.load(), .eval(), or .evalAsync().
+    // to `loader.load()`, `.eval()`, or `.evalAsync()`.
     //
     // After calling this hook, if the full module name is in the registry,
     // loading stops. Otherwise loading continues, calling the `resolve`
@@ -312,9 +311,10 @@ export class Loader {
     //     Object to serve as the metadata object for the rest of the load. Or:
     //
     //   - an object that has a `.normalized` property that is a string, the
-    //     full module name.
+    //     full module name, and an optional `.metadata` property that the
+    //     loader will pass to the other hooks.
     //
-    // **Default behavior:**  Return the module name unchanged.
+    // *Default behavior:*  Return the module name unchanged.
     //
     normalize(name, options) {
         return name;
@@ -336,13 +336,12 @@ export class Loader {
     //     which if present must be an iterable of strings, the names of the
     //     modules defined in the script at the given address.
     //
-    // **When this hook is called:**  For all imports, immediately after the
+    // *When this hook is called:*  For all imports, immediately after the
     // `normalize` hook returns successfully, unless the module is already
     // loaded or loading.
     //
-    // **Default behavior:**  Return the module name unchanged.
-    //
-    // (The browser's System.resolve hook is considerably more complex.)
+    // *Default behavior:*  Return the module name unchanged.
+    // (The browser's `System.resolve` hook is considerably more complex.)
     //
     resolve(normalized, options) {
         return normalized;
@@ -362,7 +361,7 @@ export class Loader {
     // `options.type` is the string `"module"` when fetching a standalone
     // module, and `"script"` when fetching a script.
     //
-    // **When this hook is called:**  For all modules and scripts whose source
+    // *When this hook is called:*  For all modules and scripts whose source
     // is not directly provided by the caller.  It is not called for the script
     // bodies executed by `loader.eval()` and `.evalAsync()`, since those do
     // not need to be fetched.  `loader.evalAsync()` can trigger this hook, for
@@ -373,28 +372,28 @@ export class Loader {
     // we're loading a script, not a module; but it does call the `fetch` and
     // `translate` hooks, per samth, 2013 April 22.)
     //
-    // **Synchronous calls to `fulfill` and `reject`:**  The `fetch` hook may
+    // *Default behavior:*  Pass a `TypeError` to the `reject` callback.
+    //
+    // *Synchronous calls to `fulfill` and `reject`:*  The `fetch` hook may
     // call the `fulfill` or `reject` callback synchronously rather than
     // waiting for the next event loop turn.  `fulfill` schedules the pipeline
-    // to resume asynchronously.  Per meeting, 2013 April 26.  *Rationale:*  It
+    // to resume asynchronously.  Per meeting, 2013 April 26.  *Rationale:* It
     // would be strange for a synchronous `fulfill` callback to synchronously
-    // call `translate`/`link` hooks before the `fetch` hook has returned.  To
-    // say nothing of `normalize`/`resolve`/`fetch` hooks for dependencies.
+    // call `translate`/`link` hooks, and then `normalize`/`resolve`/`fetch`
+    // hooks for dependencies, before the first `fetch` hook has returned.
     //
-    // **Default behavior:**  Pass a `TypeError` to the `reject` callback.
-    //
-    fetch(resolved, fulfill, reject, options) {
+    fetch(address, fulfill, reject, options) {
         AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
     }
 
     // **`translate`** hook - Optionally translate `src` from some other
     // language into JS.
     //
-    // **When this hook is called:**  For all modules and scripts.  (It is
-    // not decided whether this is called for direct eval scripts; see issue on
-    // Loader.eval().)
+    // *When this hook is called:*  For all modules and scripts.  (It is not
+    // decided whether this is called for direct eval scripts; see
+    // [issue #8](https://github.com/jorendorff/js-loaders/issues/8).)
     //
-    // **Default behavior:**  Return `src` unchanged.
+    // *Default behavior:*  Return `src` unchanged.
     //
     translate(src, options) {
         return src;
@@ -440,10 +439,10 @@ export class Loader {
     //     import pre-ES6 modules such as AMD modules. See
     //     [issue #19](https://github.com/jorendorff/js-loaders/issues/19).)
     //
-    // **When this hook is called:**  After the `translate` hook, for modules
+    // *When this hook is called:*  After the `translate` hook, for modules
     // only.
     //
-    // **Default behavior:**  Return undefined.
+    // *Default behavior:*  Return undefined.
     //
     link(src, options) {
     }
