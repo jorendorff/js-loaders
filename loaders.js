@@ -5,8 +5,6 @@
 // Source code is on github:
 // [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
 //
-// [View in HTML.](https://people.mozilla.com/~jorendorff/js-loaders/loaders.html)
-//
 // This file, `loaders.js`, describes the `Loader` API.  See
 // [`impl.js`](impl.html) for the implementation.
 //
