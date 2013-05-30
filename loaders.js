@@ -436,8 +436,8 @@ export class Loader {
     //     declarations can still be statically validated.
     //
     //     (This feature is provided in order to support using `import` to
-    //     import pre-ES6 modules such as AMD modules. See [issue
-    //     #19](https://github.com/jorendorff/js-loaders/issues/19).)
+    //     import pre-ES6 modules such as AMD modules. See
+    //     [issue #19](https://github.com/jorendorff/js-loaders/issues/19).)
     //
     // **When this hook is called:**  After the `translate` hook, for modules
     // only.
