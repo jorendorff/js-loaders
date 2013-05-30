@@ -50,7 +50,10 @@
 
 "use strict";
 
+// The entire implementation is in a separate source file,
+// [impl.js](impl.html).
 import { impl, newLoaderImpl } from "./impl";
+
 
 // ## The Loader class
 //
