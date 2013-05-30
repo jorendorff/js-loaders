@@ -118,6 +118,26 @@ export class Loader {
     // The high-level interface of `Loader` consists of four methods for
     // loading and running code:
 
+    // **`eval`** - Synchronously run some code.
+    //
+    // `src` may import modules, but if it directly or indirectly imports a
+    // module that is not already loaded, a `SyntaxError` is thrown.
+    //
+    eval(src, options) {
+        return impl(this).eval(src, options);
+    }
+
+    // **`evalAsync`** - Asynchronously run some code, first loading any
+    // imported modules that aren't already loaded.
+    //
+    evalAsync(src,
+              callback = value => {},
+              errback = exc => { throw exc; },
+              options = undefined)
+    {
+        impl(this).evalAsync(src, callback, errback, options);
+    }
+
     // **`import`** - Asynchronously load a module and its dependencies.
     //
     // On success, pass the `Module` object to the success callback.
@@ -136,6 +156,8 @@ export class Loader {
     // On success, pass the result of evaluating the script to the success
     // callback.
     //
+    // This is the same as `asyncEval`, but first fetching the script.
+    //
     load(address,
          callback = value => {},
          errback = exc => { throw exc; },
@@ -144,29 +166,6 @@ export class Loader {
         impl(this).load(address, callback, errback, options);
     }
 
-    // **`evalAsync`** - Asynchronously run some code, first loading any
-    // imported modules that aren't already loaded.
-    //
-    // This is the same as `load` but with no need to fetch the initial script.
-    // On success, the result of evaluating the program is passed to
-    // the success callback.
-    //
-    evalAsync(src,
-              callback = value => {},
-              errback = exc => { throw exc; },
-              options = undefined)
-    {
-        impl(this).evalAsync(src, callback, errback, options);
-    }
-
-    // **`eval`** - Synchronously run some code.
-    //
-    // `src` may import modules, but if it directly or indirectly imports a
-    // module that is not already loaded, a `SyntaxError` is thrown.
-    //
-    eval(src, options) {
-        return impl(this).eval(src, options);
-    }
 
     // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
     // `.load()`, and `.import()` all take two callback arguments, `callback`
