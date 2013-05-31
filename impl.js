@@ -1196,29 +1196,12 @@ class LinkSet {
     // **`onLoad`** - `Load.prototype.finish` calls this after one `Load`
     // successfully finishes, and after kicking off loads for all its
     // dependencies.
-    //
-    // If this `LinkSet` is completely satisfied (that is, all dependencies
-    // have loaded) then we link the modules and fire the success callback.
-    //
-    // **Timing and grouping of dependencies** - Consider
-    //
-    //     loader.evalAsync('import "x" as x; import "y" as y;', f);
-    //
-    // We wait to execute "x" until "y" has also been fetched. Even if "x"
-    // turns out to be linkable and runnable, its dependencies are all
-    // satisfied, it links correctly, and it has no direct or indirect
-    // dependency on "y", we still wait.
-    //
-    // *Rationale:* Dependencies could be initialized more eagerly, but the
-    // order would be less deterministic. The design opts for a bit more
-    // determinism in common cases&mdash;though it is easy to trigger
-    // non-determinism since multiple link sets can be in-flight at once.
-    //
     onLoad(load) {
         $Assert($SetHas(this.loads, load));
         $Assert(load.status === "loaded" || load.status === "linked");
         if (--this.loadingCount === 0) {
-            // Link, then schedule the success callback.
+            // If all dependencies have loaded, link the modules and fire the
+            // success callback.
             try {
                 this.link();
             } catch (exc) {
@@ -1229,6 +1212,20 @@ class LinkSet {
             AsyncCall(this.callback);
         }
     }
+
+    // **Timing and grouping of dependencies** - Consider
+    //
+    //     loader.evalAsync('import "x" as x; import "y" as y;', f);
+    //
+    // The above code implies that we wait to execute "x" until "y" has also
+    // been fetched. Even if "x" turns out to be linkable and runnable, its
+    // dependencies are all satisfied, it links correctly, and it has no direct
+    // or indirect dependency on "y", we still wait.
+    //
+    // *Rationale:* Dependencies could be initialized more eagerly, but the
+    // order would be less deterministic. The design opts for a bit more
+    // determinism in common cases&mdash;though it is still possible to trigger
+    // non-determinism since multiple link sets can be in-flight at once.
 
     // **`link`** - Link all scripts and modules in this link set to each other
     // and to modules in the registry.  This is done in a synchronous walk of
