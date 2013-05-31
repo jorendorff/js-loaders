@@ -21,11 +21,17 @@ minimize cross-browser compatibility gotchas.
 
 ## Module use cases
 
-### Sharing and reusing code (without full-duplex coordination)
+### Importing modules others have written
 
-Use case: just importing underscore
+Use case: just importing underscore (one module in one file)
 
-Use case: coping with dependencies
+Use case: importing minimized modularized jquery (a package with many modules in one file)
+
+Use case: importing both Backbone and Underscore, if Backbone imports Underscore
+
+Use case: hosting the code yourself
+
+Use case: importing the same modules from many different web pages on a site
 
 
 ### Easy development and debugging
@@ -45,6 +51,8 @@ Use case: updating to a newer version of a third-party package
 
 
 ### Project organization
+
+Use case: imports within a package
 
 Use case: loading multiple versions of a module
 
