@@ -582,12 +582,9 @@ class LoaderImpl {
                             "loader.resolve hook must be an object");
                     }
 
-                    let names = [...extra];
-
                     // Record a load in progress for all other modules defined
                     // in the same script.
-                    for (let i = 0; i < names.length; i++) {
-                        let name = names[i];
+                    for (let name of extra) {
                         if (typeof name !== "string")
                             throw $TypeError("module names must be strings");
                         if (name !== normalized) {
@@ -1203,7 +1200,7 @@ class LinkSet {
     // If this `LinkSet` is completely satisfied (that is, all dependencies
     // have loaded) then we link the modules and fire the success callback.
     //
-    // **Timing and grouping of dependencies.** Consider
+    // **Timing and grouping of dependencies** - Consider
     //
     //     loader.evalAsync('import "x" as x; import "y" as y;', f);
     //
@@ -1270,7 +1267,7 @@ class LinkSet {
                     let current = $MapGet(this.loaderImpl.loads, fullName);
 
                     // These two cases can happen if a script unexpectedly
-                    // declares modules not named by resolve().other.
+                    // declares modules not named by `resolve().extra`.
                     if (current === undefined) {
                         // Make sure no other script in the same LinkSet
                         // declares it too.
@@ -1349,6 +1346,16 @@ class LinkSet {
 
 
 // ## Module and script execution
+//
+// Module bodies are executed on demand, as late as possible.  The loader uses
+// the function `ensureExecuted`, defined below, to execute scripts.  The
+// loader always calls `ensureExecuted` before returning a Module object to
+// user code.
+//
+// There is one way a module can be exposed to script before it has executed.
+// In the case of an import cycle, whichever module executes first can observe
+// the others before they have executed.  Simply put, we have to start
+// somewhere: one of the modules in the cycle must run before the others.
 
 // **`executedCode`** - The set of all scripts and modules we have ever passed
 // to `$CodeExecute()`; that is, everything we've ever tried to execute.
@@ -1374,22 +1381,11 @@ function execute(code) {
 // `start` and its dependencies must already be linked.
 //
 // On success, `start` and all its dependencies, transitively, will have
-// started to execute exactly once.  That is, they will all have been added to
-// `executedCode`.
-//
-// **Purpose** - Module bodies are executed on demand, as late as possible.
-// The loader always uses this function to execute scripts, and always calls
-// this function before returning a module to script.
-//
-// **Not-yet-executed modules** - There is one way a module can be exposed to
-// script before it has executed.  In the case of an import cycle, whichever
-// module executes first can observe the others before they have executed.
-// Simply put, we have to start somewhere: one of the modules in the cycle must
-// run before the others.
+// started to execute exactly once.
 //
 function ensureExecuted(start) {
-    // **Why the graph walk doesn't stop at already-executed modules:**  It's
-    // a matter of correctness.  Here is the test case:
+    // *Why the graph walk doesn't stop at already-executed modules:*  It's a
+    // matter of correctness.  Here is the test case:
     //
     //     <script>
     //       var ok = false;
@@ -1463,8 +1459,8 @@ function ensureExecuted(start) {
 
     // Run the code.
     //
-    // **Exceptions during execution:** - Module bodies can throw exceptions, and they are
-    // propagated to the caller.
+    // **Exceptions during execution** - Module bodies can throw exceptions,
+    // which are propagated to the caller.
     //
     // When this happens, we leave the module in the registry (per samth, 2013
     // April 16) because re-loading the module and running it again is not
@@ -1498,10 +1494,12 @@ function ToBoolean(v) {
 }
 
 // Return true if Type(v) is Object.
+//
+// Perhaps surprisingly, process of elimination is the only correct way to
+// implement this.  See [ES5 11.4.3, "The `typeof`
+// Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
+//
 function IsObject(v) {
-    // Perhaps surprisingly, process of elimination is the only correct way to
-    // implement this.  See [ES5 11.4.3, "The `typeof`
-    // Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
     return v !== null &&
            v !== undefined &&
            typeof v !== "boolean" &&
