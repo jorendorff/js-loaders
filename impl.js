@@ -1499,10 +1499,14 @@ function ToBoolean(v) {
 
 // Return true if Type(v) is Object.
 function IsObject(v) {
-    // TODO: I don't think this is correct per ES6. There may not be a good way
-    // to do it.
-    return (typeof v === "object" && v !== null) ||
-           typeof v === "function";
+    // Perhaps surprisingly, process of elimination is the only correct way to
+    // implement this.  See [ES5 11.4.3, "The `typeof`
+    // Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
+    return v !== null &&
+           v !== undefined &&
+           typeof v !== "boolean" &&
+           typeof v !== "number" &&
+           typeof v !== "string";
 }
 
 // Schedule fn to be called with the given arguments during the next turn of
