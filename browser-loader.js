@@ -277,7 +277,7 @@ System.fetch = function fetch(address, fulfill, reject, options) {
     // address. See comment in System.resolve above.
     address = $ToAbsoluteURL(this.@baseURL, address);
 
-    // TODO: Implement this in terms of XHR instead of an intrinsic ([issue
-    // #24](https://github.com/jorendorff/js-loaders/issues/24)).
+    // TODO: Implement this in terms of XHR instead of an intrinsic
+    // ([issue #24](https://github.com/jorendorff/js-loaders/issues/24)).
     $FetchTextFromURL(address, fulfill, reject);
 };
