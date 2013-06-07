@@ -132,11 +132,11 @@ export class Loader {
     // imported modules that aren't already loaded.
     //
     evalAsync(src,
+              options = undefined,
               callback = value => {},
-              errback = exc => { throw exc; },
-              options = undefined)
+              errback = exc => { throw exc; })
     {
-        getImpl(this).evalAsync(src, callback, errback, options);
+        getImpl(this).evalAsync(src, options, callback, errback);
     }
 
     // **`load`** - Asynchronously load and run a script.  If the script

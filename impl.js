@@ -281,9 +281,9 @@ class LoaderImpl {
     // `callback`.
     //
     evalAsync(src,
+              options = undefined,
               callback = value => undefined,
-              errback = exc => { throw exc; },
-              options = undefined)
+              errback = exc => { throw exc; })
     {
         // P4 ISSUE: Check callability of callbacks here (and everywhere
         // success/failure callbacks are provided)?  It would be a mercy,
@@ -1014,8 +1014,8 @@ class Load {
         //
         // *Rationale:* Consider two `evalAsync` calls.
         //
-        //     System.evalAsync('module "x" { import "y" as y; }', ok, err);
-        //     System.evalAsync('module "x" { import "z" as z; }', ok, err);
+        //     System.evalAsync('module "x" { import "y" as y; }', {}, ok, err);
+        //     System.evalAsync('module "x" { import "z" as z; }', {}, ok, err);
         //
         // There's no sense in letting them race trying to load "y" and "z"
         // after we know one of the two `module "x"` declarations must fail.
@@ -1215,7 +1215,7 @@ class LinkSet {
 
     // **Timing and grouping of dependencies** - Consider
     //
-    //     loader.evalAsync('import "x" as x; import "y" as y;', f);
+    //     loader.evalAsync('import "x" as x; import "y" as y;', {}, f);
     //
     // The above code implies that we wait to execute "x" until "y" has also
     // been fetched. Even if "x" turns out to be linkable and runnable, its
