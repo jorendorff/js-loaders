@@ -4,6 +4,44 @@ import os, shutil, subprocess, tempfile
 import codecs, markdown, html5lib, re
 import xml.etree.ElementTree as ET
 
+section_boundary_re = re.compile(r'^(?=#)', re.MULTILINE)
+
+def preprocess(source):
+    """ Heuristically inject additional formatting into the Markdown source. """
+    sections = re.split(ur'(?m)^(#.*)$', source)
+    result = u''
+    for i in range(1, len(sections), 2):
+        heading = sections[i]
+        body = sections[i + 1]
+        names = set()
+
+        # Find names in the heading.
+        m = re.search(ur'\([^)]*\)', heading)
+        if m is not None:
+            names |= set(re.findall(ur'\w+', m.group(0)))
+
+        # Find names in the body.
+        for m in re.finditer(ur'\bcalled\s+on\s+an\s+object\s+(\w+)', body):
+            names.add(m.group(1))
+        for m in re.finditer(ur'(?i)\blet\s+(\w+)\s+be\b', body):
+            names.add(m.group(1))
+
+        print heading
+        print "Names:", u", ".join(sorted(names))
+        print
+
+        # Replace all names in the body.
+        pattern = ur'(?<!\*)\b(' + ur'|'.join(names) + ur')\b(?!\*)'
+        body = re.sub(pattern, lambda m: u'*' + m.group(1) + u'*', body)
+
+        # Make "this" bold in "the this value".
+        body = re.sub(ur'\b(the\s+)this(\s+value)\b',
+                      lambda m: m.group(1) + u"**this**" + m.group(2),
+                      body)
+
+        result += heading + body
+    return result
+
 def html_to_ooxml(html_element):
     html_ns = u"http://www.w3.org/1999/xhtml"
 
@@ -217,14 +255,15 @@ def main(source_file, output_file):
                 lines.append(line + u"\n")
 
     source = u"".join(lines)
+    source = preprocess(source)
 
     # Render from markdown to html to OOXML.
     html = markdown.markdown(source)
-    print(html)
+    #print(html)
     html_element = html5lib.parse(html, treebuilder="etree")
     word_element = html_to_ooxml(html_element)
 
-    print(ET.tostring(word_element, encoding="UTF-8"))
+    #print(ET.tostring(word_element, encoding="UTF-8"))
 
     src_dir = os.path.dirname(__file__)
     temp_dir = tempfile.mkdtemp()
