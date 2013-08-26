@@ -279,8 +279,8 @@ export class Loader {
     //   * `resolve(fullName, options)` - Given a full module name, determine
     //     the address to load and whether we're loading a script or a module.
     //
-    //   * `fetch(address, fulfill, reject, skip, options)` - Load a script or
-    //     module from the given address.
+    //   * `fetch(address, fulfill, reject, options)` - Load a module from the
+    //     given address.
     //
     //   * `translate(src, options)` - Optionally translate a script or module from
     //     some other language to JS.
