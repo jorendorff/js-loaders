@@ -20,16 +20,26 @@ def html_to_ooxml(html_element):
         return e
 
     class Paragraph(list):
-        __slots__ = ["pStyle"]
-        def __init__(self, runs=(), pStyle=None):
+        __slots__ = ["pStyle", "numId", "ilvl"]
+        def __init__(self, runs=(), pStyle=None, numId=None, ilvl=None):
             list.__init__(self, runs)
             self.pStyle = pStyle
+            self.numId = numId
+            self.ilvl = ilvl
 
         def to_etree(self):
             content = []
+
+            pPr_content = []
             if self.pStyle is not None:
-                pStyle = w_element(u"pStyle", val=self.pStyle)
-                pPr = w_element(u"pPr", [pStyle])
+                pPr_content.append(w_element(u"pStyle", val=self.pStyle))
+            if self.numId is not None:
+                pPr_content.append(w_element(u"numPr", [
+                    w_element(u"numId", val=str(self.numId)),
+                    w_element(u"ilvl", val=str(self.ilvl))
+                ]))
+            if pPr_content:
+                pPr = w_element(u"pPr", pPr_content)
                 content.append(pPr)
 
             for run in self:
@@ -87,7 +97,32 @@ def html_to_ooxml(html_element):
                 setattr(r, k, True)
         return r
 
-    def content_of_element_to_runs(e, **attrs):
+    def element_tag(e):
+        tag = e.tag
+        if tag.startswith("{" + html_ns + "}"):
+            return tag[len("{" + html_ns + "}"):]
+        else:
+            return tag
+
+    def is_inline(e):
+        return element_tag(e) in ('em', 'strong', 'code')
+
+    def content_of_li_element_to_runs_and_blocks(e, attrs):
+        runs = []
+        blocks = []
+        if e.text:
+            runs.append(make_run(e.text, attrs))
+        for child in e:
+            if is_inline(child):
+                assert len(blocks) == 0
+                runs += list(convert_inline(child))
+                if child.tail:
+                    runs.append(make_run(child.tail, attrs))
+            else:
+                blocks.append(child)
+        return runs, blocks
+
+    def content_of_element_to_runs(e, attrs):
         if e.text:
             yield make_run(e.text, attrs)
         for child in e:
@@ -97,37 +132,52 @@ def html_to_ooxml(html_element):
                 yield make_run(child.tail, attrs)
 
     def convert_inline(e, **attrs):
-        tag = e.tag
-        if tag.startswith("{" + html_ns + "}"):
-            tag = tag[len("{" + html_ns + "}"):]
-
+        tag = element_tag(e)
         if tag in ("em", "strong", "code"):
             attrs[tag] = True
-            for run in content_of_element_to_runs(e, **attrs):
+            for run in content_of_element_to_runs(e, attrs):
                 yield run
         else:
             raise Exception("unrecognized tag: <" + tag + ">")
 
-    def content_to_para(e, list_style=None, list_level=None, preserve_space=False, pStyle=None):
-        content = list(content_of_element_to_runs(e))
-        return Paragraph(content, pStyle)
+    def content_to_para(e, preserve_space=False, pStyle=None):
+        content = list(content_of_element_to_runs(e, {}))
+        p = Paragraph(content, pStyle)
+        return p
+
+    def list_item_content_to_paras(e, list_style, list_level, pStyle):
+        runs, blocks = content_of_li_element_to_runs_and_blocks(e, {})
+        assert list_style in ('ol', 'ul')
+        if list_style == 'ol':
+            numId = 560  # temporary hack - numId of an existing list, glurked from the document
+            pStyle = "Alg4"
+        else:
+            numId = 24   # temporary hack - see above
+            pStyle = "BulletNotlast"
+        yield Paragraph(runs, pStyle=pStyle, numId=numId, ilvl=list_level - 1)
+        for child in blocks:
+            for p in convert_block(child, list_style=None, list_level=list_level):
+                yield p
 
     def convert_block(e, list_style=None, list_level=0):
         if e.tail and e.tail.strip():
             raise Exception("unexpected tail! {!r}".format(e.tail))
-        tag = e.tag
-        if tag.startswith("{" + html_ns + "}"):
-            tag = tag[len("{" + html_ns + "}"):]
+        tag = element_tag(e)
         if tag == "p":
             yield content_to_para(e)
         elif tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
             yield content_to_para(e, pStyle=tag.replace('h', 'Heading'))
         elif tag in ('ul', 'ol'):
             for child in e:
-                for p in convert_block(child, tag, list_level + 1):
+                for p in convert_block(child, list_style=tag, list_level=list_level + 1):
                     yield p
         elif tag == "li":
-            yield content_to_para(e, list_style, list_level)
+            if list_style == 'ul':
+                pStyle = "BulletNotlast"
+            else:
+                pStyle = "Alg4"
+            for p in list_item_content_to_paras(e, list_style, list_level, pStyle=pStyle):
+                yield p
         elif tag == "blockquote":
             if list_level != 0:
                 raise Exception("can't convert a blockquote inside a list")
