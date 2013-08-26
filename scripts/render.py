@@ -111,6 +111,8 @@ def html_to_ooxml(html_element):
                     content.append(w_element(u"br"))
                 elif part == "\f":
                     content.append(w_element(u"br", type=u"page"))
+                elif part == "\t":
+                    content.append(w_element(u"tab"))
                 elif part:
                     # need xml:space="preserve"?
                     t = w_element(u"t")
@@ -128,6 +130,10 @@ def html_to_ooxml(html_element):
         text = "[" + text + "]"
         text = " ".join(text.split())
         text = text[1:-1]
+
+        # But if this is a NOTE, include a tab.
+        if text.startswith("NOTE "):
+            text = "NOTE\t" + text[5:]
 
         r = Run(text)
         for k in attrs:
@@ -180,6 +186,8 @@ def html_to_ooxml(html_element):
 
     def content_to_para(e, preserve_space=False, pStyle=None):
         content = list(content_of_element_to_runs(e, {}))
+        if pStyle is None and content and content[0].startswith("NOTE\t"):
+            pStyle = "Note"
         p = Paragraph(content, pStyle)
         return p
 
