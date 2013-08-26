@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 //> #### Array.prototype.indexOf ( searchElement [ , fromIndex ] )
-//> 
+//>
 //> `indexOf` compares searchElement to the elements of the array, in
 //> ascending order, using the Strict Equality Comparison algorithm (11.9.1),
 //> and if found at one or more positions, returns the index of the first such
@@ -78,21 +78,28 @@ function ArrayIndexOf(searchElement/*, fromIndex*/) {
 //> The `length` property of the `indexOf` method is **1**.
 //>
 //> NOTE The `indexOf` function is intentionally generic; it does not require
-//> that its this value be an Array object. Therefore it can be transferred
+//> that its **this** value be an Array object. Therefore it can be transferred
 //> to other kinds of objects for use as a method. Whether the `indexOf`
 //> function can be applied successfully to an exotic object that is not an
 //> Array is implementation-dependent.
-//> 
+//>
 
 
 //> #### Array.prototype.lastIndexOf ( searchElement [ , fromIndex ] )
-//> 
-//> lastIndexOf compares searchElement to the elements of the array in descending order using the Strict Equality Comparison algorithm (11.9.1), and if found at one or more positions, returns the index of the last such position; otherwise, -1 is returned.
-//> 
-//> The optional second argument fromIndex defaults to the array's length minus one (i.e. the whole array is searched). If it is greater than or equal to the length of the array, the whole array will be searched. If it is negative, it is used as the offset from the end of the array to compute fromIndex. If the computed index is less than 0, -1 is returned.
-//> 
-//> When the lastIndexOf method is called with one or two arguments, the following steps are taken:
-//> 
+//>
+//> `lastIndexOf` compares searchElement to the elements of the array in
+//> descending order using the Strict Equality Comparison algorithm (11.9.1),
+//> and if found at one or more positions, returns the index of the last such
+//> position; otherwise, -1 is returned.
+//>
+//> The optional second argument fromIndex defaults to the array's length minus
+//> one (i.e. the whole array is searched). If it is greater than or equal to
+//> the length of the array, the whole array will be searched. If it is
+//> negative, it is used as the offset from the end of the array to compute
+//> fromIndex. If the computed index is less than 0, -1 is returned.
+//>
+//> When the `lastIndexOf` method is called with one or two arguments, the following steps are taken:
+//>
 function ArrayLastIndexOf(searchElement/*, fromIndex*/) {
 //> 1. Let O be the result of calling ToObject passing the this value as the argument.
 //> 1. ReturnIfAbrupt(O).
@@ -140,27 +147,50 @@ function ArrayLastIndexOf(searchElement/*, fromIndex*/) {
 //> 1. Return -1.
     return -1;
 }
-//> 
-//> The length property of the lastIndexOf method is 1.
-//> 
-//> NOTE The lastIndexOf function is intentionally generic; it does not require that its this value be an Array object. Therefore it can be transferred to other kinds of objects for use as a method. Whether the lastIndexOf function can be applied successfully to an exotic object that is not an Array is implementation-dependent.
-//> 
+//>
+//> The `length` property of the `lastIndexOf` method is **1**.
+//>
+//> NOTE The `lastIndexOf` function is intentionally generic; it does not
+//> require that its **this** value be an Array object. Therefore it can be
+//> transferred to other kinds of objects for use as a method. Whether the
+//> `lastIndexOf` function can be applied successfully to an exotic object that
+//> is not an Array is implementation-dependent.
+//>
 
 
 //> #### Array.prototype.every ( callbackfn [ , thisArg ] )
-//> 
-//> callbackfn should be a function that accepts three arguments and returns a value that is coercible to the Boolean value true or false. every calls callbackfn once for each element present in the array, in ascending order, until it finds one where callbackfn returns false. If such an element is found, every immediately returns false. Otherwise, if callbackfn returned true for all elements, every will return true. callbackfn is called only for elements of the array which actually exist; it is not called for missing elements of the array.
-//> 
-//> If a thisArg parameter is provided, it will be used as the this value for each invocation of callbackfn. If it is not provided, undefined is used instead.
-//> 
-//> callbackfn is called with three arguments: the value of the element, the index of the element, and the object being traversed.
-//> 
-//> every does not directly mutate the object on which it is called but the object may be mutated by the calls to callbackfn.
-//> 
-//> The range of elements processed by every is set before the first call to callbackfn. Elements which are appended to the array after the call to every begins will not be visited by callbackfn. If existing elements of the array are changed, their value as passed to callbackfn will be the value at the time every visits them; elements that are deleted after the call to every begins and before being visited are not visited. every acts like the "for all" quantifier in mathematics. In particular, for an empty array, it returns true.
-//> 
-//> When the every method is called with one or two arguments, the following steps are taken:
-//> 
+//>
+//> callbackfn should be a function that accepts three arguments and returns a
+//> value that is coercible to the Boolean value **true** or **false**. `every`
+//> calls callbackfn once for each element present in the array, in ascending
+//> order, until it finds one where callbackfn returns **false**. If such an
+//> element is found, `every` immediately returns **false**. Otherwise, if
+//> callbackfn returned **true** for all elements, `every` will return
+//> **true**. callbackfn is called only for elements of the array which
+//> actually exist; it is not called for missing elements of the array.
+//>
+//> If a thisArg parameter is provided, it will be used as the this value for
+//> each invocation of callbackfn. If it is not provided, **undefined** is used
+//> instead.
+//>
+//> callbackfn is called with three arguments: the value of the element, the
+//> index of the element, and the object being traversed.
+//>
+//> `every` does not directly mutate the object on which it is called but the
+//> object may be mutated by the calls to callbackfn.
+//>
+//> The range of elements processed by `every` is set before the first call to
+//> callbackfn. Elements which are appended to the array after the call to
+//> `every` begins will not be visited by callbackfn. If existing elements of
+//> the array are changed, their value as passed to callbackfn will be the
+//> value at the time `every` visits them; elements that are deleted after the
+//> call to `every` begins and before being visited are not visited. `every`
+//> acts like the "for all" quantifier in mathematics. In particular, for an
+//> empty array, it returns true.
+//>
+//> When the `every` method is called with one or two arguments, the following
+//> steps are taken:
+//>
 function ArrayEvery(callbackfn/*, thisArg*/) {
 //> 1. Let O be the result of calling ToObject passing the this value as the argument.
 //> 1. ReturnIfAbrupt(O).
@@ -204,11 +234,15 @@ function ArrayEvery(callbackfn/*, thisArg*/) {
 //> 1. Return true.
     return true;
 }
-//> 
-//> The length property of the every method is 1.
-//> 
-//> NOTE The every function is intentionally generic; it does not require that its this value be an Array object. Therefore it can be transferred to other kinds of objects for use as a method. Whether the every function can be applied successfully to an exotic object that is not an Array is implementation-dependent.
-//> 
+//>
+//> The `length` property of the `every` method is **1**.
+//>
+//> NOTE The `every` function is intentionally generic; it does not require
+//> that its **this** value be an Array object. Therefore it can be transferred
+//> to other kinds of objects for use as a method. Whether the `every` function
+//> can be applied successfully to an exotic object that is not an Array is
+//> implementation-dependent.
+//>
 
 
 /* ES5 15.4.4.17. */
