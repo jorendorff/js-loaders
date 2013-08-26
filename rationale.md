@@ -12,6 +12,7 @@ Things can happen in an asynchronous module system that can't happen in
 synchronous systems.
 
   * Dependencies can load in parallel.
+
   * While dependencies are loading for one script, another script can run.
     And that script may share dependencies with the first one.
 
