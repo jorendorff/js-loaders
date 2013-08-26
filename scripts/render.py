@@ -151,11 +151,11 @@ def html_to_ooxml(html_element):
     body = w_element("body", paragraphs)
     return w_element("document", [body])
 
-def main():
+def main(source_file, output_file):
     # Load the file, stripping out everything not prefixed with "//>".
     # Treat as bytes; it works because UTF-8 is nice.
     lines = []
-    with codecs.open("../impl.js", encoding="utf-8") as f:
+    with codecs.open(source_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             # TODO: run the pipeline separately for each sequence of //> lines
@@ -190,10 +190,29 @@ def main():
         if os.path.exists(output_docx):
             os.remove(output_docx)
         shutil.move(os.path.join(temp_dir, output_docx),
-                    os.curdir)
+                    output_file)
     finally:
         shutil.rmtree(temp_dir)
 
 
 if __name__ == "__main__":
-    main()
+    repo_root_dir = os.path.dirname(os.path.dirname(__file__))
+    default_js_file = os.path.join(repo_root_dir, "../impl.js")
+
+    import argparse
+    parser = argparse.ArgumentParser(
+        prog="python render.py",
+        description="Convert some JS comments to a Word document.")
+    parser.add_argument(
+        'source_file',
+        metavar="FILE",
+        nargs='?',
+        default=default_js_file,
+        help="JS source files to process (default: ../impl.js)")
+    parser.add_argument(
+        '-o',
+        metavar="FILE",
+        default=os.path.abspath("modules.docx"),
+        help="output file (default: modules.docx)")
+    args = parser.parse_args()
+    main(args.source_file, args.o)
