@@ -30,7 +30,7 @@ def preprocess(source):
         print "Names:", u", ".join(sorted(names))
         print
 
-        # Replace all names in the body.
+        # Italicize all names in the body.
         pattern = ur'(?<!\*)\b(' + ur'|'.join(names) + ur')\b(?!\*)'
         body = re.sub(pattern, lambda m: u'*' + m.group(1) + u'*', body)
 
@@ -38,6 +38,9 @@ def preprocess(source):
         body = re.sub(ur'\b(the\s+)this(\s+value)\b',
                       lambda m: m.group(1) + u"**this**" + m.group(2),
                       body)
+
+        # It might be nice to do pretty quotes and apostrophes here. (The
+        # standard has pretty quotes in some places and ASCII in others.)
 
         result += heading + body
     return result
