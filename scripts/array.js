@@ -201,13 +201,13 @@ function ArrayEvery(callbackfn/*, thisArg*/) {
 //> 1. ReturnIfAbrupt(len).
     var len = TO_UINT32(O.length);
 
-//> 1. If IsCallable(callbackfn) is false, throw a TypeError exception.
+//> 1. If IsCallable(callbackfn) is false, throw a **TypeError** exception.
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.every');
     if (!IsCallable(callbackfn))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, callbackfn));
 
-//> 1. If thisArg was supplied, let T be thisArg; else let T be undefined.
+//> 1. If thisArg was supplied, let T be thisArg; else let T be **undefined**.
     var T = arguments.length > 1 ? arguments[1] : void 0;
 
 //> 1. Let k be 0.
@@ -221,8 +221,8 @@ function ArrayEvery(callbackfn/*, thisArg*/) {
 //>         1. Let kValue be the result of Get(O, Pk).
 //>         1. ReturnIfAbrupt(kValue).
 //>         1. Let testResult be the result of calling the [[Call]] internal
-//>            method of callbackfn with T as thisArgument and a List containing
-//>            kValue, k, and O as argumentsList.
+//>            method of callbackfn with T as <var>thisArgument</var> and a
+//>            List containing kValue, k, and O as <var>argumentsList</var>.
 //>         1. ReturnIfAbrupt(testResult).
 //>         1. If ToBoolean(testResult) is false, return false.
             if (!callFunction(callbackfn, T, O[k], k, O))
@@ -245,146 +245,263 @@ function ArrayEvery(callbackfn/*, thisArg*/) {
 //>
 
 
-/* ES5 15.4.4.17. */
+//>#### Array.prototype.some ( callbackfn [ , thisArg ] )
+//>
+//> callbackfn should be a function that accepts three arguments and returns a
+//> value that is coercible to the Boolean value **true** or **false**. `some`
+//> calls callbackfn once for each element present in the array, in ascending
+//> order, until it finds one where callbackfn returns **true**. If such an
+//> element is found, `some` immediately returns **true**. Otherwise, `some`
+//> returns **false**. callbackfn is called only for elements of the array
+//> which actually exist; it is not called for missing elements of the array.
+//>
+//> If a thisArg parameter is provided, it will be used as the this value for
+//> each invocation of callbackfn. If it is not provided, **undefined** is used
+//> instead.
+//>
+//> callbackfn is called with three arguments: the value of the element,
+//> the index of the element, and the object being traversed.
+//>
+//> `some` does not directly mutate the object on which it is called but the
+//> object may be mutated by the calls to callbackfn.
+//>
+//> The range of elements processed by `some` is set before the first call to
+//> callbackfn. Elements that are appended to the array after the call to
+//> `some` begins will not be visited by callbackfn. If existing elements of
+//> the array are changed, their value as passed to callbackfn will be the
+//> value at the time that `some` visits them; elements that are deleted after
+//> the call to `some` begins and before being visited are not visited. `some`
+//> acts like the "exists" quantifier in mathematics. In particular, for an
+//> empty array, it returns **false**.
+//>
+//> When the `some` method is called with one or two arguments, the following
+//> steps are taken:
 function ArraySome(callbackfn/*, thisArg*/) {
-    /* Step 1. */
+//> 1. Let O be the result of calling ToObject passing the this value as the
+//>    argument.
+//> 1. ReturnIfAbrupt(O).
     var O = ToObject(this);
 
-    /* Steps 2-3. */
+//> 1. Let lenValue be the result of Get(O, `"length"`).
+//> 1. Let len be ToLength(lenValue).
+//> 1. ReturnIfAbrupt(len).
     var len = TO_UINT32(O.length);
 
-    /* Step 4. */
+//> 1. If IsCallable(callbackfn) is **false**, throw a **TypeError** exception.
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.some');
     if (!IsCallable(callbackfn))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, callbackfn));
 
-    /* Step 5. */
+//> 1. If thisArg was supplied, let T be thisArg; else let T be **undefined**.
     var T = arguments.length > 1 ? arguments[1] : void 0;
 
-    /* Steps 6-7. */
-    /* Steps a (implicit), and d. */
+//> 1. Let k be 0.
+//> 1. Repeat, while k < len
     for (var k = 0; k < len; k++) {
-        /* Step b */
+//>     1. Let Pk be ToString(k).
+//>     1. Let kPresent be the result of HasProperty(O, Pk).
+//>     1. ReturnIfAbrupt(kPresent).
+//>     1. If kPresent is **true**, then
         if (k in O) {
-            /* Step c. */
+//>         1. Let kValue be the result of Get(O, Pk).
+//>         1. ReturnIfAbrupt(kValue).
+//>         1. Let testResult be the result of calling the [[Call]] internal
+//>            method of callbackfn with T as <var>thisArgument</var> and a
+//>            List containing kValue, k, and O as <var>argumentsList</var>.
+//>         1. ReturnIfAbrupt(testResult).
+//>         1. If ToBoolean(testResult) is **true**, return **true**.
             if (callFunction(callbackfn, T, O[k], k, O))
                 return true;
         }
+//>     1. Increase k by 1.
     }
 
-    /* Step 8. */
+//> 1. Return **false**.
     return false;
 }
+//>
+//> The `length` property of the `some` method is **1**.
+//>
+//> NOTE The `some` function is intentionally generic; it does not require that
+//> its **this** value be an Array object. Therefore it can be transferred to
+//> other kinds of objects for use as a method. Whether the `some` function can
+//> be applied successfully to an exotic object that is not an Array is
+//> implementation-dependent.
+//>
 
-/* ES5 15.4.4.18. */
+
+//> #### Array.prototype.forEach ( callbackfn [ , thisArg ] )
+//>
+//> callbackfn should be a function that accepts three arguments. `forEach`
+//> calls callbackfn once for each element present in the array, in ascending
+//> order. callbackfn is called only for elements of the array which actually
+//> exist; it is not called for missing elements of the array.
+//>
+//> If a thisArg parameter is provided, it will be used as the this value for
+//> each invocation of callbackfn. If it is not provided, **undefined** is used
+//> instead.
+//>
+//> callbackfn is called with three arguments: the value of the element, the
+//> index of the element, and the object being traversed.
+//>
+//> `forEach` does not directly mutate the object on which it is called but the
+//> object may be mutated by the calls to callbackfn.
+//>
+//> The range of elements processed by `forEach` is set before the first call
+//> to callbackfn. Elements which are appended to the array after the call to
+//> `forEach` begins will not be visited by callbackfn. If existing elements of
+//> the array are changed, their value as passed to callback will be the value
+//> at the time `forEach` visits them; elements that are deleted after the call
+//> to `forEach` begins and before being visited are not visited.
+//>
+//> When the `forEach` method is called with one or two arguments, the
+//> following steps are taken:
+//>
 function ArrayForEach(callbackfn/*, thisArg*/) {
-    /* Step 1. */
+//> 1. Let O be the result of calling ToObject passing the this value as the
+//>    argument.
+//> 1. ReturnIfAbrupt(O).
     var O = ToObject(this);
 
-    /* Steps 2-3. */
+//> 1. Let lenValue be the result of Get(O, `"length"`).
+//> 1. Let len be ToLength(lenValue).
+//> 1. ReturnIfAbrupt(len).
     var len = TO_UINT32(O.length);
 
-    /* Step 4. */
+//> 1. If IsCallable(callbackfn) is **false**, throw a **TypeError** exception.
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.forEach');
     if (!IsCallable(callbackfn))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, callbackfn));
 
-    /* Step 5. */
+//> 1. If thisArg was supplied, let T be thisArg; else let T be **undefined**.
     var T = arguments.length > 1 ? arguments[1] : void 0;
 
-    /* Steps 6-7. */
-    /* Steps a (implicit), and d. */
+//> 1. Let k be 0.
+//> 1. Repeat, while k < len
     for (var k = 0; k < len; k++) {
-        /* Step b */
+//>     1. Let Pk be ToString(k).
+//>     1. Let kPresent be the result of HasProperty(O, Pk).
+//>     1. ReturnIfAbrupt(kPresent).
+//>     1. If kPresent is **true**, then
         if (k in O) {
-            /* Step c. */
+//>         1. Let kValue be the result of Get(O, Pk).
+//>         1. ReturnIfAbrupt(kValue).
+//>         1. Let funcResult be the result of calling the [[Call]] internal
+//>            method of callbackfn with T as <var>thisArgument</var> and a
+//>            List containing kValue, k, and O as <var>argumentsList</var>.
+//>         1. ReturnIfAbrupt(funcResult).
             callFunction(callbackfn, T, O[k], k, O);
         }
+//>     1. Increase k by 1.
     }
 
-    /* Step 8. */
+//> 1. Return **undefined**.
     return void 0;
 }
+//>
+//> The length property of the `forEach` method is **1**.
+//>
+//> NOTE The `forEach` function is intentionally generic; it does not require
+//> that its **this** value be an Array object. Therefore it can be transferred
+//> to other kinds of objects for use as a method. Whether the `forEach`
+//> function can be applied successfully to an exotic object that is not an
+//> Array is implementation-dependent.
+//>
 
-/* ES5 15.4.4.19. */
+
 function ArrayMap(callbackfn/*, thisArg*/) {
-    /* Step 1. */
     var O = ToObject(this);
 
-    /* Step 2-3. */
     var len = TO_UINT32(O.length);
 
-    /* Step 4. */
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.map');
     if (!IsCallable(callbackfn))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, callbackfn));
 
-    /* Step 5. */
     var T = arguments.length > 1 ? arguments[1] : void 0;
 
-    /* Step 6. */
     var A = NewDenseArray(len);
 
-    /* Step 7-8. */
-    /* Step a (implicit), and d. */
     for (var k = 0; k < len; k++) {
-        /* Step b */
         if (k in O) {
-            /* Step c.i-iii. */
             var mappedValue = callFunction(callbackfn, T, O[k], k, O);
-            // UnsafePutElements doesn't invoke setters, so we can use it here.
             UnsafePutElements(A, k, mappedValue);
         }
     }
 
-    /* Step 9. */
     return A;
 }
 
-function ArrayStaticMap(list, callbackfn/*, thisArg*/) {
-    if (arguments.length < 2)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.map');
-    if (!IsCallable(callbackfn))
-        ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(1, callbackfn));
-    var T = arguments.length > 2 ? arguments[2] : void 0;
-    return callFunction(ArrayMap, list, callbackfn, T);
-}
 
-function ArrayStaticForEach(list, callbackfn/*, thisArg*/) {
-    if (arguments.length < 2)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.forEach');
-    if (!IsCallable(callbackfn))
-        ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(1, callbackfn));
-    var T = arguments.length > 2 ? arguments[2] : void 0;
-    callFunction(ArrayForEach, list, callbackfn, T);
-}
+/*
+#### Array.prototype.reduce ( callbackfn [ , initialValue ] )
 
-/* ES5 15.4.4.21. */
+callbackfn should be a function that takes four arguments. reduce calls the callback, as a function, once for each element present in the array, in ascending order.
+
+callbackfn is called with four arguments: the previousValue (or value from the previous call to callbackfn), the currentValue (value of the current element), the currentIndex, and the object being traversed. The first time that callback is called, the previousValue and currentValue can be one of two values. If an initialValue was provided in the call to reduce, then previousValue will be equal to initialValue and currentValue will be equal to the first value in the array. If no initialValue was provided, then previousValue will be equal to the first value in the array and currentValue will be equal to the second. It is a TypeError if the array contains no elements and initialValue is not provided.
+
+reduce does not directly mutate the object on which it is called but the object may be mutated by the calls to callbackfn.
+
+The range of elements processed by reduce is set before the first call to callbackfn. Elements that are appended to the array after the call to reduce begins will not be visited by callbackfn. If existing elements of the array are changed, their value as passed to callbackfn will be the value at the time reduce visits them; elements that are deleted after the call to reduce begins and before being visited are not visited.
+
+When the reduce method is called with one or two arguments, the following steps are taken:
+
+    Let O be the result of calling ToObject passing the this value as the argument.
+    ReturnIfAbrupt(O).
+    Let lenValue be the result of Get(O, "length").
+    Let len be ToLength(lenValue).
+    ReturnIfAbrupt(len).
+    If IsCallable(callbackfn) is false, throw a TypeError exception.
+    If len is 0 and initialValue is not present, throw a TypeError exception.
+    Let k be 0.
+    If initialValue is present, then
+        Set accumulator to initialValue.
+    Else initialValue is not present,
+        Let kPresent be false.
+        Repeat, while kPresent is false and k < len
+            Let Pk be ToString(k).
+            Let kPresent be the result of HasProperty(O, Pk).
+            ReturnIfAbrupt(kPresent).
+            If kPresent is true, then
+                Let accumulator be the result of Get(O, Pk).
+                ReturnIfAbrupt(accumulator).
+            Increase k by 1.
+        If kPresent is false, throw a TypeError exception.
+    Repeat, while k < len
+        Let Pk be ToString(k).
+        Let kPresent be the result of HasProperty(O, Pk).
+        ReturnIfAbrupt(kPresent).
+        If kPresent is true, then
+            Let kValue be the result of Get(O, Pk).
+            ReturnIfAbrupt(kValue).
+            Let accumulator be the result of calling the [[Call]] internal method of callbackfn with undefined as <var>thisArgument</var> and a List containing accumulator, kValue, k, and O as <var>argumentsList</var>.
+            ReturnIfAbrupt(accumulator).
+        Increase k by 1.
+    Return accumulator.
+
+The length property of the reduce method is 1.
+
+NOTE The reduce function is intentionally generic; it does not require that its this value be an Array object. Therefore it can be transferred to other kinds of objects for use as a method. Whether the reduce function can be applied successfully to an exotic object that is not an Array is implementation-dependent.
+*/
 function ArrayReduce(callbackfn/*, initialValue*/) {
-    /* Step 1. */
     var O = ToObject(this);
 
-    /* Steps 2-3. */
     var len = TO_UINT32(O.length);
 
-    /* Step 4. */
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.reduce');
     if (!IsCallable(callbackfn))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, callbackfn));
 
-    /* Step 6. */
     var k = 0;
 
-    /* Steps 5, 7-8. */
     var accumulator;
     if (arguments.length > 1) {
         accumulator = arguments[1];
     } else {
-        /* Step 5. */
         if (len === 0)
             ThrowError(JSMSG_EMPTY_ARRAY_REDUCE);
         var kPresent = false;
@@ -400,54 +517,81 @@ function ArrayReduce(callbackfn/*, initialValue*/) {
             ThrowError(JSMSG_EMPTY_ARRAY_REDUCE);
     }
 
-    /* Step 9. */
-    /* Steps a (implicit), and d. */
     for (; k < len; k++) {
-        /* Step b */
         if (k in O) {
-            /* Step c. */
             accumulator = callbackfn(accumulator, O[k], k, O);
         }
     }
 
-    /* Step 10. */
     return accumulator;
 }
 
-function ArrayStaticReduce(list, callbackfn) {
-    if (arguments.length < 2)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.reduce');
-    if (!IsCallable(callbackfn))
-        ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(1, callbackfn));
-    if (arguments.length > 2)
-        return callFunction(ArrayReduce, list, callbackfn, arguments[2]);
-    else
-        return callFunction(ArrayReduce, list, callbackfn);
-}
+/*
+Array.prototype.reduceRight ( callbackfn [ , initialValue ] )
 
-/* ES5 15.4.4.22. */
+callbackfn should be a function that takes four arguments. reduceRight calls the callback, as a function, once for each element present in the array, in descending order.
+
+callbackfn is called with four arguments: the previousValue (or value from the previous call to callbackfn), the currentValue (value of the current element), the currentIndex, and the object being traversed. The first time the function is called, the previousValue and currentValue can be one of two values. If an initialValue was provided in the call to reduceRight, then previousValue will be equal to initialValue and currentValue will be equal to the last value in the array. If no initialValue was provided, then previousValue will be equal to the last value in the array and currentValue will be equal to the second-to-last value. It is a **TypeError** if the array contains no elements and initialValue is not provided.
+
+reduceRight does not directly mutate the object on which it is called but the object may be mutated by the calls to callbackfn.
+
+The range of elements processed by reduceRight is set before the first call to callbackfn. Elements that are appended to the array after the call to reduceRight begins will not be visited by callbackfn. If existing elements of the array are changed by callbackfn, their value as passed to callbackfn will be the value at the time reduceRight visits them; elements that are deleted after the call to reduceRight begins and before being visited are not visited.
+
+When the reduceRight method is called with one or two arguments, the following steps are taken:
+
+    Let O be the result of calling ToObject passing the this value as the argument.
+    ReturnIfAbrupt(O).
+    Let lenValue be the result of Get(O, "length").
+    Let len be ToLength(lenValue).
+    ReturnIfAbrupt(len).
+    If IsCallable(callbackfn) is false, throw a **TypeError** exception.
+    If len is 0 and initialValue is not present, throw a **TypeError** exception.
+    Let k be len-1.
+    If initialValue is present, then
+        Set accumulator to initialValue.
+    Else initialValue is not present,
+        Let kPresent be false.
+        Repeat, while kPresent is false and k ≥ 0
+            Let Pk be ToString(k).
+            Let kPresent be the result of HasProperty(O, Pk).
+            ReturnIfAbrupt(kPresent).
+            If kPresent is true, then
+                Let accumulator be the result of Get(O, Pk).
+                ReturnIfAbrupt(accumulator).
+            Decrease k by 1.
+        If kPresent is false, throw a **TypeError** exception.
+    Repeat, while k ≥ 0
+        Let Pk be ToString(k).
+        Let kPresent be the result of HasProperty(O, Pk).
+        ReturnIfAbrupt(kPresent).
+        If kPresent is true, then
+            Let kValue be the result of Get(O, Pk).
+            ReturnIfAbrupt(kValue).
+            Let accumulator be the result of calling the [[Call]] internal method of callbackfn with **undefined** as <var>thisArgument</var> and a List containing accumulator, kValue, k, and O as <var>argumentsList</var>.
+            ReturnIfAbrupt(accumulator).
+        Decrease k by 1.
+    Return accumulator.
+
+The length property of the reduceRight method is 1.
+
+NOTE The reduceRight function is intentionally generic; it does not require that its **this** value be an Array object. Therefore it can be transferred to other kinds of objects for use as a method. Whether the reduceRight function can be applied successfully to an exotic object that is not an Array is implementation-dependent.
+*/
 function ArrayReduceRight(callbackfn/*, initialValue*/) {
-    /* Step 1. */
     var O = ToObject(this);
 
-    /* Steps 2-3. */
     var len = TO_UINT32(O.length);
 
-    /* Step 4. */
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.reduce');
     if (!IsCallable(callbackfn))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, callbackfn));
 
-    /* Step 6. */
     var k = len - 1;
 
-    /* Steps 5, 7-8. */
     var accumulator;
     if (arguments.length > 1) {
         accumulator = arguments[1];
     } else {
-        /* Step 5. */
         if (len === 0)
             ThrowError(JSMSG_EMPTY_ARRAY_REDUCE);
         var kPresent = false;
@@ -463,1002 +607,192 @@ function ArrayReduceRight(callbackfn/*, initialValue*/) {
             ThrowError(JSMSG_EMPTY_ARRAY_REDUCE);
     }
 
-    /* Step 9. */
-    /* Steps a (implicit), and d. */
     for (; k >= 0; k--) {
-        /* Step b */
         if (k in O) {
-            /* Step c. */
             accumulator = callbackfn(accumulator, O[k], k, O);
         }
     }
 
-    /* Step 10. */
     return accumulator;
 }
 
-function ArrayStaticReduceRight(list, callbackfn) {
-    if (arguments.length < 2)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.reduceRight');
-    if (!IsCallable(callbackfn))
-        ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(1, callbackfn));
-    if (arguments.length > 2)
-        return callFunction(ArrayReduceRight, list, callbackfn, arguments[2]);
-    else
-        return callFunction(ArrayReduceRight, list, callbackfn);
-}
-
-/* ES6 draft 2013-05-14 15.4.3.23. */
+//> #### Array.prototype.find ( predicate , thisArg = undefined )
+//>
+//> predicate should be a function that accepts three arguments and returns a
+//> value that is coercible to the Boolean value **true** or **false**. `find`
+//> calls predicate once for each element present in the array, in ascending
+//> order, until it finds one where predicate returns **true**. If such an
+//> element is found, `find` immediately returns that element value. Otherwise,
+//> `find` returns **undefined**. predicate is called only for elements of the
+//> array which actually exist; it is not called for missing elements of the
+//> array.
+//>
+//> If a thisArg parameter is provided, it will be used as the this value for
+//> each invocation of predicate. If it is not provided, **undefined** is used
+//> instead.
+//>
+//> predicate is called with three arguments: the value of the element, the
+//> index of the element, and the object being traversed.
+//>
+//> `find` does not directly mutate the object on which it is called but the
+//> object may be mutated by the calls to predicate.
+//>
+//> The range of elements processed by `find` is set before the first call to
+//> callbackfn. Elements that are appended to the array after the call to
+//> `find` begins will not be visited by callbackfn. If existing elements of
+//> the array are changed, their value as passed to predicate will be the value
+//> at the time that `find` visits them; elements that are deleted after the
+//> call to `find` begins and before being visited are not visited.
+//>
+//> When the `find` method is called with one or two arguments, the following
+//> steps are taken:
+//>
 function ArrayFind(predicate/*, thisArg*/) {
-    /* Steps 1-2. */
+//> 1. Let O be the result of calling ToObject passing the this value as the
+//>    argument.
+//> 1. ReturnIfAbrupt(O).
     var O = ToObject(this);
 
-    /* Steps 3-5. */
+//> 1. Let lenValue be the result of Get(O, "length").
+//> 1. Let len be ToLength(lenValue).
+//> 1. ReturnIfAbrupt(len).
     var len = ToInteger(O.length);
 
-    /* Step 6. */
+//> 1. If IsCallable(predicate) is **false**, throw a **TypeError** exception.
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.find');
     if (!IsCallable(predicate))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, predicate));
 
-    /* Step 7. */
+//> 1. If thisArg was supplied, let T be thisArg; else let T be **undefined**.
     var T = arguments.length > 1 ? arguments[1] : undefined;
 
-    /* Steps 8-9. */
-    /* Steps a (implicit), and e. */
+//> 1. Let k be 0.
+//> 1. Repeat, while k < len
     /* Note: this will hang in some corner-case situations, because of IEEE-754 numbers'
      * imprecision for large values. Example:
      * var obj = { 18014398509481984: true, length: 18014398509481988 };
      * Array.prototype.find.call(obj, () => true);
      */
     for (var k = 0; k < len; k++) {
-        /* Steps b and c (implicit) */
+//>     1. Let Pk be ToString(k).
+//>     1. Let kPresent be the result of HasProperty(O, Pk).
+//>     1. ReturnIfAbrupt(kPresent).
+//>     1. If kPresent is **true**, then
         if (k in O) {
-            /* Step d. */
+//>         1. Let kValue be the result of Get(O, Pk).
+//>         1. ReturnIfAbrupt(kValue).
             var kValue = O[k];
+//>         1. Let testResult be the result of calling the [[Call]] internal
+//>            method of predicate with T as <var>thisArgument</var> and a List
+//>            containing kValue, k, and O as <var>argumentsList</var>.
+//>         1. ReturnIfAbrupt(testResult).
+//>         1. If ToBoolean(testResult) is **true**, return kValue.
             if (callFunction(predicate, T, kValue, k, O))
                 return kValue;
         }
+//>     1. Increase k by 1.
     }
 
-    /* Step 10. */
+//> 1. Return **undefined**.
     return undefined;
 }
+//>
+//> The length property of the `find` method is 1.
+//>
+//> NOTE The `find` function is intentionally generic; it does not require that
+//> its **this** value be an Array object. Therefore it can be transferred to
+//> other kinds of objects for use as a method. Whether the `find` function can
+//> be applied successfully to an exotic object that is not an Array is
+//> implementation-dependent.
 
-/* ES6 draft 2013-05-14 15.4.3.23. */
+
+//> #### Array.prototype.findIndex ( predicate , thisArg = undefined )
+//>
+//> predicate should be a function that accepts three arguments and returns a
+//> value that is coercible to the Boolean value **true** or
+//> **false**. `findIndex` calls predicate once for each element present in the
+//> array, in ascending order, until it finds one where predicate returns
+//> **true**. If such an element is found, `findIndex` immediately returns the
+//> index of that element value. Otherwise, `findIndex` returns -1. predicate
+//> is called only for elements of the array which actually exist; it is not
+//> called for missing elements of the array.
+//>
+//> If a thisArg parameter is provided, it will be used as the this value for
+//> each invocation of predicate. If it is not provided, undefined is used
+//> instead.
+//>
+//> predicate is called with three arguments: the value of the element, the
+//> index of the element, and the object being traversed.
+//>
+//> `findIndex` does not directly mutate the object on which it is called but the
+//> object may be mutated by the calls to predicate.
+//>
+//> The range of elements processed by `findIndex` is set before the first call
+//> to callbackfn. Elements that are appended to the array after the call to
+//> `findIndex` begins will not be visited by callbackfn. If existing elements of
+//> the array are changed, their value as passed to predicate will be the value
+//> at the time that `findIndex` visits them; elements that are deleted after the
+//> call to `findIndex` begins and before being visited are not visited.
+//>
+//> When the `findIndex` method is called with one or two arguments, the
+//> following steps are taken:
+//>
 function ArrayFindIndex(predicate/*, thisArg*/) {
-    /* Steps 1-2. */
+//> 1. Let O be the result of calling ToObject passing the this value as the
+//>    argument.
+//> 1. ReturnIfAbrupt(O).
     var O = ToObject(this);
 
-    /* Steps 3-5. */
+//> 1. Let lenValue be the result of Get(O, "length").
+//> 1. Let len be ToLength(lenValue).
+//> 1. ReturnIfAbrupt(len).
     var len = ToInteger(O.length);
 
-    /* Step 6. */
+//> 1. If IsCallable(predicate) is **false**, throw a **TypeError** exception.
     if (arguments.length === 0)
         ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'Array.prototype.find');
     if (!IsCallable(predicate))
         ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, predicate));
 
-    /* Step 7. */
+//> 1. If thisArg was supplied, let T be thisArg; else let T be **undefined**.
     var T = arguments.length > 1 ? arguments[1] : undefined;
 
-    /* Steps 8-9. */
-    /* Steps a (implicit), and e. */
+//> 1. Let k be 0.
+//> 1. Repeat, while k < len
     /* Note: this will hang in some corner-case situations, because of IEEE-754 numbers'
      * imprecision for large values. Example:
      * var obj = { 18014398509481984: true, length: 18014398509481988 };
      * Array.prototype.find.call(obj, () => true);
      */
     for (var k = 0; k < len; k++) {
-        /* Steps b and c (implicit) */
+//>     1. Let Pk be ToString(k).
+//>     1. Let kPresent be the result of HasProperty(O, Pk).
+//>     1. ReturnIfAbrupt(kPresent).
+//>     1. If kPresent is **true**, then
         if (k in O) {
-            /* Step d. */
+//>         1. Let kValue be the result of Get(O, Pk).
+//>         1. ReturnIfAbrupt(kValue).
+//>         1. Let testResult be the result of calling the [[Call]] internal
+//>            method of predicate with T as <var>thisArgument</var> and a List
+//>            containing kValue, k, and O as <var>argumentsList</var>.
+//>         1. ReturnIfAbrupt(testResult).
+//>         1. If ToBoolean(testResult) is **true**, return k.
             if (callFunction(predicate, T, O[k], k, O))
                 return k;
         }
+//>     1. Increase k by 1.
     }
 
-    /* Step 10. */
+//> 1. Return -1.
     return -1;
 }
-
-#ifdef ENABLE_PARALLEL_JS
-
-/*
- * Strawman spec:
- *   http://wiki.ecmascript.org/doku.php?id=strawman:data_parallelism
- */
-
-/* The mode asserts options object. */
-#define TRY_PARALLEL(MODE) \
-  ((!MODE || MODE.mode !== "seq"))
-#define ASSERT_SEQUENTIAL_IS_OK(MODE) \
-  do { if (MODE) AssertSequentialIsOK(MODE) } while(false)
-
-/* Slice array: see ComputeAllSliceBounds() */
-#define SLICE_INFO(START, END) START, END, START, 0
-#define SLICE_START(ID) ((ID << 2) + 0)
-#define SLICE_END(ID)   ((ID << 2) + 1)
-#define SLICE_POS(ID)   ((ID << 2) + 2)
-
-/*
- * How many items at a time do we do recomp. for parallel execution.
- * Note that filter currently assumes that this is no greater than 32
- * in order to make use of a bitset.
- */
-#define CHUNK_SHIFT 5
-#define CHUNK_SIZE 32
-
-/* Safe versions of ARRAY.push(ELEMENT) */
-#define ARRAY_PUSH(ARRAY, ELEMENT) \
-  callFunction(std_Array_push, ARRAY, ELEMENT);
-#define ARRAY_SLICE(ARRAY, ELEMENT) \
-  callFunction(std_Array_slice, ARRAY, ELEMENT);
-
-/**
- * The ParallelSpew intrinsic is only defined in debug mode, so define a dummy
- * if debug is not on.
- */
-#ifndef DEBUG
-#define ParallelSpew(args)
-#endif
-
-/**
- * Determine the number of chunks of size CHUNK_SIZE;
- * note that the final chunk may be smaller than CHUNK_SIZE.
- */
-function ComputeNumChunks(length) {
-  var chunks = length >>> CHUNK_SHIFT;
-  if (chunks << CHUNK_SHIFT === length)
-    return chunks;
-  return chunks + 1;
-}
-
-/**
- * Computes the bounds for slice |sliceIndex| of |numItems| items,
- * assuming |numSlices| total slices. If numItems is not evenly
- * divisible by numSlices, then the final thread may have a bit of
- * extra work.
- */
-function ComputeSliceBounds(numItems, sliceIndex, numSlices) {
-  var sliceWidth = (numItems / numSlices) | 0;
-  var startIndex = sliceWidth * sliceIndex;
-  var endIndex = sliceIndex === numSlices - 1 ? numItems : sliceWidth * (sliceIndex + 1);
-  return [startIndex, endIndex];
-}
-
-/**
- * Divides |numItems| items amongst |numSlices| slices. The result
- * is an array containing multiple values per slice: the start
- * index, end index, current position, and some padding. The
- * current position is initially the same as the start index. To
- * access the values for a particular slice, use the macros
- * SLICE_START() and so forth.
- */
-function ComputeAllSliceBounds(numItems, numSlices) {
-  // FIXME(bug 844890): Use typed arrays here.
-  var info = [];
-  for (var i = 0; i < numSlices; i++) {
-    var [start, end] = ComputeSliceBounds(numItems, i, numSlices);
-    ARRAY_PUSH(info, SLICE_INFO(start, end));
-  }
-  return info;
-}
-
-/**
- * Creates a new array by applying |func(e, i, self)| for each element |e|
- * with index |i|.
- */
-function ArrayMapPar(func, mode) {
-  if (!IsCallable(func))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, func));
-
-  var self = ToObject(this);
-  var length = self.length;
-  var buffer = NewDenseArray(length);
-
-  parallel: for (;;) {
-    // Avoid parallel compilation if we are already nested in another
-    // parallel section or the user told us not to parallelize. The
-    // use of a for (;;) loop is working around some ion limitations:
-    //
-    // - Breaking out of named blocks does not currently work (bug 684384);
-    // - Unreachable Code Elim. can't properly handle if (a && b) (bug 669796)
-    if (ShouldForceSequential())
-      break parallel;
-    if (!TRY_PARALLEL(mode))
-      break parallel;
-
-    var chunks = ComputeNumChunks(length);
-    var numSlices = ForkJoinSlices();
-    var info = ComputeAllSliceBounds(chunks, numSlices);
-    ForkJoin(mapSlice, ForkJoinMode(mode));
-    return buffer;
-  }
-
-  // Sequential fallback:
-  ASSERT_SEQUENTIAL_IS_OK(mode);
-  for (var i = 0; i < length; i++) {
-    // Note: Unlike JS arrays, parallel arrays cannot have holes.
-    var v = func(self[i], i, self);
-    UnsafePutElements(buffer, i, v);
-  }
-  return buffer;
-
-  function mapSlice(sliceId, numSlices, warmup) {
-    var chunkPos = info[SLICE_POS(sliceId)];
-    var chunkEnd = info[SLICE_END(sliceId)];
-
-    if (warmup && chunkEnd > chunkPos + 1)
-      chunkEnd = chunkPos + 1;
-
-    while (chunkPos < chunkEnd) {
-      var indexStart = chunkPos << CHUNK_SHIFT;
-      var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, length);
-
-      for (var i = indexStart; i < indexEnd; i++)
-        UnsafePutElements(buffer, i, func(self[i], i, self));
-
-      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    return chunkEnd === info[SLICE_END(sliceId)];
-  }
-}
-
-/**
- * Reduces the elements in an array in parallel. Order is not fixed and |func|
- * is assumed to be associative.
- */
-function ArrayReducePar(func, mode) {
-  if (!IsCallable(func))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, func));
-
-  var self = ToObject(this);
-  var length = self.length;
-
-  if (length === 0)
-    ThrowError(JSMSG_EMPTY_ARRAY_REDUCE);
-
-  parallel: for (;;) { // see ArrayMapPar() to explain why for(;;) etc
-    if (ShouldForceSequential())
-      break parallel;
-    if (!TRY_PARALLEL(mode))
-      break parallel;
-
-    var chunks = ComputeNumChunks(length);
-    var numSlices = ForkJoinSlices();
-    if (chunks < numSlices)
-      break parallel;
-
-    var info = ComputeAllSliceBounds(chunks, numSlices);
-    var subreductions = NewDenseArray(numSlices);
-    ForkJoin(reduceSlice, ForkJoinMode(mode));
-    var accumulator = subreductions[0];
-    for (var i = 1; i < numSlices; i++)
-      accumulator = func(accumulator, subreductions[i]);
-    return accumulator;
-  }
-
-  // Sequential fallback:
-  ASSERT_SEQUENTIAL_IS_OK(mode);
-  var accumulator = self[0];
-  for (var i = 1; i < length; i++)
-    accumulator = func(accumulator, self[i]);
-  return accumulator;
-
-  function reduceSlice(sliceId, numSlices, warmup) {
-    var chunkStart = info[SLICE_START(sliceId)];
-    var chunkPos = info[SLICE_POS(sliceId)];
-    var chunkEnd = info[SLICE_END(sliceId)];
-
-    // (*) This function is carefully designed so that the warmup
-    // (which executes with chunkStart === chunkPos) will execute all
-    // potential loads and stores. In particular, the warmup run
-    // processes two chunks rather than one. Moreover, it stores
-    // accumulator into subreductions and then loads it again to
-    // ensure that the load is executed during the warmup, as it will
-    // certainly be executed during subsequent runs.
-
-    if (warmup && chunkEnd > chunkPos + 2)
-      chunkEnd = chunkPos + 2;
-
-    if (chunkStart === chunkPos) {
-      var indexPos = chunkStart << CHUNK_SHIFT;
-      var accumulator = reduceChunk(self[indexPos], indexPos + 1, indexPos + CHUNK_SIZE);
-
-      UnsafePutElements(subreductions, sliceId, accumulator, // see (*) above
-                        info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    var accumulator = subreductions[sliceId]; // see (*) above
-
-    while (chunkPos < chunkEnd) {
-      var indexPos = chunkPos << CHUNK_SHIFT;
-      accumulator = reduceChunk(accumulator, indexPos, indexPos + CHUNK_SIZE);
-      UnsafePutElements(subreductions, sliceId, accumulator, info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    return chunkEnd === info[SLICE_END(sliceId)];
-  }
-
-  function reduceChunk(accumulator, from, to) {
-    to = std_Math_min(to, length);
-    for (var i = from; i < to; i++)
-      accumulator = func(accumulator, self[i]);
-    return accumulator;
-  }
-}
-
-/**
- * Returns an array [s_0, ..., s_N] where |s_i| is equal to the reduction (as
- * per |reduce()|) of elements |0..i|. This is the generalization of partial
- * sum.
- */
-function ArrayScanPar(func, mode) {
-  if (!IsCallable(func))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, func));
-
-  var self = ToObject(this);
-  var length = self.length;
-
-  if (length === 0)
-    ThrowError(JSMSG_EMPTY_ARRAY_REDUCE);
-
-  var buffer = NewDenseArray(length);
-
-  parallel: for (;;) { // see ArrayMapPar() to explain why for(;;) etc
-    if (ShouldForceSequential())
-      break parallel;
-    if (!TRY_PARALLEL(mode))
-      break parallel;
-
-    var chunks = ComputeNumChunks(length);
-    var numSlices = ForkJoinSlices();
-    if (chunks < numSlices)
-      break parallel;
-    var info = ComputeAllSliceBounds(chunks, numSlices);
-
-    // Scan slices individually (see comment on phase1()).
-    ForkJoin(phase1, ForkJoinMode(mode));
-
-    // Compute intermediates array (see comment on phase2()).
-    var intermediates = [];
-    var accumulator = buffer[finalElement(0)];
-    ARRAY_PUSH(intermediates, accumulator);
-    for (var i = 1; i < numSlices - 1; i++) {
-      accumulator = func(accumulator, buffer[finalElement(i)]);
-      ARRAY_PUSH(intermediates, accumulator);
-    }
-
-    // Reset the current position information for each slice, but
-    // convert from chunks to indices (see comment on phase2()).
-    for (var i = 0; i < numSlices; i++) {
-      info[SLICE_POS(i)] = info[SLICE_START(i)] << CHUNK_SHIFT;
-      info[SLICE_END(i)] = info[SLICE_END(i)] << CHUNK_SHIFT;
-    }
-    info[SLICE_END(numSlices - 1)] = std_Math_min(info[SLICE_END(numSlices - 1)], length);
-
-    // Complete each slice using intermediates array (see comment on phase2()).
-    ForkJoin(phase2, ForkJoinMode(mode));
-    return buffer;
-  }
-
-  // Sequential fallback:
-  ASSERT_SEQUENTIAL_IS_OK(mode);
-  scan(self[0], 0, length);
-  return buffer;
-
-  function scan(accumulator, start, end) {
-    UnsafePutElements(buffer, start, accumulator);
-    for (var i = start + 1; i < end; i++) {
-      accumulator = func(accumulator, self[i]);
-      UnsafePutElements(buffer, i, accumulator);
-    }
-    return accumulator;
-  }
-
-  /**
-   * In phase 1, we divide the source array into |numSlices| slices and
-   * compute scan on each slice sequentially as if it were the entire
-   * array. This function is responsible for computing one of those
-   * slices.
-   *
-   * So, if we have an array [A,B,C,D,E,F,G,H,I], |numSlices === 3|,
-   * and our function |func| is sum, then we would wind up computing a
-   * result array like:
-   *
-   *     [A, A+B, A+B+C, D, D+E, D+E+F, G, G+H, G+H+I]
-   *      ^~~~~~~~~~~~^  ^~~~~~~~~~~~^  ^~~~~~~~~~~~~^
-   *      Slice 0        Slice 1        Slice 2
-   *
-   * Read on in phase2 to see what we do next!
-   */
-  function phase1(sliceId, numSlices, warmup) {
-    var chunkStart = info[SLICE_START(sliceId)];
-    var chunkPos = info[SLICE_POS(sliceId)];
-    var chunkEnd = info[SLICE_END(sliceId)];
-
-    if (warmup && chunkEnd > chunkPos + 2)
-      chunkEnd = chunkPos + 2;
-
-    if (chunkPos === chunkStart) {
-      // For the first chunk, the accumulator begins as the value in
-      // the input at the start of the chunk.
-      var indexStart = chunkPos << CHUNK_SHIFT;
-      var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, length);
-      scan(self[indexStart], indexStart, indexEnd);
-      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    while (chunkPos < chunkEnd) {
-      // For each subsequent chunk, the accumulator begins as the
-      // combination of the final value of prev chunk and the value in
-      // the input at the start of this chunk. Note that this loop is
-      // written as simple as possible, at the cost of an extra read
-      // from the buffer per iteration.
-      var indexStart = chunkPos << CHUNK_SHIFT;
-      var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, length);
-      var accumulator = func(buffer[indexStart - 1], self[indexStart]);
-      scan(accumulator, indexStart, indexEnd);
-      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    return chunkEnd === info[SLICE_END(sliceId)];
-  }
-
-  /**
-   * Computes the index of the final element computed by the slice |sliceId|.
-   */
-  function finalElement(sliceId) {
-    var chunkEnd = info[SLICE_END(sliceId)]; // last chunk written by |sliceId| is endChunk - 1
-    var indexStart = std_Math_min(chunkEnd << CHUNK_SHIFT, length);
-    return indexStart - 1;
-  }
-
-  /**
-   * After computing the phase1 results, we compute an
-   * |intermediates| array. |intermediates[i]| contains the result
-   * of reducing the final value from each preceding slice j<i with
-   * the final value of slice i. So, to continue our previous
-   * example, the intermediates array would contain:
-   *
-   *   [A+B+C, (A+B+C)+(D+E+F), ((A+B+C)+(D+E+F))+(G+H+I)]
-   *
-   * Here I have used parenthesization to make clear the order of
-   * evaluation in each case.
-   *
-   *   An aside: currently the intermediates array is computed
-   *   sequentially. In principle, we could compute it in parallel,
-   *   at the cost of doing duplicate work. This did not seem
-   *   particularly advantageous to me, particularly as the number
-   *   of slices is typically quite small (one per core), so I opted
-   *   to just compute it sequentially.
-   *
-   * Phase 2 combines the results of phase1 with the intermediates
-   * array to produce the final scan results. The idea is to
-   * reiterate over each element S[i] in the slice |sliceId|, which
-   * currently contains the result of reducing with S[0]...S[i]
-   * (where S0 is the first thing in the slice), and combine that
-   * with |intermediate[sliceId-1]|, which represents the result of
-   * reducing everything in the input array prior to the slice.
-   *
-   * To continue with our example, in phase 1 we computed slice 1 to
-   * be [D, D+E, D+E+F]. We will combine those results with
-   * |intermediates[1-1]|, which is |A+B+C|, so that the final
-   * result is [(A+B+C)+D, (A+B+C)+(D+E), (A+B+C)+(D+E+F)]. Again I
-   * am using parentheses to clarify how these results were reduced.
-   *
-   * SUBTLE: Because we are mutating |buffer| in place, we have to
-   * be very careful about bailouts!  We cannot checkpoint a chunk
-   * at a time as we do elsewhere because that assumes it is safe to
-   * replay the portion of a chunk which was already processed.
-   * Therefore, in this phase, we track the current position at an
-   * index granularity, although this requires two memory writes per
-   * index.
-   */
-  function phase2(sliceId, numSlices, warmup) {
-    if (sliceId === 0)
-      return true; // No work to do for the 0th slice.
-
-    var indexPos = info[SLICE_POS(sliceId)];
-    var indexEnd = info[SLICE_END(sliceId)];
-
-    if (warmup)
-      indexEnd = std_Math_min(indexEnd, indexPos + CHUNK_SIZE);
-
-    var intermediate = intermediates[sliceId - 1];
-    for (; indexPos < indexEnd; indexPos++) {
-      UnsafePutElements(buffer, indexPos, func(intermediate, buffer[indexPos]),
-                        info, SLICE_POS(sliceId), indexPos + 1);
-    }
-
-    return indexEnd === info[SLICE_END(sliceId)];
-  }
-}
-
-/**
- * |scatter()| redistributes the elements in the array into a new array.
- *
- * - targets: The index targets[i] indicates where the ith element
- *   should appear in the result.
- *
- * - defaultValue: what value to use for indices in the output array that
- *   are never targeted.
- *
- * - conflictFunc: The conflict function. Used to resolve what
- *   happens if two indices i and j in the source array are targeted
- *   as the same destination (i.e., targets[i] === targets[j]), then
- *   the final result is determined by applying func(targets[i],
- *   targets[j]). If no conflict function is provided, it is an error
- *   if targets[i] === targets[j].
- *
- * - length: length of the output array (if not specified, uses the
- *   length of the input).
- *
- * - mode: internal debugging specification.
- */
-function ArrayScatterPar(targets, defaultValue, conflictFunc, length, mode) {
-  if (conflictFunc && !IsCallable(conflictFunc))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(2, conflictFunc));
-
-  var self = ToObject(this);
-
-  if (length === undefined)
-    length = self.length;
-
-  // The Divide-Scatter-Vector strategy:
-  // 1. Slice |targets| array of indices ("scatter-vector") into N
-  //    parts.
-  // 2. Each of the N threads prepares an output buffer and a
-  //    write-log.
-  // 3. Each thread scatters according to one of the N parts into its
-  //    own output buffer, tracking written indices in the write-log
-  //    and resolving any resulting local collisions in parallel.
-  // 4. Merge the parts (either in parallel or sequentially), using
-  //    the write-logs as both the basis for finding merge-inputs and
-  //    for detecting collisions.
-
-  // The Divide-Output-Range strategy:
-  // 1. Slice the range of indices [0..|length|-1] into N parts.
-  //    Allocate a single shared output buffer of length |length|.
-  // 2. Each of the N threads scans (the entirety of) the |targets|
-  //    array, seeking occurrences of indices from that thread's part
-  //    of the range, and writing the results into the shared output
-  //    buffer.
-  // 3. Since each thread has its own portion of the output range,
-  //    every collision that occurs can be handled thread-locally.
-
-  // SO:
-  //
-  // If |targets.length| >> |length|, Divide-Scatter-Vector seems like
-  // a clear win over Divide-Output-Range, since for the latter, the
-  // expense of redundantly scanning the |targets| will diminish the
-  // gain from processing |length| in parallel, while for the former,
-  // the total expense of building separate output buffers and the
-  // merging post-process is small compared to the gain from
-  // processing |targets| in parallel.
-  //
-  // If |targets.length| << |length|, then Divide-Output-Range seems
-  // like it *could* win over Divide-Scatter-Vector. (But when is
-  // |targets.length| << |length| or even |targets.length| < |length|?
-  // Seems like an odd situation and an uncommon case at best.)
-  //
-  // The unanswered question is which strategy performs better when
-  // |targets.length| approximately equals |length|, especially for
-  // special cases like collision-free scatters and permutations.
-
-  var targetsLength = std_Math_min(targets.length, self.length);
-
-  if (!IS_UINT32(targetsLength) || !IS_UINT32(length))
-    ThrowError(JSMSG_BAD_ARRAY_LENGTH);
-
-  parallel: for (;;) { // see ArrayMapPar() to explain why for(;;) etc
-    if (ShouldForceSequential())
-      break parallel;
-    if (!TRY_PARALLEL(mode))
-      break parallel;
-
-    if (forceDivideScatterVector())
-      return parDivideScatterVector();
-    else if (forceDivideOutputRange())
-      return parDivideOutputRange();
-    else if (conflictFunc === undefined && targetsLength < length)
-      return parDivideOutputRange();
-    return parDivideScatterVector();
-  }
-
-  // Sequential fallback:
-  ASSERT_SEQUENTIAL_IS_OK(mode);
-  return seq();
-
-  function forceDivideScatterVector() {
-    return mode && mode.strategy && mode.strategy === "divide-scatter-vector";
-  }
-
-  function forceDivideOutputRange() {
-    return mode && mode.strategy && mode.strategy === "divide-output-range";
-  }
-
-  function collide(elem1, elem2) {
-    if (conflictFunc === undefined)
-      ThrowError(JSMSG_PAR_ARRAY_SCATTER_CONFLICT);
-
-    return conflictFunc(elem1, elem2);
-  }
-
-
-  function parDivideOutputRange() {
-    var chunks = ComputeNumChunks(targetsLength);
-    var numSlices = ForkJoinSlices();
-    var checkpoints = NewDenseArray(numSlices);
-    for (var i = 0; i < numSlices; i++)
-      UnsafePutElements(checkpoints, i, 0);
-
-    var buffer = NewDenseArray(length);
-    var conflicts = NewDenseArray(length);
-
-    for (var i = 0; i < length; i++) {
-      UnsafePutElements(buffer, i, defaultValue);
-      UnsafePutElements(conflicts, i, false);
-    }
-
-    ForkJoin(fill, ForkJoinMode(mode));
-    return buffer;
-
-    function fill(sliceId, numSlices, warmup) {
-      var indexPos = checkpoints[sliceId];
-      var indexEnd = targetsLength;
-      if (warmup)
-        indexEnd = std_Math_min(indexEnd, indexPos + CHUNK_SIZE);
-
-      // Range in the output for which we are responsible:
-      var [outputStart, outputEnd] = ComputeSliceBounds(length, sliceId, numSlices);
-
-      for (; indexPos < indexEnd; indexPos++) {
-        var x = self[indexPos];
-        var t = checkTarget(indexPos, targets[indexPos]);
-        if (t < outputStart || t >= outputEnd)
-          continue;
-        if (conflicts[t])
-          x = collide(x, buffer[t]);
-        UnsafePutElements(buffer, t, x, conflicts, t, true, checkpoints, sliceId, indexPos + 1);
-      }
-
-      return indexEnd === targetsLength;
-    }
-  }
-
-  function parDivideScatterVector() {
-    // Subtle: because we will be mutating the localBuffers and
-    // conflict arrays in place, we can never replay an entry in the
-    // target array for fear of inducing a conflict where none existed
-    // before. Therefore, we must proceed not by chunks but rather by
-    // individual indices.
-    var numSlices = ForkJoinSlices();
-    var info = ComputeAllSliceBounds(targetsLength, numSlices);
-
-    // FIXME(bug 844890): Use typed arrays here.
-    var localBuffers = NewDenseArray(numSlices);
-    for (var i = 0; i < numSlices; i++)
-      UnsafePutElements(localBuffers, i, NewDenseArray(length));
-    var localConflicts = NewDenseArray(numSlices);
-    for (var i = 0; i < numSlices; i++) {
-      var conflicts_i = NewDenseArray(length);
-      for (var j = 0; j < length; j++)
-        UnsafePutElements(conflicts_i, j, false);
-      UnsafePutElements(localConflicts, i, conflicts_i);
-    }
-
-    // Initialize the 0th buffer, which will become the output. For
-    // the other buffers, we track which parts have been written to
-    // using the conflict buffer so they do not need to be
-    // initialized.
-    var outputBuffer = localBuffers[0];
-    for (var i = 0; i < length; i++)
-      UnsafePutElements(outputBuffer, i, defaultValue);
-
-    ForkJoin(fill, ForkJoinMode(mode));
-    mergeBuffers();
-    return outputBuffer;
-
-    function fill(sliceId, numSlices, warmup) {
-      var indexPos = info[SLICE_POS(sliceId)];
-      var indexEnd = info[SLICE_END(sliceId)];
-      if (warmup)
-        indexEnd = std_Math_min(indexEnd, indexPos + CHUNK_SIZE);
-
-      var localbuffer = localBuffers[sliceId];
-      var conflicts = localConflicts[sliceId];
-      while (indexPos < indexEnd) {
-        var x = self[indexPos];
-        var t = checkTarget(indexPos, targets[indexPos]);
-        if (conflicts[t])
-          x = collide(x, localbuffer[t]);
-        UnsafePutElements(localbuffer, t, x, conflicts, t, true,
-                          info, SLICE_POS(sliceId), ++indexPos);
-      }
-
-      return indexEnd === info[SLICE_END(sliceId)];
-    }
-
-    /**
-     * Merge buffers 1..NUMSLICES into buffer 0. In principle, we could
-     * parallelize the merge work as well. But for this first cut,
-     * just do the merge sequentially.
-     */
-    function mergeBuffers() {
-      var buffer = localBuffers[0];
-      var conflicts = localConflicts[0];
-      for (var i = 1; i < numSlices; i++) {
-        var otherbuffer = localBuffers[i];
-        var otherconflicts = localConflicts[i];
-        for (var j = 0; j < length; j++) {
-          if (otherconflicts[j]) {
-            if (conflicts[j]) {
-              buffer[j] = collide(otherbuffer[j], buffer[j]);
-            } else {
-              buffer[j] = otherbuffer[j];
-              conflicts[j] = true;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  function seq() {
-    var buffer = NewDenseArray(length);
-    var conflicts = NewDenseArray(length);
-
-    for (var i = 0; i < length; i++) {
-      UnsafePutElements(buffer, i, defaultValue);
-      UnsafePutElements(conflicts, i, false);
-    }
-
-    for (var i = 0; i < targetsLength; i++) {
-      var x = self[i];
-      var t = checkTarget(i, targets[i]);
-      if (conflicts[t])
-        x = collide(x, buffer[t]);
-
-      UnsafePutElements(buffer, t, x, conflicts, t, true);
-    }
-
-    return buffer;
-  }
-
-  function checkTarget(i, t) {
-    if (TO_INT32(t) !== t)
-      ThrowError(JSMSG_PAR_ARRAY_SCATTER_BAD_TARGET, i);
-
-    if (t < 0 || t >= length)
-      ThrowError(JSMSG_PAR_ARRAY_SCATTER_BOUNDS);
-
-    // It's not enough to return t, as -0 | 0 === -0.
-    return TO_INT32(t);
-  }
-}
-
-/**
- * The filter operation applied in parallel.
- */
-function ArrayFilterPar(func, mode) {
-  if (!IsCallable(func))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(0, func));
-
-  var self = ToObject(this);
-  var length = self.length;
-
-  parallel: for (;;) { // see ArrayMapPar() to explain why for(;;) etc
-    if (ShouldForceSequential())
-      break parallel;
-    if (!TRY_PARALLEL(mode))
-      break parallel;
-
-    var chunks = ComputeNumChunks(length);
-    var numSlices = ForkJoinSlices();
-    if (chunks < numSlices * 2)
-      break parallel;
-
-    var info = ComputeAllSliceBounds(chunks, numSlices);
-
-    // Step 1. Compute which items from each slice of the result
-    // buffer should be preserved. When we're done, we have an array
-    // |survivors| containing a bitset for each chunk, indicating
-    // which members of the chunk survived. We also keep an array
-    // |counts| containing the total number of items that are being
-    // preserved from within one slice.
-    //
-    // FIXME(bug 844890): Use typed arrays here.
-    var counts = NewDenseArray(numSlices);
-    for (var i = 0; i < numSlices; i++)
-      UnsafePutElements(counts, i, 0);
-    var survivors = NewDenseArray(chunks);
-    ForkJoin(findSurvivorsInSlice, ForkJoinMode(mode));
-
-    // Step 2. Compress the slices into one contiguous set.
-    var count = 0;
-    for (var i = 0; i < numSlices; i++)
-      count += counts[i];
-    var buffer = NewDenseArray(count);
-    if (count > 0)
-      ForkJoin(copySurvivorsInSlice, ForkJoinMode(mode));
-
-    return buffer;
-  }
-
-  // Sequential fallback:
-  ASSERT_SEQUENTIAL_IS_OK(mode);
-  var buffer = [];
-  for (var i = 0; i < length; i++) {
-    var elem = self[i];
-    if (func(elem, i, self))
-      ARRAY_PUSH(buffer, elem);
-  }
-  return buffer;
-
-  /**
-   * As described above, our goal is to determine which items we
-   * will preserve from a given slice. We do this one chunk at a
-   * time. When we finish a chunk, we record our current count and
-   * the next chunk sliceId, lest we should bail.
-   */
-  function findSurvivorsInSlice(sliceId, numSlices, warmup) {
-    var chunkPos = info[SLICE_POS(sliceId)];
-    var chunkEnd = info[SLICE_END(sliceId)];
-
-    if (warmup && chunkEnd > chunkPos)
-      chunkEnd = chunkPos + 1;
-
-    var count = counts[sliceId];
-    while (chunkPos < chunkEnd) {
-      var indexStart = chunkPos << CHUNK_SHIFT;
-      var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, length);
-      var chunkBits = 0;
-
-      for (var bit = 0; indexStart + bit < indexEnd; bit++) {
-        var keep = !!func(self[indexStart + bit], indexStart + bit, self);
-        chunkBits |= keep << bit;
-        count += keep;
-      }
-
-      UnsafePutElements(survivors, chunkPos, chunkBits,
-                        counts, sliceId, count,
-                        info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    return chunkEnd === info[SLICE_END(sliceId)];
-  }
-
-  function copySurvivorsInSlice(sliceId, numSlices, warmup) {
-    // Copies the survivors from this slice into the correct position.
-    // Note that this is an idempotent operation that does not invoke
-    // user code. Therefore, we don't expect bailouts and make an
-    // effort to proceed chunk by chunk or avoid duplicating work.
-
-    // Total up the items preserved by previous slices.
-    var count = 0;
-    if (sliceId > 0) { // FIXME(#819219)---work around a bug in Ion's range checks
-      for (var i = 0; i < sliceId; i++)
-        count += counts[i];
-    }
-
-    // Compute the final index we expect to write.
-    var total = count + counts[sliceId];
-    if (count === total)
-      return true;
-
-    // Iterate over the chunks assigned to us. Read the bitset for
-    // each chunk. Copy values where a 1 appears until we have
-    // written all the values that we expect to. We can just iterate
-    // from 0...CHUNK_SIZE without fear of a truncated final chunk
-    // because we are already checking for when count==total.
-    var chunkStart = info[SLICE_START(sliceId)];
-    var chunkEnd = info[SLICE_END(sliceId)];
-    for (var chunk = chunkStart; chunk < chunkEnd; chunk++) {
-      var chunkBits = survivors[chunk];
-      if (!chunkBits)
-        continue;
-
-      var indexStart = chunk << CHUNK_SHIFT;
-      for (var i = 0; i < CHUNK_SIZE; i++) {
-        if (chunkBits & (1 << i)) {
-          UnsafePutElements(buffer, count++, self[indexStart + i]);
-          if (count === total)
-            break;
-        }
-      }
-    }
-
-    return true;
-  }
-}
-
-/**
- * "Comprehension form": This is the function invoked for
- * |Array.{build,buildPar}(len, fn)| It creates a new array with length |len|
- * where index |i| is equal to |fn(i)|.
- *
- * The final |mode| argument is an internal argument used only during our
- * unit-testing.
- */
-function ArrayStaticBuild(length, func) {
-  if (!IS_UINT32(length))
-    ThrowError(JSMSG_BAD_ARRAY_LENGTH);
-  if (!IsCallable(func))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(1, func));
-
-  var buffer = NewDenseArray(length);
-
-  for (var i = 0; i < length; i++)
-    UnsafePutElements(buffer, i, func(i));
-
-  return buffer;
-}
-
-function ArrayStaticBuildPar(length, func, mode) {
-  if (!IS_UINT32(length))
-    ThrowError(JSMSG_BAD_ARRAY_LENGTH);
-  if (!IsCallable(func))
-    ThrowError(JSMSG_NOT_FUNCTION, DecompileArg(1, func));
-
-  var buffer = NewDenseArray(length);
-
-  parallel: for (;;) {
-    if (ShouldForceSequential())
-      break parallel;
-    if (!TRY_PARALLEL(mode))
-      break parallel;
-
-    var chunks = ComputeNumChunks(length);
-    var numSlices = ForkJoinSlices();
-    var info = ComputeAllSliceBounds(chunks, numSlices);
-    ForkJoin(constructSlice, ForkJoinMode(mode));
-    return buffer;
-  }
-
-  // Sequential fallback:
-  ASSERT_SEQUENTIAL_IS_OK(mode);
-  fill(0, length);
-  return buffer;
-
-  function constructSlice(sliceId, numSlices, warmup) {
-    var chunkPos = info[SLICE_POS(sliceId)];
-    var chunkEnd = info[SLICE_END(sliceId)];
-
-    if (warmup && chunkEnd > chunkPos)
-      chunkEnd = chunkPos + 1;
-
-    while (chunkPos < chunkEnd) {
-      var indexStart = chunkPos << CHUNK_SHIFT;
-      var indexEnd = std_Math_min(indexStart + CHUNK_SIZE, length);
-      fill(indexStart, indexEnd);
-      UnsafePutElements(info, SLICE_POS(sliceId), ++chunkPos);
-    }
-
-    return chunkEnd === info[SLICE_END(sliceId)];
-  }
-
-  function fill(indexStart, indexEnd) {
-    for (var i = indexStart; i < indexEnd; i++)
-      UnsafePutElements(buffer, i, func(i));
-  }
-}
-
-/*
- * Mark the main operations as clone-at-callsite for better precision.
- * This is slightly overkill, as all that we really need is to
- * specialize to the receiver and the elemental function, but in
- * practice this is likely not so different, since element functions
- * are often used in exactly one place.
- */
-SetScriptHints(ArrayMapPar,         { cloneAtCallsite: true });
-SetScriptHints(ArrayReducePar,      { cloneAtCallsite: true });
-SetScriptHints(ArrayScanPar,        { cloneAtCallsite: true });
-SetScriptHints(ArrayScatterPar,     { cloneAtCallsite: true });
-SetScriptHints(ArrayFilterPar,      { cloneAtCallsite: true });
-SetScriptHints(ArrayStaticBuildPar, { cloneAtCallsite: true });
-
-#endif /* ENABLE_PARALLEL_JS */
+//>
+//> The length property of the `findIndex` method is **1**.
+//>
+//> NOTE The `findIndex` function is intentionally generic; it does not require
+//> that its **this** value be an Array object. Therefore it can be transferred
+//> to other kinds of objects for use as a method. Whether the `findIndex`
+//> function can be applied successfully to an exotic object that is not an
+//> Array is implementation-dependent.
+//>
