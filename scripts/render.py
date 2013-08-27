@@ -1,6 +1,6 @@
 """ render.py - Extract spec text and convert to a Word document. """
 
-import os, shutil, subprocess, tempfile
+import os, shutil, subprocess, tempfile, zipfile
 import codecs, markdown, html5lib, re
 import xml.etree.ElementTree as ET
 
@@ -41,11 +41,11 @@ def preprocess(source):
         result += heading + body
     return result
 
-def html_to_ooxml(html_element):
-    html_ns = u"http://www.w3.org/1999/xhtml"
+w_ns = u"http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+ET.register_namespace("w", w_ns)
 
-    w_ns = u"http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-    ET.register_namespace(w_ns, u"w")
+def html_to_ooxml(html_element, first_numId):
+    html_ns = u"http://www.w3.org/1999/xhtml"
 
     def w_element(name, content=(), **attrs):
         e = ET.Element(u"{" + w_ns + u"}" + name)
@@ -244,9 +244,24 @@ def html_to_ooxml(html_element):
         for wp in convert_block(child):
             paragraphs.append(wp.to_etree())
     body = w_element("body", paragraphs)
-    return w_element("document", [body])
+    return w_element("document", [body]), []
 
 def main(source_file, output_file):
+    # First, extract a single integer that we need from the source docx file.
+    # This is rather incredible but we do need it.
+    src_dir = os.path.dirname(__file__)
+    blank_docx_file = os.path.join(src_dir, "blank.docx")
+    zf = zipfile.ZipFile(blank_docx_file, "r")
+    f = zf.open("word/numbering.xml")
+    numbering_xml_bytes = f.read()
+    numbering_etree = ET.fromstring(numbering_xml_bytes)
+    zf.close()
+
+    def w(name):
+        return u"{" + w_ns + u"}" + name
+
+    first_numId = max(int(num.get(w(u"numId"))) for num in numbering_etree.findall(w(u"num"))) + 1
+
     # Load the file, stripping out everything not prefixed with "//>".
     # Treat as bytes; it works because UTF-8 is nice.
     lines = []
@@ -268,25 +283,37 @@ def main(source_file, output_file):
     html = markdown.markdown(source)
     #print(html)
     html_element = html5lib.parse(html, treebuilder="etree")
-    word_element = html_to_ooxml(html_element)
+    word_element, num_pairs = html_to_ooxml(html_element, first_numId)
+
+    # Word refuses to open the file if we re-serialize the XML, even though the
+    # infoset hasn't changed. Classy. I don't have the patience to figure out
+    # which xmlns:wtf attribute I need to add. So hack the raw XML bytes
+    # instead. (Works.)
+    i = numbering_xml_bytes.rindex("</w:num>")
+    numbering_xml_bytes = (
+        numbering_xml_bytes[:i]
+        + "".join('<w:num w:numId="{}"><w:abstractNumId w:val="{}"/></w:num>'.format(k, v)
+                  for k, v in num_pairs)
+        + numbering_xml_bytes[i:])
 
     #print(ET.tostring(word_element, encoding="UTF-8"))
 
-    src_dir = os.path.dirname(__file__)
     temp_dir = tempfile.mkdtemp()
     output_docx = "modules.docx"
+    temp_output_docx = os.path.join(temp_dir, output_docx)
     try:
-        shutil.copy(os.path.join(src_dir, "blank.docx"),
-                    os.path.join(temp_dir, output_docx))
+        shutil.copy(blank_docx_file, temp_output_docx)
         os.mkdir(os.path.join(temp_dir, "word"))
         with open(os.path.join(temp_dir, "word", "document.xml"), "wb") as f:
             f.write(ET.tostring(word_element, encoding="UTF-8"))
-        subprocess.check_call(["zip", "-u", output_docx, "word/document.xml"],
-                              cwd=temp_dir)
+        with open(os.path.join(temp_dir, "word", "numbering.xml"), "wb") as f:
+            f.write(numbering_xml_bytes)
+        subprocess.check_call(
+            ["zip", "-u", output_docx, "word/document.xml", "word/numbering.xml"],
+            cwd=temp_dir)
         if os.path.exists(output_docx):
             os.remove(output_docx)
-        shutil.move(os.path.join(temp_dir, output_docx),
-                    output_file)
+        shutil.move(temp_output_docx, output_file)
     finally:
         shutil.rmtree(temp_dir)
 
