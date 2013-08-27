@@ -28,7 +28,7 @@ def preprocess(source):
 
         # Italicize all names in the body.
         pattern = ur'(?<!\*)\b(' + ur'|'.join(names) + ur')\b(?!\*)'
-        body = re.sub(pattern, lambda m: u'*' + m.group(1) + u'*', body)
+        body = re.sub(pattern, lambda m: u'<var>' + m.group(1) + u'</var>', body)
 
         # Make "this" bold in "the this value".
         body = re.sub(ur'\b(the\s+)this(\s+value)\b',
@@ -85,23 +85,26 @@ def html_to_ooxml(html_element, first_numId, first_abstractNumId):
             return w_element(u"p", content)
 
     class Run(unicode):
-        __slots__ = ['em', 'strong', 'code']
+        __slots__ = ['em', 'strong', 'code', 'var']
         def __init__(self, str):
             assert self == str
             self.em = False
             self.strong = False
             self.code = False
+            self.var = False
 
         def to_etree(self):
             content = []
 
             rPr = []
-            if self.em:
+            if self.em or self.var:
                 rPr.append(w_element(u"i"))
             if self.code or self.strong:
                 rPr.append(w_element(u"b"))
             if self.code:
                 rPr.append(w_element(u"rFonts", ascii=u"Courier New", hAnsi=u"Courier New"))
+            elif self.var:
+                rPr.append(w_element(u"rFonts", ascii=u"Times New Roman", hAnsi=u"Times New Roman"))
             if rPr:
                 content.append(w_element(u"rPr", rPr))
 
@@ -148,7 +151,7 @@ def html_to_ooxml(html_element, first_numId, first_abstractNumId):
             return tag
 
     def is_inline(e):
-        return element_tag(e) in ('em', 'strong', 'code')
+        return element_tag(e) in ('em', 'strong', 'code', 'var')
 
     def content_of_li_element_to_runs_and_blocks(e, attrs):
         runs = []
@@ -176,7 +179,7 @@ def html_to_ooxml(html_element, first_numId, first_abstractNumId):
 
     def convert_inline(e, **attrs):
         tag = element_tag(e)
-        if tag in ("em", "strong", "code"):
+        if is_inline(e):
             attrs[tag] = True
             for run in content_of_element_to_runs(e, attrs):
                 yield run
@@ -302,7 +305,6 @@ def main(source_file, output_file):
     # which xmlns:wtf attribute I need to add. So hack the raw XML bytes
     # instead. (Works.)
     def insert_after(s, pattern, extra):
-        print("INSERTING:", extra)
         i = s.rindex(pattern)
         if i == -1:
             raise ValueError("insert_after: pattern not found")
