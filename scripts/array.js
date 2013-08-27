@@ -2,6 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// Sample input to render.py. You can translate this JS file into
+// a Word document with the command:
+//
+//     python render.py array.js -o array.docx
+
+
 //> #### Array.prototype.indexOf ( searchElement [ , fromIndex ] )
 //>
 //> `indexOf` compares searchElement to the elements of the array, in
@@ -22,32 +28,32 @@
 function ArrayIndexOf(searchElement/*, fromIndex*/) {
 //> 1. Let O be the result of calling ToObject passing the this value
 //>    as the argument.
-//> 2. ReturnIfAbrupt(O).
+//> 1. ReturnIfAbrupt(O).
     var O = ToObject(this);
 
-//> 3. Let lenValue be the result of Get(O, `"length"`).
-//> 4. Let len be ToLength(lenValue).
-//> 5. ReturnIfAbrupt(len).
+//> 1. Let lenValue be the result of Get(O, `"length"`).
+//> 1. Let len be ToLength(lenValue).
+//> 1. ReturnIfAbrupt(len).
     var len = TO_UINT32(O.length);
 
-//> 6. If len is 0, return -1.
+//> 1. If len is 0, return -1.
     if (len === 0)
         return -1;
 
-//> 7. If argument fromIndex was passed let n be ToInteger(fromIndex);
+//> 1. If argument fromIndex was passed let n be ToInteger(fromIndex);
 //>    else let n be 0.
-//> 8. ReturnIfAbrupt(n).
+//> 1. ReturnIfAbrupt(n).
     var n = arguments.length > 1 ? ToInteger(arguments[1]) : 0;
 
-//> 9. If n ≥ len, return -1.
+//> 1. If n ≥ len, return -1.
     if (n >= len)
         return -1;
 
-//> 10. If n ≥ 0, then
+//> 1. If n ≥ 0, then
 //>     1. Let k be n.
-//> 11. Else n<0,
+//> 1. Else n<0,
 //>     1. Let k be len - abs(n).
-//>     2. If k < 0, then let k be 0.
+//>     1. If k < 0, then let k be 0.
     var k;
     if (n >= 0) {
         k = n;
@@ -57,21 +63,22 @@ function ArrayIndexOf(searchElement/*, fromIndex*/) {
             k = 0;
     }
 
-//> 12. Repeat, while k<len
-//>     1. Let kPresent be the result of HasProperty(O, ToString(k)).
-//>     2. ReturnIfAbrupt(kPresent).
-//>     3. If kPresent is **true**, then
-//>         1. Let elementK be the result of Get(O, ToString(k)).
-//>         2. ReturnIfAbrupt(elementK).
-//>         3. Let same be the result of performing Strict Equality Comparison searchElement === elementK.
-//>         4. If same is **true**, return k.
-//>     4. Increase k by 1.
+//> 1. Repeat, while k<len
     for (; k < len; k++) {
+//>     1. Let kPresent be the result of HasProperty(O, ToString(k)).
+//>     1. ReturnIfAbrupt(kPresent).
+//>     1. If kPresent is **true**, then
+//>         1. Let elementK be the result of Get(O, ToString(k)).
+//>         1. ReturnIfAbrupt(elementK).
+//>         1. Let same be the result of performing Strict Equality Comparison
+//>            searchElement === elementK.
+//>         1. If same is **true**, return k.
         if (k in O && O[k] === searchElement)
             return k;
+//>     1. Increase k by 1.
     }
 
-//> 13. Return -1.
+//> 1. Return -1.
     return -1;
 }
 //>
