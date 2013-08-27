@@ -44,7 +44,7 @@ def preprocess(source):
 w_ns = u"http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 ET.register_namespace("w", w_ns)
 
-def html_to_ooxml(html_element, first_numId):
+def html_to_ooxml(html_element, first_numId, first_abstractNumId):
     html_ns = u"http://www.w3.org/1999/xhtml"
 
     def w_element(name, content=(), **attrs):
@@ -190,21 +190,20 @@ def html_to_ooxml(html_element, first_numId):
         p = Paragraph(content, pStyle)
         return p
 
-    def list_item_content_to_paras(e, list_style, list_level, pStyle):
+    def convert_li(e, numId, pStyle, list_level):
+        assert element_tag(e) == "li"
+        assert e.tail is None or e.tail.isspace()
+
         runs, blocks = content_of_li_element_to_runs_and_blocks(e, {})
-        assert list_style in ('ol', 'ul')
-        if list_style == 'ol':
-            numId = 560  # temporary hack - numId of an existing list, glurked from the document
-            pStyle = "Alg4"
-        else:
-            numId = 24   # temporary hack - see above
-            pStyle = "BulletNotlast"
         yield Paragraph(runs, pStyle=pStyle, numId=numId, ilvl=list_level - 1)
         for child in blocks:
-            for p in convert_block(child, list_style=None, list_level=list_level):
+            for p in convert_block(child, numId=numId, list_level=list_level):
                 yield p
 
-    def convert_block(e, list_style=None, list_level=0):
+    next_numId = [first_numId]
+    next_abstractNumId = [first_abstractNumId]
+    num_pairs = []
+    def convert_block(e, numId=None, list_level=0):
         if e.tail and e.tail.strip():
             raise Exception("unexpected tail! {!r}".format(e.tail))
         tag = element_tag(e)
@@ -213,21 +212,30 @@ def html_to_ooxml(html_element, first_numId):
         elif tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
             yield content_to_para(e, pStyle=tag.replace('h', 'Heading'))
         elif tag in ('ul', 'ol'):
-            for child in e:
-                for p in convert_block(child, list_style=tag, list_level=list_level + 1):
-                    yield p
-        elif tag == "li":
-            if list_style == 'ul':
+            if list_level == 0:
+                numId = next_numId[0]
+                if tag == "ul":
+                    # This magic numeric id is glurked from the document.
+                    abstractNumId = 24
+                else:
+                    abstractNumId = next_abstractNumId[0]
+                    next_abstractNumId[0] += 1
+                num_pairs.append((numId, abstractNumId))
+                next_numId[0] += 1
+
+            if tag == 'ul':
                 pStyle = "BulletNotlast"
             else:
                 pStyle = "Alg4"
-            for p in list_item_content_to_paras(e, list_style, list_level, pStyle=pStyle):
-                yield p
+
+            for child in e:
+                for p in convert_li(child, numId, pStyle, list_level=list_level + 1):
+                    yield p
         elif tag == "blockquote":
             if list_level != 0:
                 raise Exception("can't convert a blockquote inside a list")
             for child in e:
-                for p in convert_block(child, list_style, list_level + 1):
+                for p in convert_block(child, numId, list_level + 1):
                     yield p
         elif tag == "pre":
             if len(e) == 1 and e[0].tag == "{" + html_ns + "}code":
@@ -243,12 +251,13 @@ def html_to_ooxml(html_element, first_numId):
     for child in html_element.find("{" + html_ns + "}body"):
         for wp in convert_block(child):
             paragraphs.append(wp.to_etree())
+
     body = w_element("body", paragraphs)
-    return w_element("document", [body]), []
+    return w_element("document", [body]), num_pairs
 
 def main(source_file, output_file):
-    # First, extract a single integer that we need from the source docx file.
-    # This is rather incredible but we do need it.
+    # First, extract two numbers that we need from the source docx file.
+    # This is rather incredible but we do need them.
     src_dir = os.path.dirname(__file__)
     blank_docx_file = os.path.join(src_dir, "blank.docx")
     zf = zipfile.ZipFile(blank_docx_file, "r")
@@ -260,7 +269,10 @@ def main(source_file, output_file):
     def w(name):
         return u"{" + w_ns + u"}" + name
 
-    first_numId = max(int(num.get(w(u"numId"))) for num in numbering_etree.findall(w(u"num"))) + 1
+    first_numId = max(int(num.get(w(u"numId")))
+                      for num in numbering_etree.findall(w(u"num"))) + 1
+    first_abstractNumId = max(int(num.get(w(u"abstractNumId")))
+                              for num in numbering_etree.findall(w(u"abstractNum"))) + 1
 
     # Load the file, stripping out everything not prefixed with "//>".
     # Treat as bytes; it works because UTF-8 is nice.
@@ -283,21 +295,33 @@ def main(source_file, output_file):
     html = markdown.markdown(source)
     #print(html)
     html_element = html5lib.parse(html, treebuilder="etree")
-    word_element, num_pairs = html_to_ooxml(html_element, first_numId)
+    word_element, num_pairs = html_to_ooxml(html_element, first_numId, first_abstractNumId)
 
     # Word refuses to open the file if we re-serialize the XML, even though the
     # infoset hasn't changed. Classy. I don't have the patience to figure out
     # which xmlns:wtf attribute I need to add. So hack the raw XML bytes
     # instead. (Works.)
-    i = numbering_xml_bytes.rindex("</w:num>")
-    numbering_xml_bytes = (
-        numbering_xml_bytes[:i]
-        + "".join('<w:num w:numId="{}"><w:abstractNumId w:val="{}"/></w:num>'.format(k, v)
-                  for k, v in num_pairs)
-        + numbering_xml_bytes[i:])
+    def insert_after(s, pattern, extra):
+        print("INSERTING:", extra)
+        i = s.rindex(pattern)
+        if i == -1:
+            raise ValueError("insert_after: pattern not found")
+        i += len(pattern)
+        return s[:i] + extra + s[i:]
 
-    #print(ET.tostring(word_element, encoding="UTF-8"))
+    numbering_xml_bytes = insert_after(
+        numbering_xml_bytes, "</w:num>",
+        "".join('<w:num w:numId="{}"><w:abstractNumId w:val="{}"/></w:num>'.format(k, v)
+                for k, v in num_pairs))
+    numbering_xml_bytes = insert_after(
+        numbering_xml_bytes, "</w:abstractNum>",
+        "".join('<w:abstractNum w:abstractNumId="{}">'
+                  '<w:multiLevelType w:val="multilevel"/>'
+                  '<w:numStyleLink w:val="ag3"/>'
+                '</w:abstractNum>'.format(v)
+                for k, v in num_pairs if v > 1000))
 
+    # Generate output.
     temp_dir = tempfile.mkdtemp()
     output_docx = "modules.docx"
     temp_output_docx = os.path.join(temp_dir, output_docx)
