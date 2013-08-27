@@ -26,10 +26,6 @@ def preprocess(source):
         for m in re.finditer(ur'(?i)\blet\s+(\w+)\s+be\b', body):
             names.add(m.group(1))
 
-        print heading
-        print "Names:", u", ".join(sorted(names))
-        print
-
         # Italicize all names in the body.
         pattern = ur'(?<!\*)\b(' + ur'|'.join(names) + ur')\b(?!\*)'
         body = re.sub(pattern, lambda m: u'*' + m.group(1) + u'*', body)
