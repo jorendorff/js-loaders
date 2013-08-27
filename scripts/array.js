@@ -276,6 +276,7 @@ function ArrayEvery(callbackfn/*, thisArg*/) {
 //>
 //> When the `some` method is called with one or two arguments, the following
 //> steps are taken:
+//>
 function ArraySome(callbackfn/*, thisArg*/) {
 //> 1. Let O be the result of calling ToObject passing the this value as the
 //>    argument.
@@ -482,7 +483,7 @@ When the reduce method is called with one or two arguments, the following steps 
         Increase k by 1.
     Return accumulator.
 
-The length property of the reduce method is 1.
+The length property of the reduce method is **1**.
 
 NOTE The reduce function is intentionally generic; it does not require that its this value be an Array object. Therefore it can be transferred to other kinds of objects for use as a method. Whether the reduce function can be applied successfully to an exotic object that is not an Array is implementation-dependent.
 */
@@ -572,7 +573,7 @@ When the reduceRight method is called with one or two arguments, the following s
         Decrease k by 1.
     Return accumulator.
 
-The length property of the reduceRight method is 1.
+The length property of the reduceRight method is **1**.
 
 NOTE The reduceRight function is intentionally generic; it does not require that its **this** value be an Array object. Therefore it can be transferred to other kinds of objects for use as a method. Whether the reduceRight function can be applied successfully to an exotic object that is not an Array is implementation-dependent.
 */
@@ -698,7 +699,7 @@ function ArrayFind(predicate/*, thisArg*/) {
     return undefined;
 }
 //>
-//> The length property of the `find` method is 1.
+//> The length property of the `find` method is **1**.
 //>
 //> NOTE The `find` function is intentionally generic; it does not require that
 //> its **this** value be an Array object. Therefore it can be transferred to
