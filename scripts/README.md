@@ -32,6 +32,6 @@ You will need Python 2.7 and virtualenv.
 You don&rsquo;t need to repeat those steps every time.
 From a fresh shell, just
 
-        . ./venv/bin/activate
-        python render.py
+    . ./venv/bin/activate
+    python render.py
 
