@@ -5,126 +5,107 @@
 //
 // The API is described in [loaders.js](loaders.html).
 
-"use strict";
-
-
 // ## Primitives
 
 // We rely on the JavaScript implementation to provide a few primitives.  You
 // can skip over this stuff. On the other hand, it tells what sort of thing
 // we'll be doing here.
-import {
-    // * `$Assert(condition)` is your bog-standard assert function. It does
-    //   nothing. The given `condition` is always true.
-    $Assert,
-
-    // * `$QueueTask(fn)` schedules a callback `fn` to be called in a later
-    //   event loop turn.  Much like `setTimeout(fn, 0)`.  The HTML spec calls
-    //   this "[queueing a
-    //   task](http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#queue-a-task)".
-    //   Here, it&rsquo;s mainly used to ensure that user callbacks are called
-    //   from an empty stack.
-    $QueueTask,
-
-    // * `$DefineBuiltins(obj)` builds a full copy of the ES builtins on `obj`,
-    //   so for example you get a fresh new `obj.Array` constructor and methods
-    //   like `obj.Array.prototype.push`. You even get `obj.Loader`, a copy of
-    //   `Loader`.
-    $DefineBuiltins,
-
-    // Now on to the core JS language implementation intrinsics.
-
-    // * `$Parse(loader, src, moduleName, address, strict)` parses a script or
-    //   module body. If `moduleName` is null, then `src` is parsed as an ES6
-    //   Program; otherwise `moduleName` is a string, and `src` is parsed as a
-    //   module body.  `$Parse` detects ES "early errors" and throws
-    //   `SyntaxError`.  On success, it returns a script object.  This is the
-    //   only way script objects are created.  (Script objects are never exposed
-    //   to user code; they are for use with the following intrinsics only.)
-    //
-    //   Note that this does not execute any of the code in `src`.
-    //
-    $Parse,
-
-    // * `$ScriptDeclaredModuleNames(script)` returns an array of strings, the
-    //   names of all modules declared in the script.
-    //
-    //   A script declares modules using this syntax: `module "vc" {
-    //   ... }`.  Modules don't nest, and they can only occur at toplevel, so
-    //   there is a single flat array for the whole script.
-    //
-    $ScriptDeclaredModuleNames,
-
-    // * `$ScriptGetDeclaredModule(script, name)` returns a `Module` object for
-    //   a module declared in the body of the given `script`.
-    //
-    //   Modules declared in scripts must be linked and executed before they
-    //   are exposed to user code.
-    //
-    $ScriptGetDeclaredModule,
-
-    // * `$ScriptImports(script)` returns an array of pairs representing every
-    //   import-declaration in `script`. See the comment in `Loader.eval()`.
-    $ScriptImports,
-
-    // * `$LinkScript(script, modules)` links a script to all the modules
-    //   requested in its imports. `modules` is an array of `Module` objects,
-    //   the same length as `$ScriptImports(script)`.
-    //
-    //   Throws if any `import`-`from` declaration in `script` imports a name
-    //   that the corresponding module does not export.
-    //
-    $LinkScript,
-
-    // * `$ModuleGetDeclaringScript(module)` returns a script object. If
-    //   `$ScriptGetDeclaredModule(script, name) === module` for some string
-    //   `name`, then `$ModuleGetDeclaringScript(module) === script`.
-    $ModuleGetDeclaringScript,
-
-    // The two remaining primitives operate on both scripts and modules.
-
-    // * `$CodeExecute(c)` executes the body of a script or module. If `c` is a
-    //   module, return undefined. If it's a script, return the value of the
-    //   last-executed expression statement (just like `eval`).
-    $CodeExecute,
-
-    // * `$CodeGetLinkedModules(c)` returns an array of the modules linked to
-    //   `c` in a previous `$LinkScript` call.  (We could perhaps do without
-    //   this by caching this information in a WeakMap.)
-    $CodeGetLinkedModules
-} from "implementation-intrinsics";
-
+//
+// * `$Assert(condition)` is your bog-standard assert function. It does
+//   nothing. The given `condition` is always true.
+//
+// * `$QueueTask(fn)` schedules a callback `fn` to be called in a later
+//   event loop turn.  Much like `setTimeout(fn, 0)`.  The HTML spec calls
+//   this "[queueing a
+//   task](http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#queue-a-task)".
+//   Here, it&rsquo;s mainly used to ensure that user callbacks are called
+//   from an empty stack.
+//
+// * `$DefineBuiltins(obj)` builds a full copy of the ES builtins on `obj`,
+//   so for example you get a fresh new `obj.Array` constructor and methods
+//   like `obj.Array.prototype.push`. You even get `obj.Loader`, a copy of
+//   `Loader`.
+//
+// Now on to the core JS language implementation intrinsics.
+//
+// * `$Parse(loader, src, moduleName, address, strict)` parses a script or
+//   module body. If `moduleName` is null, then `src` is parsed as an ES6
+//   Program; otherwise `moduleName` is a string, and `src` is parsed as a
+//   module body.  `$Parse` detects ES "early errors" and throws
+//   `SyntaxError`.  On success, it returns a script object.  This is the
+//   only way script objects are created.  (Script objects are never exposed
+//   to user code; they are for use with the following intrinsics only.)
+//
+//   Note that this does not execute any of the code in `src`.
+//
+// * `$ScriptDeclaredModuleNames(script)` returns an array of strings, the
+//   names of all modules declared in the script.
+//
+//   A script declares modules using this syntax: `module "vc" {
+//   ... }`.  Modules don't nest, and they can only occur at toplevel, so
+//   there is a single flat array for the whole script.
+//
+// * `$ScriptGetDeclaredModule(script, name)` returns a `Module` object for
+//   a module declared in the body of the given `script`.
+//
+//   Modules declared in scripts must be linked and executed before they
+//   are exposed to user code.
+//
+// * `$ScriptImports(script)` returns an array of pairs representing every
+//   import-declaration in `script`. See the comment in `Loader.eval()`.
+//
+// * `$LinkScript(script, modules)` links a script to all the modules
+//   requested in its imports. `modules` is an array of `Module` objects,
+//   the same length as `$ScriptImports(script)`.
+//
+//   Throws if any `import`-`from` declaration in `script` imports a name
+//   that the corresponding module does not export.
+//
+// * `$ModuleGetDeclaringScript(module)` returns a script object. If
+//   `$ScriptGetDeclaredModule(script, name) === module` for some string
+//   `name`, then `$ModuleGetDeclaringScript(module) === script`.
+//
+// The two remaining primitives operate on both scripts and modules.
+//
+// * `$CodeExecute(c)` executes the body of a script or module. If `c` is a
+//   module, return undefined. If it's a script, return the value of the
+//   last-executed expression statement (just like `eval`).
+//
+// * `$CodeGetLinkedModules(c)` returns an array of the modules linked to
+//   `c` in a previous `$LinkScript` call.  (We could perhaps do without
+//   this by caching this information in a WeakMap.)
+//
 // TODO: Consider removing `$ScriptImports` in favor of a `$CodeImports` that
 // we call separately on modules and scripts; `$LinkScript` would become
 // `$CodeLink` and then `$CodeGetLinkedModules` could really be replaced with a
 // `WeakMap`.
-
+//
 // The remaining primitives are not very interesting. These are capabilities
 // that JS provides via builtin methods. We use primitives rather than the
 // builtin methods because user code can delete or replace the methods.
-import {
-    $ToString,      // $ToString(v) === ES ToString algorithm ~= ("" + v)
-    $Apply,         // $Apply(f, thisv, args) ~= thisv.apply(f, args)
-    $Call,          // $Call(f, thisv, ...args) ~= thisv.call(f, ...args)
-    $ObjectDefineProperty, // $ObjectDefineProperty(obj, p, desc) ~= Object.defineProperty(obj, p, desc)
-    $ObjectKeys,    // $ObjectKeys(obj) ~= Object.keys(obj)
-    $IsArray,       // $IsArray(v) ~= Array.isArray(v)
-    $ArrayPush,     // $ArrayPush(arr, v) ~= arr.push(v)
-    $ArrayPop,      // $ArrayPop(arr) ~= arr.pop()
-    $SetNew,        // $SetNew() ~= new Set
-    $SetHas,        // $SetHas(set, v) ~= set.has(v)
-    $SetAdd,        // $SetAdd(set, v) ~= set.add(v)
-    $MapNew,        // $MapNew() ~= new Map
-    $MapHas,        // $MapHas(map, key) ~= map.has(key)
-    $MapGet,        // $MapGet(map, key) ~= map.get(key)
-    $MapSet,        // $MapSet(map, key, value) ~= map.set(key, value)
-    $MapDelete,     // $MapDelete(map, key) ~= map.delete(key)
-    $WeakMapNew,    // $WeakMapNew() ~= new WeakMap
-    $WeakMapGet,    // $WeakMapGet(map, key) ~= map.get(key)
-    $WeakMapSet,    // $WeakMapSet(map, key, value) ~= map.set(key, value)
-    $TypeError,     // $TypeError(msg) ~= new TypeError(msg)
-    $SyntaxError    // $SyntaxError(msg) ~= new SyntaxError(msg)
-} from "implementation-builtins";
+//
+// * `$ToString(v)` === ES ToString algorithm ~= ("" + v)
+// * `$Apply(f, thisv, args)` ~= thisv.apply(f, args)
+// * `$Call(f, thisv, ...args)` ~= thisv.call(f, ...args)
+// * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
+// * `$ObjectKeys(obj)` ~= Object.keys(obj)
+// * `$IsArray(v)` ~= Array.isArray(v)
+// * `$ArrayPush(arr, v)` ~= arr.push(v)
+// * `$ArrayPop(arr)` ~= arr.pop()
+// * `$SetNew()` ~= new Set
+// * `$SetHas(set, v)` ~= set.has(v)
+// * `$SetAdd(set, v)` ~= set.add(v)
+// * `$MapNew()` ~= new Map
+// * `$MapHas(map, key)` ~= map.has(key)
+// * `$MapGet(map, key)` ~= map.get(key)
+// * `$MapSet(map, key, value)` ~= map.set(key, value)
+// * `$MapDelete(map, key)` ~= map.delete(key)
+// * `$WeakMapNew()` ~= new WeakMap
+// * `$WeakMapGet(map, key)` ~= map.get(key)
+// * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
+// * `$TypeError(msg)` ~= new TypeError(msg)
+// * `$SyntaxError(msg)` ~= new SyntaxError(msg)
+
 
 // Each public `Loader` object has a private `LoaderImpl` object.  The simplest
 // way to connect the two without exposing `LoaderImpl` to user code is to use
