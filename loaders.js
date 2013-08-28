@@ -59,12 +59,12 @@
 // and running modules and scripts.
 //
 export class Loader {
-    // **`new Loader(parent, options)`** - Create a new `Loader`.
-    constructor(parent, options) {
+    // **`new Loader(options)`** - Create a new `Loader`.
+    constructor(options) {
         // Since ES6 does not have support for private state or private
         // methods, everything private is stored on a separate `LoaderImpl`
         // object which is not accessible from user code.
-        createImpl(this, parent, options);
+        createImpl(this, options);
 
         // P4 ISSUE: Detailed behavior of hooks.
         //

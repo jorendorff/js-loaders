@@ -113,8 +113,8 @@
 let loaderImplMap = $WeakMapNew();
 
 // Create a new `LoaderImpl` and associate it with `loader`, a new `Loader`.
-function createImpl(loader, parent, options) {
-    $WeakMapSet(loaderImplMap, this, new LoaderImpl(loader, parent, options));
+function createImpl(loader, options) {
+    $WeakMapSet(loaderImplMap, this, new LoaderImpl(loader, options));
 }
 
 // Get the `LoaderImpl` for a given `Loader` object.
@@ -127,7 +127,7 @@ function getImpl(loader) {
 
 class LoaderImpl {
     // Create a new loader.
-    constructor(loader, parent, options) {
+    constructor(loader, options) {
         define(this, {
             loader: loader,
 
