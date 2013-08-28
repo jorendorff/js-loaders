@@ -26,9 +26,10 @@ def preprocess(source):
         for m in re.finditer(ur'(?i)\blet\s+(\w+)\s+be\b', body):
             names.add(m.group(1))
 
-        # Italicize all names in the body.
-        pattern = ur'(?<!\*)\b(' + ur'|'.join(names) + ur')\b(?!\*)'
-        body = re.sub(pattern, lambda m: u'<var>' + m.group(1) + u'</var>', body)
+        if names:
+            # Italicize all names in the body.
+            pattern = ur'(?<!\*)\b(' + ur'|'.join(names) + ur')\b(?!\*)'
+            body = re.sub(pattern, lambda m: u'<var>' + m.group(1) + u'</var>', body)
 
         # Make "this" bold in "the this value".
         body = re.sub(ur'\b(the\s+)this(\s+value)\b',
