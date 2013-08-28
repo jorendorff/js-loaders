@@ -113,12 +113,12 @@
 let loaderImplMap = $WeakMapNew();
 
 // Create a new `LoaderImpl` and associate it with `loader`, a new `Loader`.
-export function createImpl(loader, parent, options) {
+function createImpl(loader, parent, options) {
     $WeakMapSet(loaderImplMap, this, new LoaderImpl(loader, parent, options));
 }
 
 // Get the `LoaderImpl` for a given `Loader` object.
-export function getImpl(loader) {
+function getImpl(loader) {
     let li = $WeakMapGet(loaderImplMap, loader);
     if (li === undefined)
         throw $TypeError("Loader method called on incompatible object");

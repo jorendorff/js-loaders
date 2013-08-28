@@ -48,11 +48,8 @@
 //   * intrinsics;
 //   * probably various other odds and ends.
 
-"use strict";
-
 // The entire implementation is in a separate source file,
 // [impl.js](impl.html).
-import { createImpl, getImpl } from "./impl";
 
 
 // ## The Loader class
