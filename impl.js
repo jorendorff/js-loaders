@@ -138,7 +138,7 @@ class LoaderImpl {
             // fully linked.  However it can contain modules whose bodies have
             // not yet started to execute.  Except in the case of cyclic
             // imports, such modules are not exposed to user code.  See
-            // `ensureExecuted()`.
+            // `EnsureExecuted()`.
             //
             modules: $MapNew(),
 
@@ -210,7 +210,7 @@ class LoaderImpl {
                     throw $TypeError("import(): module \"" + fullName +
                                      "\" was deleted from the loader");
                 }
-                ensureExecuted(m);
+                EnsureExecuted(m);
             } catch (exc) {
                 return errback(exc);
             }
@@ -322,7 +322,7 @@ class LoaderImpl {
         // During the **execute phase**, we first execute module bodies for any
         // modules needed by `script` that haven't already executed.  Then we
         // evaluate `script` and return that value.
-        return ensureExecuted(script);
+        return EnsureExecuted(script);
     }
 
     // **`unpackAddressOption`** - Used by several Loader methods to get
@@ -373,7 +373,7 @@ class LoaderImpl {
             // what the spec is expected to say.
             let result;
             try {
-                result = ensureExecuted(load.script);
+                result = EnsureExecuted(load.script);
             } catch (exc) {
                 AsyncCall(errback, exc);
                 return;
@@ -753,7 +753,7 @@ class LoaderImpl {
         // synchronously execute the module and any dependencies that have not
         // executed yet.
         if (m !== undefined)
-            ensureExecuted(m);
+            EnsureExecuted(m);
         return m;
     }
 
@@ -938,7 +938,7 @@ class LoaderImpl {
 //
 // 3.  Done:  The module has been linked and added to the loader's module
 //     registry.  Its body may or may not have been executed yet (see
-//     `ensureExecuted`).
+//     `EnsureExecuted`).
 //
 //         .status === "linked"
 //
@@ -1345,8 +1345,8 @@ function LinkSetFail(linkSet, exc) {
 //> ## Module and script execution
 //>
 //> Module bodies are executed on demand, as late as possible.  The loader uses
-//> the function `ensureExecuted`, defined below, to execute scripts.  The
-//> loader always calls `ensureExecuted` before returning a Module object to
+//> the function `EnsureExecuted`, defined below, to execute scripts.  The
+//> loader always calls `EnsureExecuted` before returning a Module object to
 //> user code.
 //>
 //> There is one way a module can be exposed to script before it has executed.
@@ -1363,25 +1363,30 @@ function LinkSetFail(linkSet, exc) {
 //
 var executedCode = $WeakMapNew();
 
-// **`execute`** - Execute the given script or module `code` (but only if we
-// have never tried to execute it before).
-function execute(code) {
+//> ### ExecuteScriptOrModuleOnce Abstract Operation
+//>
+//> Execute the given script or module `code`, but only if we
+//> have never tried to execute it before.
+//>
+function ExecuteScriptOrModuleOnce(code) {
     if (!$WeakMapHas(executedCode, code)) {
         $WeakMapSet(executedCode, code, true);
         return $CodeExecute(code);
     }
 }
 
-// **`ensureExecuted`** - Walk the dependency graph of the script or module
-// `start`, executing any script or module bodies that have not already
-// executed (including, finally, `start` itself).
-//
-// `start` and its dependencies must already be linked.
-//
-// On success, `start` and all its dependencies, transitively, will have
-// started to execute exactly once.
-//
-function ensureExecuted(start) {
+//> ### EnsureExecuted Abstract Operation
+//>
+//> Walk the dependency graph of the script or module
+//> `start`, executing any script or module bodies that have not already
+//> executed (including, finally, `start` itself).
+//>
+//> `start` and its dependencies must already be linked.
+//>
+//> On success, `start` and all its dependencies, transitively, will have
+//> started to execute exactly once.
+//>
+function EnsureExecuted(start) {
     // *Why the graph walk doesn't stop at already-executed modules:*  It's a
     // matter of correctness.  Here is the test case:
     //
@@ -1398,7 +1403,7 @@ function ensureExecuted(start) {
     //       assert(ok === true);
     //     </script>
     //
-    // When we `ensureExecuted` the third script, module `x` is already marked
+    // When we `EnsureExecuted` the third script, module `x` is already marked
     // as executed, but one of its dependencies, `y`, isn't.  In order to
     // achieve the desired postcondition, we must find `y` anyway and execute
     // it.
@@ -1479,7 +1484,7 @@ function ensureExecuted(start) {
     let result;
     schedule = $SetElements(schedule);
     for (let i = 0; i < schedule.length; i++)
-        result = execute(schedule[i]);
+        result = ExecuteScriptOrModuleOnce(schedule[i]);
     return result;
 }
 
