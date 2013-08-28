@@ -198,7 +198,7 @@ class LoaderImpl {
         } else {
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
-            new LinkSet(this, load, success, errback);
+            CreateLinkSet(this, load, success, errback);
         }
 
         function success() {
@@ -251,7 +251,7 @@ class LoaderImpl {
 
         let load = new Load([]);
         let run = LoaderImpl.makeEvalCallback(load, callback, errback);
-        new LinkSet(this, load, run, errback);
+        CreateLinkSet(this, load, run, errback);
         return this.callFetch(load, address, referer, metadata, null, "script");
     }
 
@@ -282,7 +282,7 @@ class LoaderImpl {
 
         let load = new Load([]);
         let run = LoaderImpl.makeEvalCallback(load, callback, errback);
-        new LinkSet(this, load, run, errback);
+        CreateLinkSet(this, load, run, errback);
         this.onFulfill(load, {}, null, "script", false, src, address);
     }
 
@@ -301,7 +301,7 @@ class LoaderImpl {
         // The `Load` object here is *pro forma*; `eval` is synchronous and
         // thus cannot fetch code.
         let load = new Load([]);
-        let linkSet = new LinkSet(this, load, null, null);
+        let linkSet = CreateLinkSet(this, load, null, null);
 
         // Finish loading `src`.  This is the part where, in an *asynchronous*
         // load, we would trigger further loads for any imported modules that
@@ -1073,7 +1073,7 @@ class Load {
 
             if (load.status !== "linked") {
                 for (let j = 0; j < sets.length; j++)
-                    sets[j].addLoad(load);
+                    AddLoadToLinkSet(sets[j], load);
             }
         }
 
@@ -1122,57 +1122,69 @@ class Load {
     }
 }
 
-// A `LinkSet` represents a call to `loader.evalAsync()`, `.load()`, or
-// `.import()`.
+//> ## Link sets
+//>
+//> A *link set* represents a call to `loader.evalAsync()`, `.load()`, or
+//> `.import()`.
+//>
+//> ### CreateLinkSet Abstract Operation
+//>
+function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
+    var linkSet = Object.create(null);
+    linkSet.loaderImpl = loaderImpl;
+    linkSet.startingLoad = startingLoad;
+    linkSet.callback = callback;
+    linkSet.errback = errback;
+    linkSet.loads = $SetNew();
+
+    // Invariant: `this.loadingCount` is the number of `Load`s in
+    // `this.loads` whose `.status` is `"loading"`.
+    linkSet.loadingCount = 0;
+
+    AddLoadToLinkSet(linkSet, startingLoad);
+    return linkSet;
+}
+
+//> ### LinkSetAddLoadByName Abstract Operation
+//>
+//> If a module with the given `fullName` is loading
+//> or loaded but not linked, add the `Load` to the given link set.
+//>
+function LinkSetAddLoadByName(linkSet, fullName) {
+    if (!$MapHas(linkSet.loaderImpl.modules, fullName)) {
+        // We add `depLoad` even if it is done loading, because the
+        // association keeps the `Load` alive (`Load`s are
+        // reference-counted; see `Load.onLinkSetFail`).
+        let depLoad = $MapGet(linkSet.loaderImpl.loads, fullName);
+        AddLoadToLinkSet(linkSet, depLoad);
+    }
+}
+
+//> ### AddLoadToLinkSet Abstract Operation
+//>
+//> Adds a load to a link set.
+//>
+function AddLoadToLinkSet(linkSet, load) {
+    // This case can happen in `import`, for example if a `resolve` or
+    // `fetch` hook throws.
+    if (load.status === "failed")
+        return linkSet.fail(load.exception);
+
+    if (!$SetHas(linkSet.loads, load)) {
+        $SetAdd(linkSet.loads, load);
+        $SetAdd(load.linkSets, linkSet);
+        if (load.status === "loading") {
+            linkSet.loadingCount++;
+        } else {
+            // Transitively add not-yet-linked dependencies.
+            $Assert(load.status == "loaded");
+            for (let i = 0; i < load.dependencies.length; i++)
+                LinkSetAddLoadByName(linkSet, load.dependencies[i]);
+        }
+    }
+}
+
 class LinkSet {
-    constructor(loaderImpl, startingLoad, callback, errback) {
-        define(this, {
-            loaderImpl: loaderImpl,
-            startingLoad: startingLoad,
-            callback: callback,
-            errback: errback,
-            loads: $SetNew(),
-
-            // Invariant: `this.loadingCount` is the number of `Load`s in
-            // `this.loads` whose `.status` is `"loading"`.
-            loadingCount: 0
-        });
-
-        this.addLoad(startingLoad);
-    }
-
-    // **`addLoadByName`** - If a module with the given `fullName` is loading
-    // or loaded but not linked, add the `Load` to this link set.
-    addLoadByName(fullName) {
-        if (!$MapHas(this.loaderImpl.modules, fullName)) {
-            // We add `depLoad` even if it is done loading, because the
-            // association keeps the `Load` alive (`Load`s are
-            // reference-counted; see `Load.onLinkSetFail`).
-            let depLoad = $MapGet(this.loaderImpl.loads, fullName);
-            this.addLoad(depLoad);
-        }
-    }
-
-    // **`addLoad`** - Add a `load` to this `LinkSet`.
-    addLoad(load) {
-        // This case can happen in `import`, for example if a `resolve` or
-        // `fetch` hook throws.
-        if (load.status === "failed")
-            return this.fail(load.exception);
-
-        if (!$SetHas(this.loads, load)) {
-            $SetAdd(this.loads, load);
-            $SetAdd(load.linkSets, this);
-            if (load.status === "loading") {
-                this.loadingCount++;
-            } else {
-                // Transitively add not-yet-linked dependencies.
-                $Assert(load.status == "loaded");
-                for (let i = 0; i < load.dependencies.length; i++)
-                    this.addLoadByName(load.dependencies[i]);
-            }
-        }
-    }
 
     // **`onLoad`** - `Load.prototype.finish` calls this after one `Load`
     // successfully finishes, and after kicking off loads for all its
