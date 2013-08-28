@@ -317,7 +317,7 @@ class LoaderImpl {
 
         // The **link phase** links each imported name to the corresponding
         // module or export.
-        linkSet.link();
+        LinkSetLink(linkSet);
 
         // During the **execute phase**, we first execute module bodies for any
         // modules needed by `script` that haven't already executed.  Then we
@@ -979,8 +979,8 @@ class Load {
     //   2. Process imports. This may trigger additional loads (though if
     //      `sync` is true, it definitely won't: we'll throw instead).
     //
-    //   3. Call `.onLoad` on any listening `LinkSet`s (see that method for the
-    //      conclusion of the load/link/run process).
+    //   3. Call `LinkSetOnLoad` on any listening `LinkSet`s (see that abstract
+    //      operation for the conclusion of the load/link/run process).
     //
     // On success, this transitions the `Load` from `"loading"` status to
     // `"loaded"`.
@@ -1082,7 +1082,7 @@ class Load {
         this.dependencies = fullNames;
         if (!sync) {
             for (let i = 0; i < sets.length; i++)
-                sets[i].onLoad(this);
+                LinkSetOnLoad(sets[i], this);
         }
     }
 
@@ -1091,7 +1091,7 @@ class Load {
         $Assert(this.status === "loading");
         this.status = "linked";
         for (let i = 0; i < sets.length; i++)
-            sets[i].onLoad(this);
+            LinkSetOnLoad(sets[i], this);
     }
 
     // **`fail`** - Fail this load. All `LinkSet`s that require it also fail.
@@ -1101,7 +1101,7 @@ class Load {
         this.exception = exc;
         let sets = $SetElements(this.linkSets);
         for (let i = 0; i < sets.length; i++)
-            sets[i].fail(exc);
+            LinkSetFail(sets[i], exc);
         $Assert($SetSize(this.linkSets) === 0);
     }
 
@@ -1168,7 +1168,7 @@ function AddLoadToLinkSet(linkSet, load) {
     // This case can happen in `import`, for example if a `resolve` or
     // `fetch` hook throws.
     if (load.status === "failed")
-        return linkSet.fail(load.exception);
+        return LinkSetFail(linkSet, load.exception);
 
     if (!$SetHas(linkSet.loads, load)) {
         $SetAdd(linkSet.loads, load);
@@ -1184,168 +1184,176 @@ function AddLoadToLinkSet(linkSet, load) {
     }
 }
 
-class LinkSet {
-
-    // **`onLoad`** - `Load.prototype.finish` calls this after one `Load`
-    // successfully finishes, and after kicking off loads for all its
-    // dependencies.
-    onLoad(load) {
-        $Assert($SetHas(this.loads, load));
-        $Assert(load.status === "loaded" || load.status === "linked");
-        if (--this.loadingCount === 0) {
-            // If all dependencies have loaded, link the modules and fire the
-            // success callback.
-            try {
-                this.link();
-            } catch (exc) {
-                this.fail(exc);
-                return;
-            }
-
-            AsyncCall(this.callback);
-        }
-    }
-
-    // **Timing and grouping of dependencies** - Consider
-    //
-    //     loader.evalAsync('import "x" as x; import "y" as y;', {}, f);
-    //
-    // The above code implies that we wait to execute "x" until "y" has also
-    // been fetched. Even if "x" turns out to be linkable and runnable, its
-    // dependencies are all satisfied, it links correctly, and it has no direct
-    // or indirect dependency on "y", we still wait.
-    //
-    // *Rationale:* Dependencies could be initialized more eagerly, but the
-    // order would be less deterministic. The design opts for a bit more
-    // determinism in common cases&mdash;though it is still possible to trigger
-    // non-determinism since multiple link sets can be in-flight at once.
-
-    // **`link`** - Link all scripts and modules in this link set to each other
-    // and to modules in the registry.  This is done in a synchronous walk of
-    // the graph.  On success, commit all the modules in this LinkSet to the
-    // loader's module registry.
-    link() {
-        let linkedNames = [];
-        let linkedModules = [];
-        let seen = $SetNew();
-
-        // Depth-first walk of the import tree, stopping at already-linked
-        // modules.
-        function walk(load) {
-            // XXX TODO - assert something about load.status here
-            let script = load.script;
-            $SetAdd(seen, script);
-
-            // First, note all modules declared in this script.
-            let declared = $ScriptDeclaredModuleNames(script);
-            for (let i = 0; i < declared.length; i++) {
-                let fullName = declared[i];
-                let mod = $ScriptGetDeclaredModule(script, fullName);
-
-                if ($MapHas(this.loaderImpl.modules, fullName)) {
-                    throw $SyntaxError(
-                        "script declares module \"" + fullName + "\", " +
-                        "which is already loaded");
-                }
-                if (load === undefined) {
-                    if ($MapHas(this.loaderImpl.loads, fullName)) {
-                        throw $SyntaxError(
-                            "script declares module \"" + fullName + "\", " +
-                            "which is already loading");
-                    }
-                } else {
-                    let current = $MapGet(this.loaderImpl.loads, fullName);
-
-                    // These two cases can happen if a script unexpectedly
-                    // declares modules not named by `resolve().extra`.
-                    if (current === undefined) {
-                        // Make sure no other script in the same LinkSet
-                        // declares it too.
-                        $MapSet(this.loaderImpl.loads, fullName, this);
-                    } else if (current !== this) {
-                        throw $SyntaxError(
-                            "script declares module \"" + fullName + "\", " +
-                            "which is already loading");
-                    }
-                }
-
-                $ArrayPush(linkedNames, fullName);
-                $ArrayPush(linkedModules, mod);
-            }
-
-            // Second, find modules imported by this script.
-            //
-            // The load phase walks the whole graph, so all imported modules
-            // should be loaded, but it is an asynchronous process.
-            // Intervening calls to `loader.set()` or `loader.delete()` can
-            // cause things to be missing.
-            //
-            let deps = load.dependencies;
-            let mods = [];
-            for (let i = 0; i < deps.length; i++) {
-                let fullName = deps[i];
-                let mod = $MapGet(this.loaderImpl.modules, fullName);
-                if (mod === undefined) {
-                    let depLoad = $MapGet(this.loaderImpl.loads, fullName);
-                    if (depLoad === undefined || depLoad.status !== "loaded") {
-                        throw $SyntaxError(
-                            "module \"" + fullName + "\" was deleted from the loader");
-                    }
-                    mod = $ScriptGetDeclaredModule(depLoad.script, fullName);
-                    if (mod === undefined) {
-                        throw $SyntaxError(
-                            "module \"" + fullName + "\" was deleted from the loader");
-                    }
-                    if (!$SetHas(seen, depLoad.script))
-                        walk(depLoad);
-                }
-                $ArrayPush(mods, mod);
-            }
-
-            // Finally, link the script.  This throws if the script tries
-            // to import bindings from a module that the module does not
-            // export.
-            $LinkScript(script, mods);
+//> ### LinkSetOnLoad Abstract Operation
+//>
+//> `Load.prototype.finish` calls this after one `Load`
+//> successfully finishes, and after kicking off loads for all its
+//> dependencies.
+//>
+function LinkSetOnLoad(linkSet, load) {
+    $Assert($SetHas(linkSet.loads, load));
+    $Assert(load.status === "loaded" || load.status === "linked");
+    if (--linkSet.loadingCount === 0) {
+        // If all dependencies have loaded, link the modules and fire the
+        // success callback.
+        try {
+            linkSet.link();
+        } catch (exc) {
+            LinkSetFail(linkSet, exc);
+            return;
         }
 
-        // Link all the scripts and modules together.
-        //
-        // TODO: This could throw partway through.  When linking fails, we must
-        // rollback any linking we already did up to that point.  Linkage must
-        // either happen for all scripts and modules, or fail, atomically.
-        // Per dherman, 2013 May 15.
-        walk(this.startingLoad);
-
-        // Move the fully linked modules from the `loads` table to the
-        // `modules` table.
-        for (let i = 0; i < linkedNames.length; i++) {
-            $MapDelete(this.loaderImpl.loads, linkedNames[i]);
-            $MapSet(this.loaderImpl.modules, linkedNames[i], linkedModules[i]);
-        }
-    }
-
-    // **`fail`** - Fail this `LinkSet`.  Detach it from all loads and schedule
-    // the error callback.
-    fail(exc) {
-        let loads = $SetElements(this.loads);
-        for (let i = 0; i < loads.length; i++)
-            loads[i].onLinkSetFail(this.loaderImpl, this);
-        AsyncCall(this.errback, exc);
+        AsyncCall(linkSet.callback);
     }
 }
 
+// **Timing and grouping of dependencies** - Consider
+//
+//     loader.evalAsync('import "x" as x; import "y" as y;', {}, f);
+//
+// The above code implies that we wait to execute "x" until "y" has also
+// been fetched. Even if "x" turns out to be linkable and runnable, its
+// dependencies are all satisfied, it links correctly, and it has no direct
+// or indirect dependency on "y", we still wait.
+//
+// *Rationale:* Dependencies could be initialized more eagerly, but the
+// order would be less deterministic. The design opts for a bit more
+// determinism in common cases&mdash;though it is still possible to trigger
+// non-determinism since multiple link sets can be in-flight at once.
 
-// ## Module and script execution
-//
-// Module bodies are executed on demand, as late as possible.  The loader uses
-// the function `ensureExecuted`, defined below, to execute scripts.  The
-// loader always calls `ensureExecuted` before returning a Module object to
-// user code.
-//
-// There is one way a module can be exposed to script before it has executed.
-// In the case of an import cycle, whichever module executes first can observe
-// the others before they have executed.  Simply put, we have to start
-// somewhere: one of the modules in the cycle must run before the others.
+
+//> ### LinkSetLink Abstract Operation
+//>
+//> Link all scripts and modules in this link set to each other and to modules
+//> in the registry.  This is done in a synchronous walk of the graph.  On
+//> success, commit all the modules in this link set to the loader's module
+//> registry.
+//>
+function LinkSetLink(linkSet) {
+    let linkedNames = [];
+    let linkedModules = [];
+    let seen = $SetNew();
+
+    // Depth-first walk of the import tree, stopping at already-linked
+    // modules.
+    function walk(load) {
+        // XXX TODO - assert something about load.status here
+        let script = load.script;
+        $SetAdd(seen, script);
+
+        // First, note all modules declared in this script.
+        let declared = $ScriptDeclaredModuleNames(script);
+        for (let i = 0; i < declared.length; i++) {
+            let fullName = declared[i];
+            let mod = $ScriptGetDeclaredModule(script, fullName);
+
+            if ($MapHas(linkSet.loaderImpl.modules, fullName)) {
+                throw $SyntaxError(
+                    "script declares module \"" + fullName + "\", " +
+                        "which is already loaded");
+            }
+            if (load === undefined) {
+                if ($MapHas(linkSet.loaderImpl.loads, fullName)) {
+                    throw $SyntaxError(
+                        "script declares module \"" + fullName + "\", " +
+                            "which is already loading");
+                }
+            } else {
+                let current = $MapGet(linkSet.loaderImpl.loads, fullName);
+
+                // These two cases can happen if a script unexpectedly
+                // declares modules not named by `resolve().extra`.
+                if (current === undefined) {
+                    // Make sure no other script in the same LinkSet
+                    // declares it too.
+                    $MapSet(linkSet.loaderImpl.loads, fullName, linkSet);
+                } else if (current !== linkSet) {
+                    throw $SyntaxError(
+                        "script declares module \"" + fullName + "\", " +
+                            "which is already loading");
+                }
+            }
+
+            $ArrayPush(linkedNames, fullName);
+            $ArrayPush(linkedModules, mod);
+        }
+
+        // Second, find modules imported by this script.
+        //
+        // The load phase walks the whole graph, so all imported modules
+        // should be loaded, but it is an asynchronous process.
+        // Intervening calls to `loader.set()` or `loader.delete()` can
+        // cause things to be missing.
+        //
+        let deps = load.dependencies;
+        let mods = [];
+        for (let i = 0; i < deps.length; i++) {
+            let fullName = deps[i];
+            let mod = $MapGet(linkSet.loaderImpl.modules, fullName);
+            if (mod === undefined) {
+                let depLoad = $MapGet(linkSet.loaderImpl.loads, fullName);
+                if (depLoad === undefined || depLoad.status !== "loaded") {
+                    throw $SyntaxError(
+                        "module \"" + fullName + "\" was deleted from the loader");
+                }
+                mod = $ScriptGetDeclaredModule(depLoad.script, fullName);
+                if (mod === undefined) {
+                    throw $SyntaxError(
+                        "module \"" + fullName + "\" was deleted from the loader");
+                }
+                if (!$SetHas(seen, depLoad.script))
+                    walk(depLoad);
+            }
+            $ArrayPush(mods, mod);
+        }
+
+        // Finally, link the script.  This throws if the script tries
+        // to import bindings from a module that the module does not
+        // export.
+        $LinkScript(script, mods);
+    }
+
+    // Link all the scripts and modules together.
+    //
+    // TODO: This could throw partway through.  When linking fails, we must
+    // rollback any linking we already did up to that point.  Linkage must
+    // either happen for all scripts and modules, or fail, atomically.
+    // Per dherman, 2013 May 15.
+    walk(linkSet.startingLoad);
+
+    // Move the fully linked modules from the `loads` table to the
+    // `modules` table.
+    for (let i = 0; i < linkedNames.length; i++) {
+        $MapDelete(linkSet.loaderImpl.loads, linkedNames[i]);
+        $MapSet(linkSet.loaderImpl.modules, linkedNames[i], linkedModules[i]);
+    }
+}
+
+//> ### LinkSetFail Abstract Operation
+//>
+//> Fail this `LinkSet`.  Detach it from all loads and schedule the error
+//> callback.
+//>
+function LinkSetFail(linkSet, exc) {
+    let loads = $SetElements(linkSet.loads);
+    for (let i = 0; i < loads.length; i++)
+        loads[i].onLinkSetFail(linkSet.loaderImpl, linkSet);
+    AsyncCall(linkSet.errback, exc);
+}
+
+
+//> ## Module and script execution
+//>
+//> Module bodies are executed on demand, as late as possible.  The loader uses
+//> the function `ensureExecuted`, defined below, to execute scripts.  The
+//> loader always calls `ensureExecuted` before returning a Module object to
+//> user code.
+//>
+//> There is one way a module can be exposed to script before it has executed.
+//> In the case of an import cycle, whichever module executes first can observe
+//> the others before they have executed.  Simply put, we have to start
+//> somewhere: one of the modules in the cycle must run before the others.
+//>
 
 // **`executedCode`** - The set of all scripts and modules we have ever passed
 // to `$CodeExecute()`; that is, everything we've ever tried to execute.
@@ -1355,8 +1363,8 @@ class LinkSet {
 //
 var executedCode = $WeakMapNew();
 
-// **`execute`** - Execute the given script or module `c` (but only if we have
-// never tried to execute it before).
+// **`execute`** - Execute the given script or module `code` (but only if we
+// have never tried to execute it before).
 function execute(code) {
     if (!$WeakMapHas(executedCode, code)) {
         $WeakMapSet(executedCode, code, true);
