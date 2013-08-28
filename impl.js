@@ -228,7 +228,7 @@ class LoaderImpl {
     load(address,
          callback = value => undefined,
          errback = exc => { throw exc; },
-         options = undefined)
+         options)
     {
         // Build a referer object.
         let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
@@ -262,7 +262,7 @@ class LoaderImpl {
     // `callback`.
     //
     evalAsync(src,
-              options = undefined,
+              options,
               callback = value => undefined,
               errback = exc => { throw exc; })
     {
