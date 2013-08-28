@@ -1127,7 +1127,7 @@ class Load {
 //> A *link set* represents a call to `loader.evalAsync()`, `.load()`, or
 //> `.import()`.
 //>
-//> ### CreateLinkSet Abstract Operation
+//> ### CreateLinkSet(loaderImpl, startingLoad, callback, errback) Abstract Operation
 //>
 function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
     var linkSet = Object.create(null);
@@ -1145,10 +1145,10 @@ function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
     return linkSet;
 }
 
-//> ### LinkSetAddLoadByName Abstract Operation
+//> ### LinkSetAddLoadByName(linkSet, fullName) Abstract Operation
 //>
-//> If a module with the given `fullName` is loading
-//> or loaded but not linked, add the `Load` to the given link set.
+//> If a module with the given fullName is loading
+//> or loaded but not linked, add the `Load` to the given linkSet.
 //>
 function LinkSetAddLoadByName(linkSet, fullName) {
     if (!$MapHas(linkSet.loaderImpl.modules, fullName)) {
@@ -1160,9 +1160,7 @@ function LinkSetAddLoadByName(linkSet, fullName) {
     }
 }
 
-//> ### AddLoadToLinkSet Abstract Operation
-//>
-//> Adds a load to a link set.
+//> ### AddLoadToLinkSet(linkSet, load) Abstract Operation
 //>
 function AddLoadToLinkSet(linkSet, load) {
     // This case can happen in `import`, for example if a `resolve` or
@@ -1184,7 +1182,7 @@ function AddLoadToLinkSet(linkSet, load) {
     }
 }
 
-//> ### LinkSetOnLoad Abstract Operation
+//> ### LinkSetOnLoad(linkSet, load) Abstract Operation
 //>
 //> `Load.prototype.finish` calls this after one `Load`
 //> successfully finishes, and after kicking off loads for all its
@@ -1222,12 +1220,11 @@ function LinkSetOnLoad(linkSet, load) {
 // non-determinism since multiple link sets can be in-flight at once.
 
 
-//> ### LinkSetLink Abstract Operation
+//> ### LinkSetLink(linkSet) Abstract Operation
 //>
-//> Link all scripts and modules in this link set to each other and to modules
-//> in the registry.  This is done in a synchronous walk of the graph.  On
-//> success, commit all the modules in this link set to the loader's module
-//> registry.
+//> Link all scripts and modules in linkSet to each other and to modules in the
+//> registry.  This is done in a synchronous walk of the graph.  On success,
+//> commit all the modules in linkSet to the loader's module registry.
 //>
 function LinkSetLink(linkSet) {
     let linkedNames = [];
@@ -1329,9 +1326,9 @@ function LinkSetLink(linkSet) {
     }
 }
 
-//> ### LinkSetFail Abstract Operation
+//> ### LinkSetFail(linkSet, exc) Abstract Operation
 //>
-//> Fail this `LinkSet`.  Detach it from all loads and schedule the error
+//> Mark linkSet as failed.  Detach it from all loads and schedule the error
 //> callback.
 //>
 function LinkSetFail(linkSet, exc) {
@@ -1363,9 +1360,9 @@ function LinkSetFail(linkSet, exc) {
 //
 var executedCode = $WeakMapNew();
 
-//> ### ExecuteScriptOrModuleOnce Abstract Operation
+//> ### ExecuteScriptOrModuleOnce(code) Abstract Operation
 //>
-//> Execute the given script or module `code`, but only if we
+//> Execute the given script or module code, but only if we
 //> have never tried to execute it before.
 //>
 function ExecuteScriptOrModuleOnce(code) {
@@ -1375,16 +1372,16 @@ function ExecuteScriptOrModuleOnce(code) {
     }
 }
 
-//> ### EnsureExecuted Abstract Operation
+//> ### EnsureExecuted(start) Abstract Operation
 //>
-//> Walk the dependency graph of the script or module
-//> `start`, executing any script or module bodies that have not already
-//> executed (including, finally, `start` itself).
+//> Walk the dependency graph of the script or module start, executing any
+//> script or module bodies that have not already executed (including, finally,
+//> start itself).
 //>
-//> `start` and its dependencies must already be linked.
+//> start and its dependencies must already be linked.
 //>
-//> On success, `start` and all its dependencies, transitively, will have
-//> started to execute exactly once.
+//> On success, start and all its dependencies, transitively, will have started
+//> to execute exactly once.
 //>
 function EnsureExecuted(start) {
     // *Why the graph walk doesn't stop at already-executed modules:*  It's a
