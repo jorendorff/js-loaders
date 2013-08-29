@@ -897,7 +897,7 @@ class LoaderImpl {
 //     there is no `Load` yet.  We can directly call the `errback` hook.
 
 
-// ## Dependency loading
+//> ### Dependency loading
 //
 // The goal of a `Load` is to resolve, fetch, translate, and parse a single
 // module (or a collection of modules that all live in the same script).
@@ -953,6 +953,7 @@ class LoaderImpl {
 //         .exception is an exception value
 //
 class Load {
+    //> #### CreateLoad(fullNames) Abstract Operation
     // A new `Load` begins in the `"loading"` state.
     //
     // The constructor argument is an array of the module names that we're
@@ -969,6 +970,8 @@ class Load {
             exception: null
         });
     }
+
+    //> #### FinishLoad(load, loader, actualAddress, script, sync) Abstract Operation
 
     // **`finish`** - The loader calls this after the last loader hook (the
     // `link` hook), and after the script or module's syntax has been
@@ -1086,6 +1089,8 @@ class Load {
         }
     }
 
+    //> #### LoadOnEndRun(load) Abstract Operation
+
     // **`onEndRun`** - Called when the `link` hook returns a Module object.
     onEndRun() {
         $Assert(this.status === "loading");
@@ -1093,6 +1098,8 @@ class Load {
         for (let i = 0; i < sets.length; i++)
             LinkSetOnLoad(sets[i], this);
     }
+
+    //> #### LoadFail(load, exc) Abstract Operation
 
     // **`fail`** - Fail this load. All `LinkSet`s that require it also fail.
     fail(exc) {
@@ -1105,29 +1112,31 @@ class Load {
         $Assert($SetSize(this.linkSets) === 0);
     }
 
+    //> #### LoadOnLinkSetFail(load, loaderImpl, linkSet) Abstract Operation
+
     // **`onLinkSetFail`** - This is called when a LinkSet associated with this
     // load fails.  If this load is not needed by any surviving LinkSet, drop
     // it.
-    onLinkSetFail(loader, linkSet) {
+    onLinkSetFail(loaderImpl, linkSet) {
         $Assert($SetHas(this.linkSets, linkSet));
         $SetDelete(this.linkSets, linkSet);
         if ($SetSize(this.linkSets) === 0) {
             for (let i = 0; i < this.fullNames.length; i++) {
                 let fullName = this.fullNames[i];
-                let currentLoad = $MapGet(loader.loads, fullName);
+                let currentLoad = $MapGet(loaderImpl.loads, fullName);
                 if (currentLoad === this)
-                    $MapDelete(loader.loads, fullName);
+                    $MapDelete(loaderImpl.loads, fullName);
             }
         }
     }
 }
 
-//> ## Link sets
+//> ### Link sets
 //>
 //> A *link set* represents a call to `loader.evalAsync()`, `.load()`, or
 //> `.import()`.
 //>
-//> ### CreateLinkSet(loaderImpl, startingLoad, callback, errback) Abstract Operation
+//> #### CreateLinkSet(loaderImpl, startingLoad, callback, errback) Abstract Operation
 //>
 function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
     var linkSet = Object.create(null);
@@ -1145,7 +1154,7 @@ function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
     return linkSet;
 }
 
-//> ### LinkSetAddLoadByName(linkSet, fullName) Abstract Operation
+//> #### LinkSetAddLoadByName(linkSet, fullName) Abstract Operation
 //>
 //> If a module with the given fullName is loading
 //> or loaded but not linked, add the `Load` to the given linkSet.
@@ -1160,7 +1169,7 @@ function LinkSetAddLoadByName(linkSet, fullName) {
     }
 }
 
-//> ### AddLoadToLinkSet(linkSet, load) Abstract Operation
+//> #### AddLoadToLinkSet(linkSet, load) Abstract Operation
 //>
 function AddLoadToLinkSet(linkSet, load) {
     // This case can happen in `import`, for example if a `resolve` or
@@ -1182,7 +1191,7 @@ function AddLoadToLinkSet(linkSet, load) {
     }
 }
 
-//> ### LinkSetOnLoad(linkSet, load) Abstract Operation
+//> #### LinkSetOnLoad(linkSet, load) Abstract Operation
 //>
 //> `Load.prototype.finish` calls this after one `Load`
 //> successfully finishes, and after kicking off loads for all its
@@ -1220,7 +1229,7 @@ function LinkSetOnLoad(linkSet, load) {
 // non-determinism since multiple link sets can be in-flight at once.
 
 
-//> ### LinkSetLink(linkSet) Abstract Operation
+//> #### LinkSetLink(linkSet) Abstract Operation
 //>
 //> Link all scripts and modules in linkSet to each other and to modules in the
 //> registry.  This is done in a synchronous walk of the graph.  On success,
@@ -1326,7 +1335,7 @@ function LinkSetLink(linkSet) {
     }
 }
 
-//> ### LinkSetFail(linkSet, exc) Abstract Operation
+//> #### LinkSetFail(linkSet, exc) Abstract Operation
 //>
 //> Mark linkSet as failed.  Detach it from all loads and schedule the error
 //> callback.
@@ -1339,7 +1348,7 @@ function LinkSetFail(linkSet, exc) {
 }
 
 
-//> ## Module and script execution
+//> ### Module and script execution
 //>
 //> Module bodies are executed on demand, as late as possible.  The loader uses
 //> the function `EnsureExecuted`, defined below, to execute scripts.  The
@@ -1360,7 +1369,7 @@ function LinkSetFail(linkSet, exc) {
 //
 var executedCode = $WeakMapNew();
 
-//> ### ExecuteScriptOrModuleOnce(code) Abstract Operation
+//> #### ExecuteScriptOrModuleOnce(code) Abstract Operation
 //>
 //> Execute the given script or module code, but only if we
 //> have never tried to execute it before.
@@ -1372,7 +1381,7 @@ function ExecuteScriptOrModuleOnce(code) {
     }
 }
 
-//> ### EnsureExecuted(start) Abstract Operation
+//> #### EnsureExecuted(start) Abstract Operation
 //>
 //> Walk the dependency graph of the script or module start, executing any
 //> script or module bodies that have not already executed (including, finally,
