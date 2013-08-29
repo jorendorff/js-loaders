@@ -72,6 +72,9 @@
 //>
 //> These properties are fixed when the Loader is created and can't be changed.
 //>
+//>   * loader.[[modules]] - A Map from strings to Module objects: the module
+//>     registry.
+//>
 
 //> ### The Loader Constructor
 
@@ -278,7 +281,20 @@ function Loader_import(moduleName,
 // executed yet.
 //
 function Loader_get(name) {
-    return getImpl(this).get(name);
+    let impl = getImpl(this);
+
+    // Throw a TypeError if `name` is not a string.
+    if (typeof name !== "string")
+        throw $TypeError("module name must be a string");
+
+    let m = $MapGet(impl.modules, name);
+
+    // If the module is in the registry but has never been executed, first
+    // synchronously execute the module and any dependencies that have not
+    // executed yet.
+    if (m !== undefined)
+        EnsureExecuted(m);
+    return m;
 }
 
 
@@ -291,7 +307,12 @@ function Loader_get(name) {
 // This doesn't call any hooks or execute any module code.
 //
 function Loader_has(name) {
-    return getImpl(this).has(name);
+    let impl = getImpl(this);
+
+    if (typeof name !== "string")
+        throw $TypeError("module name must be a string");
+
+    return $MapHas(impl.modules, name);
 }
 
 
@@ -301,6 +322,33 @@ function Loader_has(name) {
 // **`set`** - Put a module into the registry.
 function Loader_set(name, module) {
     getImpl(this).set(name, module);
+
+    if (typeof name !== "string")
+        throw $TypeError("module name must be a string");
+
+    // Entries in the module registry must actually be `Module`s.
+    // *Rationale:* We use `Module`-specific intrinsics like
+    // `$CodeGetLinkedModules` and `$CodeExecute` on them.  per samth,
+    // 2013 April 22.
+    if (!$IsModule(module))
+        throw $TypeError("Module object required");
+
+    // If there is already a module in the registry with the given full
+    // name, replace it, but any scripts or modules that are linked to the
+    // old module remain linked to it. *Rationale:* Re-linking
+    // already-linked modules might not work, since the new module may
+    // export a different set of names. Also, the new module may be linked
+    // to the old one! This is a convenient way to monkeypatch
+    // modules. Once modules are widespread, this technique can be used for
+    // polyfilling.
+    //
+    // If `name` is in `this.loads`, `.set()` succeeds, with no immediate
+    // effect on the pending load; but if that load eventually produces a
+    // module-declaration for the same name, that will produce a link-time
+    // error. per samth, 2013 April 22.
+    //
+    $MapSet(impl.modules, name, module);
+
     return this;
 }
 
@@ -338,7 +386,18 @@ function Loader_set(name, module) {
 //    bug.
 //
 function Loader_delete(name) {
-    getImpl(this).delete(name);
+    let impl = getImpl(this);
+
+    // If there is no module with the given name in the registry, this does
+    // nothing.
+    //
+    // `loader.delete("A")` has no effect at all if
+    // `!loaderImpl.modules.has("A")`, even if "A" is currently loading (an
+    // entry exists in `loaderImpl.loads`).  This is analogous to `.set()`.
+    // per (reading between the lines) discussions with dherman, 2013 April
+    // 17, and samth, 2013 April 22.
+    $MapDelete(impl.modules, name);
+
     return this;
 }
 
