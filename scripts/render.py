@@ -347,7 +347,7 @@ def main(source_file, output_file):
 
 if __name__ == "__main__":
     repo_root_dir = os.path.dirname(os.path.dirname(__file__))
-    default_js_file = os.path.join(repo_root_dir, "../impl.js")
+    default_js_file = os.path.join(repo_root_dir, "../Loader.js")
 
     import argparse
     parser = argparse.ArgumentParser(
@@ -358,7 +358,7 @@ if __name__ == "__main__":
         metavar="FILE",
         nargs='?',
         default=default_js_file,
-        help="JS source files to process (default: ../impl.js)")
+        help="JS source files to process (default: ../Loader.js)")
     parser.add_argument(
         '-o',
         metavar="FILE",
