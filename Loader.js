@@ -201,7 +201,15 @@ function Loader(options) {
     // Since ES6 does not have support for private state or private
     // methods, everything private is stored on a separate `LoaderImpl`
     // object which is not accessible from user code.
-    createImpl(this, options);
+
+    // Bug: this calls Loader_create directly. The spec requires instead
+    // calling Loader[@@create](); we will change this when symbols are
+    // implemented.
+    var loader = callFunction(Loader_create, Loader);
+    var loaderData = LoaderData(loader);
+
+    loaderData.global = options.global;  // P4 ISSUE: ToObject here?
+    loaderData.strict = ToBoolean(options.strict);
 
     // P4 ISSUE: Detailed behavior of hooks.
     //
@@ -217,24 +225,83 @@ function Loader(options) {
     // a hook takes it from the internal property.  In no circumstance
     // does `super` work.
     //
-    let takeHook = name => {
+    // But when I discussed this with dherman yesterday, I think I made some
+    // headway toward convincing him that what's implemented here is the right
+    // design. --jto, 29 August 2013.
+    //
+    function takeHook(name) {
         var hook = options[name];
         if (hook !== undefined) {
-            $ObjectDefineProperty(this, name, {
+            $ObjectDefineProperty(loader, name, {
                 configurable: true,
                 enumerable: true,
                 value: hook,
                 writable: true
             });
         }
-    };
+    }
 
     takeHook("normalize");
     takeHook("resolve");
     takeHook("fetch");
     takeHook("translate");
     takeHook("link");
+    return loader;
 }
+
+
+//> #### Loader [ @@create ] ( )
+
+let LoaderPrototype = Loader.prototype;
+
+// In this implementation, each public `Loader` object's internal data
+// properties are stored on a private object.  The simplest way to connect the
+// two without exposing this internal data to user code is to use a `WeakMap`.
+let loaderInternalDataMap = $WeakMapNew();
+
+function Loader_create() {
+    var loader = Object.create(LoaderPrototype);
+    var internalData = {
+        loader: loader,
+
+        // **`this.modules`** is the module registry.  It maps full module
+        // names to `Module` objects.
+        //
+        // This map only ever contains `Module` objects that have been
+        // fully linked.  However it can contain modules whose bodies have
+        // not yet started to execute.  Except in the case of cyclic
+        // imports, such modules are not exposed to user code.  See
+        // `EnsureExecuted()`.
+        //
+        modules: $MapNew(),
+
+        // **`this.loads`** stores information about modules that are
+        // loading or loaded but not yet linked.  (TODO - fix that sentence
+        // for OnEndRun.)  It maps full module names to `Load` objects.
+        //
+        // This is stored in the loader so that multiple calls to
+        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
+        // what they need only once.
+        //
+        loads: $MapNew(),
+
+        // Various configurable options.
+        global: undefined,
+        strict: false
+    };
+
+    $WeakMapSet(loaderInternalDataMap, loader, internalData);
+    return loader;
+}
+
+// Get the internal data for a given `Loader` object.
+function LoaderData(value) {
+    let internalData = $WeakMapGet(loaderInternalDataMap, value);
+    if (internalData === undefined)
+        throw $TypeError("Loader method called on incompatible object");
+    return internalData;
+}
+
 
 
 //> ### Properties of the Loader Prototype Object
@@ -250,7 +317,7 @@ function Loader(options) {
 function Loader_global() {
     //> 1. Let L be ThisLoader(the this value).
     //> 2. Return the value of L's [[global]] internal data property.
-    return getImpl(this).global;
+    return LoaderData(this).global;
 }
 //>
 
@@ -865,57 +932,6 @@ function Loader_defineBuiltins(obj = getImpl(this).global) {
 //>
 //> The `length` property of the `defineBuiltins` method is **0**.
 //>
-
-// Each public `Loader` object has a private `LoaderImpl` object.  The simplest
-// way to connect the two without exposing `LoaderImpl` to user code is to use
-// a `WeakMap`.
-let loaderImplMap = $WeakMapNew();
-
-// Create a new `LoaderImpl` and associate it with `loader`, a new `Loader`.
-function createImpl(loader, options) {
-    $WeakMapSet(loaderImplMap, this, new LoaderImpl(loader, options));
-}
-
-// Get the `LoaderImpl` for a given `Loader` object.
-function getImpl(loader) {
-    let li = $WeakMapGet(loaderImplMap, loader);
-    if (li === undefined)
-        throw $TypeError("Loader method called on incompatible object");
-    return li;
-}
-
-// Create a new loader.
-function LoaderImpl(loader, options) {
-    define(this, {
-        loader: loader,
-
-        // **`this.modules`** is the module registry.  It maps full module
-        // names to `Module` objects.
-        //
-        // This map only ever contains `Module` objects that have been
-        // fully linked.  However it can contain modules whose bodies have
-        // not yet started to execute.  Except in the case of cyclic
-        // imports, such modules are not exposed to user code.  See
-        // `EnsureExecuted()`.
-        //
-        modules: $MapNew(),
-
-        // **`this.loads`** stores information about modules that are
-        // loading or loaded but not yet linked.  (TODO - fix that sentence
-        // for OnEndRun.)  It maps full module names to `Load` objects.
-        //
-        // This is stored in the loader so that multiple calls to
-        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
-        // what they need only once.
-        //
-        loads: $MapNew(),
-
-        // Various configurable options.
-        global: options.global,  // P4 ISSUE: ToObject here?
-        strict: ToBoolean(options.strict)
-    });
-}
-
 
 
 // **`UnpackAddressOption`** - Used by several Loader methods to get
