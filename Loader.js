@@ -247,7 +247,7 @@ function Loader(options) {
 //> function is undefined. Its get accessor function performs the following
 //> steps:
 //>
-function Loader_getGlobal() {
+function Loader_global() {
     //> 1. Let L be ThisLoader(the this value).
     //> 2. Return the value of L's [[global]] internal data property.
     return getImpl(this).global;
@@ -261,7 +261,7 @@ function Loader_getGlobal() {
 //> function is undefined. Its get accessor function performs the following
 //> steps:
 //>
-function Loader_getStrict() {
+function Loader_strict() {
     //> 1. Let L be ThisLoader(the this value).
     //> 2. Return the value of L's [[strict]] internal data property.
     return getImpl(this).strict;
@@ -272,27 +272,69 @@ function Loader_getStrict() {
 // ### Loading and running code
 //
 // The high-level interface of `Loader` consists of four methods for
-// loading and running code:
+// loading and running code.
+//
+// These are implemented in terms of slightly lower-level building blocks.
+// Each of the four methods creates a `LinkSet` object, which is in charge
+// of linking, and at least one `Load`.
 
 
 //> #### Loader.prototype.eval ( src, [ options ] )
 //>
 
-// **`eval`** - Synchronously run some code.
+// **`eval`** - Evaluate the script src.
 //
-// `src` may import modules, but if it directly or indirectly imports a
+// src may import modules, but if it directly or indirectly imports a
 // module that is not already loaded, a `SyntaxError` is thrown.
 //
 function Loader_eval(src, options) {
     return getImpl(this).eval(src, options);
 }
 
+function LoaderImpl_eval(src, options) {
+    let address = LoaderImpl.unpackAddressOption(options, null);
+
+    // The loader works in three basic phases: load, link, and execute.
+    // During the **load phase**, code is loaded and parsed, and import
+    // dependencies are traversed.
+
+    // The `Load` object here is *pro forma*; `eval` is synchronous and
+    // thus cannot fetch code.
+    let load = new Load([]);
+    let linkSet = CreateLinkSet(this, load, null, null);
+
+    // Finish loading `src`.  This is the part where, in an *asynchronous*
+    // load, we would trigger further loads for any imported modules that
+    // are not yet loaded.
+    //
+    // Instead, here we pass `true` to `onFulfill` to indicate that we're
+    // doing a synchronous load.  This makes it throw rather than trigger
+    // any new loads or add any still-loading modules to the link set.  If
+    // this doesn't throw, then we have everything we need and load phase
+    // is done.
+    //
+    this.onFulfill(load, {}, null, "script", true, src, address);
+
+    // The **link phase** links each imported name to the corresponding
+    // module or export.
+    LinkSetLink(linkSet);
+
+    // During the **execute phase**, we first execute module bodies for any
+    // modules needed by `script` that haven't already executed.  Then we
+    // evaluate `script` and return that value.
+    return EnsureExecuted(script);
+}
+
 
 //> #### Loader.prototype.evalAsync ( src, options, callback, errback )
 //>
 
-// **`evalAsync`** - Asynchronously run some code, first loading any
+// **`evalAsync`** - Asynchronously run the script src, first loading any
 // imported modules that aren't already loaded.
+//
+// This is the same as `load` but without fetching the initial script.
+// On success, the result of evaluating the program is passed to
+// callback.
 //
 function Loader_evalAsync(src,
                           options,
@@ -301,6 +343,28 @@ function Loader_evalAsync(src,
 {
     getImpl(this).evalAsync(src, options, callback, errback);
 }
+
+function LoaderImpl_evalAsync(src, options, callback, errback) {
+    // P4 ISSUE: Check callability of callbacks here (and everywhere
+    // success/failure callbacks are provided)?  It would be a mercy,
+    // since the TypeError if they are not functions happens much later
+    // and with an empty stack.  But Futures don't do it.  Assuming no.
+    //
+    //     if (typeof callback !== "function")
+    //         throw $TypeError("Loader.load: callback must be a function");
+    //     if (typeof errback !== "function")
+    //         throw $TypeError("Loader.load: error callback must be a function");
+    //
+    let address = LoaderImpl.unpackAddressOption(options, errback);
+    if (address === undefined)
+        return;
+
+    let load = new Load([]);
+    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+    CreateLinkSet(this, load, run, errback);
+    this.onFulfill(load, {}, null, "script", false, src, address);
+}
+
 //>
 //> The `length` property of the `evalAsync` method is **2**.
 //>
@@ -309,7 +373,8 @@ function Loader_evalAsync(src,
 //>
 
 // **`load`** - Asynchronously load and run a script.  If the script
-// contains import declarations, this can cause modules to be loaded.
+// contains import declarations, this can cause modules to be loaded,
+// linked, and executed.
 //
 // On success, pass the result of evaluating the script to the success
 // callback.
@@ -323,6 +388,32 @@ function Loader_load(address,
 {
     getImpl(this).load(address, callback, errback, options);
 }
+
+function LoaderImpl_load(address, callback, errback, options) {
+    // Build a referer object.
+    let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
+    if (refererAddress === undefined)
+        return;
+    let referer = {name: null, address: refererAddress};
+
+    // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+    // only makes sense for modules; `load()` loads scripts.  But we do
+    // want `load()` to use the `fetch` hook, which means we must come up
+    // with a metadata value of some kind (this is ordinarily the
+    // `normalize` hook's responsibility).
+    //
+    // `metadata` is created using the intrinsics of the enclosing loader
+    // class, not the Loader's intrinsics.  *Rationale:*  It is for the
+    // loader hooks to use.  It is never exposed to code loaded by this
+    // Loader.
+    //
+    let metadata = {};
+
+    let load = new Load([]);
+    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+    CreateLinkSet(this, load, run, errback);
+    return CallFetch(this, load, address, referer, metadata, null, "script");
+}
 //>
 //> The `length` property of the `load` method is **1**.
 //>
@@ -331,9 +422,9 @@ function Loader_load(address,
 //> #### Loader.prototype.import ( moduleName, callback, errback, options )
 //>
 
-// **`import`** - Asynchronously load a module and its dependencies.
-//
-// On success, pass the `Module` object to the success callback.
+// **`import`** - Asynchronously load, link, and execute a module and any
+// dependencies it imports.  On success, pass the `Module` object to the
+// success callback.
 //
 function Loader_import(moduleName,
                        callback = module => {},
@@ -341,6 +432,57 @@ function Loader_import(moduleName,
                        options = undefined)
 {
     getImpl(this).import(moduleName, callback, errback, options);
+}
+
+function LoaderImpl_import(moduleName, callback, errback, options) {
+    // Unpack `options`.  Build the referer object that we will pass to
+    // `startModuleLoad`.
+    let name = null;
+    if (options !== undefined && "module" in options) {
+        name = options.module;
+        if (typeof name !== "string") {
+            AsyncCall(errback, $TypeError("import: options.module must be a string"));
+            return;
+        }
+    }
+    let address = LoaderImpl.unpackAddressOption(options, errback);
+    if (address === undefined)
+        return;
+    let referer = {name, address};
+
+    // `this.startModuleLoad` starts us along the pipeline.
+    let fullName, load;
+    try {
+        [fullName, load] = this.startModuleLoad(referer, moduleName, false);
+    } catch (exc) {
+        AsyncCall(errback, exc);
+        return;
+    }
+
+    if (load.status === "linked") {
+        // We already had this module in the registry.
+        AsyncCall(success);
+    } else {
+        // The module is now loading.  When it loads, it may have more
+        // imports, requiring further loads, so put it in a LinkSet.
+        CreateLinkSet(this, load, success, errback);
+    }
+
+    function success() {
+        let m = load.status === "linked"
+            ? load.module
+            : $ScriptGetDeclaredModule(load.script, fullName);
+        try {
+            if (m === undefined) {
+                throw $TypeError("import(): module \"" + fullName +
+                                 "\" was deleted from the loader");
+            }
+            EnsureExecuted(m);
+        } catch (exc) {
+            return errback(exc);
+        }
+        return callback(m);
+    }
 }
 //>
 //> The `length` property of the `import` method is **1**.
@@ -774,172 +916,7 @@ function LoaderImpl(loader, options) {
     });
 }
 
-// ## Loading and running code
-//
-// These are implemented in terms of slightly lower-level building blocks.
-// Each of the four methods creates a `LinkSet` object, which is in charge
-// of linking, and at least one `Load`.
 
-// **`import`** - Asynchronously load, link, and execute a module and any
-// dependencies it imports.  On success, pass the `Module` object to the
-// success callback.
-function LoaderImpl_import(moduleName, callback, errback, options) {
-    // Unpack `options`.  Build the referer object that we will pass to
-    // `startModuleLoad`.
-    let name = null;
-    if (options !== undefined && "module" in options) {
-        name = options.module;
-        if (typeof name !== "string") {
-            AsyncCall(errback, $TypeError("import: options.module must be a string"));
-            return;
-        }
-    }
-    let address = LoaderImpl.unpackAddressOption(options, errback);
-    if (address === undefined)
-        return;
-    let referer = {name, address};
-
-    // `this.startModuleLoad` starts us along the pipeline.
-    let fullName, load;
-    try {
-        [fullName, load] = this.startModuleLoad(referer, moduleName, false);
-    } catch (exc) {
-        AsyncCall(errback, exc);
-        return;
-    }
-
-    if (load.status === "linked") {
-        // We already had this module in the registry.
-        AsyncCall(success);
-    } else {
-        // The module is now loading.  When it loads, it may have more
-        // imports, requiring further loads, so put it in a LinkSet.
-        CreateLinkSet(this, load, success, errback);
-    }
-
-    function success() {
-        let m = load.status === "linked"
-            ? load.module
-            : $ScriptGetDeclaredModule(load.script, fullName);
-        try {
-            if (m === undefined) {
-                throw $TypeError("import(): module \"" + fullName +
-                                 "\" was deleted from the loader");
-            }
-            EnsureExecuted(m);
-        } catch (exc) {
-            return errback(exc);
-        }
-        return callback(m);
-    }
-}
-
-// **`load`** - Asynchronously load and run a script.  If the script
-// contains import declarations, this can cause modules to be loaded,
-// linked, and executed.
-//
-// On success, the result of evaluating the script is passed to the success
-// callback.
-//
-function LoaderImpl_load(address,
-                         callback = value => undefined,
-                         errback = exc => { throw exc; },
-                         options)
-{
-    // Build a referer object.
-    let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
-    if (refererAddress === undefined)
-        return;
-    let referer = {name: null, address: refererAddress};
-
-    // Create an empty metadata object.  *Rationale:*  The `normalize` hook
-    // only makes sense for modules; `load()` loads scripts.  But we do
-    // want `load()` to use the `fetch` hook, which means we must come up
-    // with a metadata value of some kind (this is ordinarily the
-    // `normalize` hook's responsibility).
-    //
-    // `metadata` is created using the intrinsics of the enclosing loader
-    // class, not the Loader's intrinsics.  *Rationale:*  It is for the
-    // loader hooks to use.  It is never exposed to code loaded by this
-    // Loader.
-    //
-    let metadata = {};
-
-    let load = new Load([]);
-    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
-    CreateLinkSet(this, load, run, errback);
-    return CallFetch(this, load, address, referer, metadata, null, "script");
-}
-
-// **`evalAsync`** - Asynchronously evaluate the program `src`.
-//
-// This is the same as `load` but without fetching the initial script.
-// On success, the result of evaluating the program is passed to
-// `callback`.
-//
-function LoaderImpl_evalAsync(src,
-                              options,
-                              callback = value => undefined,
-                              errback = exc => { throw exc; })
-{
-    // P4 ISSUE: Check callability of callbacks here (and everywhere
-    // success/failure callbacks are provided)?  It would be a mercy,
-    // since the TypeError if they are not functions happens much later
-    // and with an empty stack.  But Futures don't do it.  Assuming no.
-    //
-    //     if (typeof callback !== "function")
-    //         throw $TypeError("Loader.load: callback must be a function");
-    //     if (typeof errback !== "function")
-    //         throw $TypeError("Loader.load: error callback must be a function");
-    //
-    let address = LoaderImpl.unpackAddressOption(options, errback);
-    if (address === undefined)
-        return;
-
-    let load = new Load([]);
-    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
-    CreateLinkSet(this, load, run, errback);
-    this.onFulfill(load, {}, null, "script", false, src, address);
-}
-
-// **`eval`** - Evaluate the program `src`.
-//
-// `src` may import modules, but if it imports a module that is not
-// already loaded, a `SyntaxError` is thrown.
-//
-function LoaderImpl_eval(src, options) {
-    let address = LoaderImpl.unpackAddressOption(options, null);
-
-    // The loader works in three basic phases: load, link, and execute.
-    // During the **load phase**, code is loaded and parsed, and import
-    // dependencies are traversed.
-
-    // The `Load` object here is *pro forma*; `eval` is synchronous and
-    // thus cannot fetch code.
-    let load = new Load([]);
-    let linkSet = CreateLinkSet(this, load, null, null);
-
-    // Finish loading `src`.  This is the part where, in an *asynchronous*
-    // load, we would trigger further loads for any imported modules that
-    // are not yet loaded.
-    //
-    // Instead, here we pass `true` to `onFulfill` to indicate that we're
-    // doing a synchronous load.  This makes it throw rather than trigger
-    // any new loads or add any still-loading modules to the link set.  If
-    // this doesn't throw, then we have everything we need and load phase
-    // is done.
-    //
-    this.onFulfill(load, {}, null, "script", true, src, address);
-
-    // The **link phase** links each imported name to the corresponding
-    // module or export.
-    LinkSetLink(linkSet);
-
-    // During the **execute phase**, we first execute module bodies for any
-    // modules needed by `script` that haven't already executed.  Then we
-    // evaluate `script` and return that value.
-    return EnsureExecuted(script);
-}
 
 // **`UnpackAddressOption`** - Used by several Loader methods to get
 // `options.address` and check that if present, it is a string.
