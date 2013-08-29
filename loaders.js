@@ -76,6 +76,29 @@
 //>     registry.
 //>
 
+
+// ### Loader hooks
+//
+// The import process can be customized by assigning to (or subclassing and
+// overriding) any number of the five loader hooks:
+//
+//   * `normalize(name, options)` - From a possibly relative module name,
+//     determine the full module name.
+//
+//   * `resolve(fullName, options)` - Given a full module name, determine
+//     the address to load and whether we're loading a script or a module.
+//
+//   * `fetch(address, fulfill, reject, options)` - Load a module from the
+//     given address.
+//
+//   * `translate(src, options)` - Optionally translate a script or module from
+//     some other language to JS.
+//
+//   * `link(src, options)` - Determine dependencies of a module; optionally
+//     convert an AMD/npm/other module to an ES Module object.
+
+
+
 //> ### The Loader Constructor
 
 //> #### Loader ( options )
@@ -400,27 +423,6 @@ function Loader_delete(name) {
 
     return this;
 }
-
-
-// ### Loader hooks
-//
-// The import process can be customized by assigning to (or subclassing and
-// overriding) any number of the five loader hooks:
-//
-//   * `normalize(name, options)` - From a possibly relative module name,
-//     determine the full module name.
-//
-//   * `resolve(fullName, options)` - Given a full module name, determine
-//     the address to load and whether we're loading a script or a module.
-//
-//   * `fetch(address, fulfill, reject, options)` - Load a module from the
-//     given address.
-//
-//   * `translate(src, options)` - Optionally translate a script or module from
-//     some other language to JS.
-//
-//   * `link(src, options)` - Determine dependencies of a module; optionally
-//     convert an AMD/npm/other module to an ES Module object.
 
 
 //> #### Loader.prototype.normalize ( name, options )
