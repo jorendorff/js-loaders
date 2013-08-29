@@ -143,7 +143,7 @@ function LoaderImpl(loader, options) {
 
         // **`this.loads`** stores information about modules that are
         // loading or loaded but not yet linked.  (TODO - fix that sentence
-        // for `onEndRun`.)  It maps full module names to `Load` objects.
+        // for OnEndRun.)  It maps full module names to `Load` objects.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
@@ -217,112 +217,111 @@ function LoaderImpl_import(moduleName, callback, errback, options) {
     }
 }
 
-    // **`load`** - Asynchronously load and run a script.  If the script
-    // contains import declarations, this can cause modules to be loaded,
-    // linked, and executed.
+// **`load`** - Asynchronously load and run a script.  If the script
+// contains import declarations, this can cause modules to be loaded,
+// linked, and executed.
+//
+// On success, the result of evaluating the script is passed to the success
+// callback.
+//
+function LoaderImpl_load(address,
+                         callback = value => undefined,
+                         errback = exc => { throw exc; },
+                         options)
+{
+    // Build a referer object.
+    let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
+    if (refererAddress === undefined)
+        return;
+    let referer = {name: null, address: refererAddress};
+
+    // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+    // only makes sense for modules; `load()` loads scripts.  But we do
+    // want `load()` to use the `fetch` hook, which means we must come up
+    // with a metadata value of some kind (this is ordinarily the
+    // `normalize` hook's responsibility).
     //
-    // On success, the result of evaluating the script is passed to the success
-    // callback.
+    // `metadata` is created using the intrinsics of the enclosing loader
+    // class, not the Loader's intrinsics.  *Rationale:*  It is for the
+    // loader hooks to use.  It is never exposed to code loaded by this
+    // Loader.
     //
-    load(address,
-         callback = value => undefined,
-         errback = exc => { throw exc; },
-         options)
-    {
-        // Build a referer object.
-        let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
-        if (refererAddress === undefined)
-            return;
-        let referer = {name: null, address: refererAddress};
+    let metadata = {};
 
-        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
-        // only makes sense for modules; `load()` loads scripts.  But we do
-        // want `load()` to use the `fetch` hook, which means we must come up
-        // with a metadata value of some kind (this is ordinarily the
-        // `normalize` hook's responsibility).
-        //
-        // `metadata` is created using the intrinsics of the enclosing loader
-        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
-        // loader hooks to use.  It is never exposed to code loaded by this
-        // Loader.
-        //
-        let metadata = {};
+    let load = new Load([]);
+    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+    CreateLinkSet(this, load, run, errback);
+    return CallFetch(this, load, address, referer, metadata, null, "script");
+}
 
-        let load = new Load([]);
-        let run = LoaderImpl.makeEvalCallback(load, callback, errback);
-        CreateLinkSet(this, load, run, errback);
-        return this.callFetch(load, address, referer, metadata, null, "script");
-    }
-
-    // **`evalAsync`** - Asynchronously evaluate the program `src`.
+// **`evalAsync`** - Asynchronously evaluate the program `src`.
+//
+// This is the same as `load` but without fetching the initial script.
+// On success, the result of evaluating the program is passed to
+// `callback`.
+//
+function LoaderImpl_evalAsync(src,
+                              options,
+                              callback = value => undefined,
+                              errback = exc => { throw exc; })
+{
+    // P4 ISSUE: Check callability of callbacks here (and everywhere
+    // success/failure callbacks are provided)?  It would be a mercy,
+    // since the TypeError if they are not functions happens much later
+    // and with an empty stack.  But Futures don't do it.  Assuming no.
     //
-    // This is the same as `load` but without fetching the initial script.
-    // On success, the result of evaluating the program is passed to
-    // `callback`.
+    //     if (typeof callback !== "function")
+    //         throw $TypeError("Loader.load: callback must be a function");
+    //     if (typeof errback !== "function")
+    //         throw $TypeError("Loader.load: error callback must be a function");
     //
-    evalAsync(src,
-              options,
-              callback = value => undefined,
-              errback = exc => { throw exc; })
-    {
-        // P4 ISSUE: Check callability of callbacks here (and everywhere
-        // success/failure callbacks are provided)?  It would be a mercy,
-        // since the TypeError if they are not functions happens much later
-        // and with an empty stack.  But Futures don't do it.  Assuming no.
-        //
-        //     if (typeof callback !== "function")
-        //         throw $TypeError("Loader.load: callback must be a function");
-        //     if (typeof errback !== "function")
-        //         throw $TypeError("Loader.load: error callback must be a function");
-        //
-        let address = LoaderImpl.unpackAddressOption(options, errback);
-        if (address === undefined)
-            return;
+    let address = LoaderImpl.unpackAddressOption(options, errback);
+    if (address === undefined)
+        return;
 
-        let load = new Load([]);
-        let run = LoaderImpl.makeEvalCallback(load, callback, errback);
-        CreateLinkSet(this, load, run, errback);
-        this.onFulfill(load, {}, null, "script", false, src, address);
-    }
+    let load = new Load([]);
+    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+    CreateLinkSet(this, load, run, errback);
+    this.onFulfill(load, {}, null, "script", false, src, address);
+}
 
-    // **`eval`** - Evaluate the program `src`.
+// **`eval`** - Evaluate the program `src`.
+//
+// `src` may import modules, but if it imports a module that is not
+// already loaded, a `SyntaxError` is thrown.
+//
+function LoaderImpl_eval(src, options) {
+    let address = LoaderImpl.unpackAddressOption(options, null);
+
+    // The loader works in three basic phases: load, link, and execute.
+    // During the **load phase**, code is loaded and parsed, and import
+    // dependencies are traversed.
+
+    // The `Load` object here is *pro forma*; `eval` is synchronous and
+    // thus cannot fetch code.
+    let load = new Load([]);
+    let linkSet = CreateLinkSet(this, load, null, null);
+
+    // Finish loading `src`.  This is the part where, in an *asynchronous*
+    // load, we would trigger further loads for any imported modules that
+    // are not yet loaded.
     //
-    // `src` may import modules, but if it imports a module that is not
-    // already loaded, a `SyntaxError` is thrown.
+    // Instead, here we pass `true` to `onFulfill` to indicate that we're
+    // doing a synchronous load.  This makes it throw rather than trigger
+    // any new loads or add any still-loading modules to the link set.  If
+    // this doesn't throw, then we have everything we need and load phase
+    // is done.
     //
-    eval(src, options) {
-        let address = LoaderImpl.unpackAddressOption(options, null);
+    this.onFulfill(load, {}, null, "script", true, src, address);
 
-        // The loader works in three basic phases: load, link, and execute.
-        // During the **load phase**, code is loaded and parsed, and import
-        // dependencies are traversed.
+    // The **link phase** links each imported name to the corresponding
+    // module or export.
+    LinkSetLink(linkSet);
 
-        // The `Load` object here is *pro forma*; `eval` is synchronous and
-        // thus cannot fetch code.
-        let load = new Load([]);
-        let linkSet = CreateLinkSet(this, load, null, null);
-
-        // Finish loading `src`.  This is the part where, in an *asynchronous*
-        // load, we would trigger further loads for any imported modules that
-        // are not yet loaded.
-        //
-        // Instead, here we pass `true` to `onFulfill` to indicate that we're
-        // doing a synchronous load.  This makes it throw rather than trigger
-        // any new loads or add any still-loading modules to the link set.  If
-        // this doesn't throw, then we have everything we need and load phase
-        // is done.
-        //
-        this.onFulfill(load, {}, null, "script", true, src, address);
-
-        // The **link phase** links each imported name to the corresponding
-        // module or export.
-        LinkSetLink(linkSet);
-
-        // During the **execute phase**, we first execute module bodies for any
-        // modules needed by `script` that haven't already executed.  Then we
-        // evaluate `script` and return that value.
-        return EnsureExecuted(script);
-    }
+    // During the **execute phase**, we first execute module bodies for any
+    // modules needed by `script` that haven't already executed.  Then we
+    // evaluate `script` and return that value.
+    return EnsureExecuted(script);
 }
 
 // **`UnpackAddressOption`** - Used by several Loader methods to get
@@ -417,7 +416,7 @@ function MakeEvalCallback(load, callback, errback) {
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function LoaderImpl_startModuleLoad(referer, name, sync) {
+function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
     // Call the `normalize` hook to get a normalized module name and
     // metadata.  See the comment on `normalize()`.
     //
@@ -432,7 +431,7 @@ function LoaderImpl_startModuleLoad(referer, name, sync) {
         // but `eval()` creates a new referer object for each call to the
         // `normalize()` hook, since they are not abstractly all part of a
         // single load.)
-        let result = this.loader.normalize(request, {referer});
+        let result = impl.loader.normalize(request, {referer});
 
         // Interpret the `result`.
         //
@@ -487,12 +486,12 @@ function LoaderImpl_startModuleLoad(referer, name, sync) {
     }
 
     // If the module has already been linked, we are done.
-    let existingModule = $MapGet(this.modules, normalized);
+    let existingModule = $MapGet(impl.modules, normalized);
     if (existingModule !== undefined)
         return [normalized, {status: "linked", module: existingModule});
 
     // If the module is already loaded, we are done.
-    let load = $MapGet(this.loads, normalized);
+    let load = $MapGet(impl.loads, normalized);
     if (load !== undefined && load.status === "loaded")
         return [normalized, load];
 
@@ -515,15 +514,15 @@ function LoaderImpl_startModuleLoad(referer, name, sync) {
     // From this point `startModuleLoad` cannot throw.
 
     // Create a `Load` object for this module load.  Once this object is in
-    // `this.loads`, `LinkSets` may add themselves to its set of waiting
-    // link sets.  Errors must be reported to `load.fail()`.
+    // `impl.loads`, `LinkSets` may add themselves to its set of waiting
+    // link sets.  Errors must be reported using `LoadFail(load, exc)`.
     load = new Load([normalized]);
-    $MapSet(this.loads, normalized, load);
+    $MapSet(impl.loads, normalized, load);
 
     let address, type;
     try {
         // Call the `resolve` hook.
-        let result = this.loader.resolve(normalized, {referer, metadata});
+        let result = impl.loader.resolve(normalized, {referer, metadata});
 
         // Interpret the result.
         type = "module";
@@ -569,17 +568,17 @@ function LoaderImpl_startModuleLoad(referer, name, sync) {
                     if (typeof name !== "string")
                         throw $TypeError("module names must be strings");
                     if (name !== normalized) {
-                        if ($MapHas(this.modules, name)) {
+                        if ($MapHas(impl.modules, name)) {
                             throw $TypeError(
                                 "loader.resolve hook claims module \"" +
                                     name + "\" is at <" + address + "> but " +
                                     "it is already loaded");
                         }
 
-                        let existingLoad = $MapGet(this.loads, name);
+                        let existingLoad = $MapGet(impl.loads, name);
                         if (existingLoad === undefined) {
                             $ArrayPush(load.fullNames, name);
-                            $MapSet(this.loads, name, load);
+                            $MapSet(impl.loads, name, load);
                         } else if (existingLoad !== load) {
                             throw $TypeError(
                                 "loader.resolve hook claims module \"" +
@@ -597,21 +596,21 @@ function LoaderImpl_startModuleLoad(referer, name, sync) {
         }
     } catch (exc) {
         // `load` is responsible for firing error callbacks and removing
-        // itself from `this.loads`.
-        load.fail(exc);
+        // itself from `impl.loads`.
+        LoadFail(load, exc);
         return [normalized, load];
     }
 
     // Start the fetch.
-    this.callFetch(load, address, referer, metadata, normalized, type);
+    CallFetch(impl, load, address, referer, metadata, normalized, type);
 
     return [normalized, load];
 }
 
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
-function LoaderImpl_callFetch(load, address, referer, metadata, normalized, type) {
+function CallFetch(impl, load, address, referer, metadata, normalized, type) {
     let options = {referer, metadata, normalized, type};
-    let errback = exc => load.fail(exc);
+    let errback = exc => LoadFail(load, exc);
 
     // *Rationale for `fetchCompleted`:* The fetch hook is user code.
     // Callbacks the Loader passes to it are subject to every variety of
@@ -675,7 +674,7 @@ function LoaderImpl_callFetch(load, address, referer, metadata, normalized, type
 }
 
 // **`onFulfill`** - This is called once a fetch succeeds.
-function LoaderImpl_onFulfill(load, metadata, normalized, type, sync, src, actualAddress) {
+function OnFulfill(impl, load, metadata, normalized, type, sync, src, actualAddress) {
     // If all link sets that required this load have failed, do nothing.
     if ($SetSize(load.linkSets) === 0)
         return;
@@ -692,31 +691,31 @@ function LoaderImpl_onFulfill(load, metadata, normalized, type, sync, src, actua
         }
 
         // Call the `translate` hook.
-        src = this.loader.translate(src, {metadata, normalized, type, actualAddress});
+        src = impl.loader.translate(src, {metadata, normalized, type, actualAddress});
         if (typeof src !== "string")
             throw $TypeError("translate hook must return a string");
 
         // Call the `link` hook, if we are loading a module.
         let linkResult =
             type === "module"
-            ? this.loader.link(src, {metadata, normalized, type, actualAddress})
+            ? impl.loader.link(src, {metadata, normalized, type, actualAddress})
         : undefined;
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
-            let script = $Parse(this, src, normalized, actualAddress, this.strict);
-            load.finish(this, actualAddress, script, sync);
+            let script = $Parse(impl, src, normalized, actualAddress, impl.strict);
+            FinishLoad(load, impl, actualAddress, script, sync);
         } else if (!IsObject(linkResult)) {
             throw $TypeError("link hook must return an object or undefined");
         } else if ($IsModule(linkResult)) {
-            if ($MapHas(this.modules, normalized)) {
+            if ($MapHas(impl.modules, normalized)) {
                 throw $TypeError("fetched module \"" + normalized + "\" " +
                                  "but a module with that name is already " +
                                  "in the registry");
             }
             let mod = linkResult;
-            $MapSet(this.modules, normalized, mod);
-            load.onEndRun();
+            $MapSet(impl.modules, normalized, mod);
+            OnEndRun(load);
         } else {
             let mod = null;
             let imports = linkResult.imports;
@@ -733,7 +732,7 @@ function LoaderImpl_onFulfill(load, metadata, normalized, type, sync, src, actua
         if (sync)
             throw exc;
         else
-            load.fail(exc);
+            LoadFail(load, exc);
     }
 }
 
@@ -881,184 +880,191 @@ function LoaderImpl_onFulfill(load, metadata, normalized, type, sync, src, actua
 //         .status === "failed"
 //         .exception is an exception value
 //
-class Load {
-    //> #### CreateLoad(fullNames) Abstract Operation
-    // A new `Load` begins in the `"loading"` state.
-    //
-    // The constructor argument is an array of the module names that we're
-    // loading.
-    //
-    constructor(fullNames) {
-        define(this, {
-            status: "loading",
-            fullNames: fullNames,
-            script: null,
-            dependencies: null,
-            linkSets: $SetNew(),
-            factory: null,
-            exception: null
-        });
-    }
 
-    //> #### FinishLoad(load, loader, actualAddress, script, sync) Abstract Operation
+//> #### CreateLoad(fullNames) Abstract Operation
+//>
+// A new `Load` begins in the `"loading"` state.
+//
+// The constructor argument is an array of the module names that we're
+// loading.
+//
+function CreateLoad(fullNames) {
+    return {
+        status: "loading",
+        fullNames: fullNames,
+        script: null,
+        dependencies: null,
+        linkSets: $SetNew(),
+        factory: null,
+        exception: null
+    };
+}
 
-    // **`finish`** - The loader calls this after the last loader hook (the
-    // `link` hook), and after the script or module's syntax has been
-    // checked. `finish` does three things:
-    //
-    //   1. Process module declarations.
-    //
-    //   2. Process imports. This may trigger additional loads (though if
-    //      `sync` is true, it definitely won't: we'll throw instead).
-    //
-    //   3. Call `LinkSetOnLoad` on any listening `LinkSet`s (see that abstract
-    //      operation for the conclusion of the load/link/run process).
-    //
-    // On success, this transitions the `Load` from `"loading"` status to
-    // `"loaded"`.
-    //
-    finish(loader, actualAddress, script, sync) {
-        $Assert(this.status === "loading");
-        $Assert($SetSize(this.linkSets) !== 0);
 
-        // Check to see if `script` declares any modules that are already loaded or
-        // loading.  If so, throw a `SyntaxError`.  If not, add entries to
-        // `loader.loads` for each declared module.
-        //
-        // *Rationale:* Consider two `evalAsync` calls.
-        //
-        //     System.evalAsync('module "x" { import "y" as y; }', {}, ok, err);
-        //     System.evalAsync('module "x" { import "z" as z; }', {}, ok, err);
-        //
-        // There's no sense in letting them race trying to load "y" and "z"
-        // after we know one of the two `module "x"` declarations must fail.
-        // Instead, the second `evalAsync` fails immediately.  Per meeting,
-        // 2013 April 26.
-        //
-        // TODO - Consider unifying this with similar code in LinkSet.link().
-        //
-        let declared = $ScriptDeclaredModuleNames(script);
-        for (let i = 0; i < declared.length; i++) {
-            let fullName = declared[i];
-            if ($MapHas(loader.modules, fullName)) {
-                throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                                   "which is already loaded");
-            }
-            let pendingLoad = $MapGet(loader.loads, fullName);
-            if (pendingLoad === undefined) {
-                $MapSet(loader.loads, fullName, this);
-            } else if (pendingLoad !== this) {
-                throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                                   "which is already loading");
-            }
+//> #### FinishLoad(load, loader, actualAddress, script, sync) Abstract Operation
+
+// The loader calls this after the last loader hook (the `link` hook), and
+// after the script or module's syntax has been checked. `finish` does three
+// things:
+//
+//   1. Process module declarations.
+//
+//   2. Process imports. This may trigger additional loads (though if
+//      `sync` is true, it definitely won't: we'll throw instead).
+//
+//   3. Call `LinkSetOnLoad` on any listening `LinkSet`s (see that abstract
+//      operation for the conclusion of the load/link/run process).
+//
+// On success, this transitions the `Load` from `"loading"` status to
+// `"loaded"`.
+//
+function FinishLoad(load, loader, actualAddress, script, sync) {
+    $Assert(load.status === "loading");
+    $Assert($SetSize(load.linkSets) !== 0);
+
+    // Check to see if `script` declares any modules that are already loaded or
+    // loading.  If so, throw a `SyntaxError`.  If not, add entries to
+    // `loader.loads` for each declared module.
+    //
+    // *Rationale:* Consider two `evalAsync` calls.
+    //
+    //     System.evalAsync('module "x" { import "y" as y; }', {}, ok, err);
+    //     System.evalAsync('module "x" { import "z" as z; }', {}, ok, err);
+    //
+    // There's no sense in letting them race trying to load "y" and "z"
+    // after we know one of the two `module "x"` declarations must fail.
+    // Instead, the second `evalAsync` fails immediately.  Per meeting,
+    // 2013 April 26.
+    //
+    // TODO - Consider unifying this with similar code in LinkSet.link().
+    //
+    let declared = $ScriptDeclaredModuleNames(script);
+    for (let i = 0; i < declared.length; i++) {
+        let fullName = declared[i];
+        if ($MapHas(loader.modules, fullName)) {
+            throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                               "which is already loaded");
         }
-
-        // `$ScriptImports` returns an array of `[client, request]` pairs.
-        //
-        // `client` tells where the import appears. It is the full name of the
-        // enclosing module, or null for toplevel imports.
-        //
-        // `request` is the name being imported.  It is not necessarily a full
-        // name; we pass it to `Loader.startModuleLoad` which will call the
-        // `normalize` hook.
-        //
-        let pairs = $ScriptImports(script);
-        let fullNames = [];
-        let sets = this.linkSets;
-
-        // P4 ISSUE: Execution order when multiple LinkSets become linkable
-        // at once.
-        //
-        // Proposed: When a fetch fulfill callback fires and completes the
-        // dependency graph of multiple link sets at once, they are
-        // linked and executed in the order of the original
-        // load()/evalAsync() calls.
-        //
-        // samth is unsure but thinks probably so.
-
-        // When we load a script, we add all its modules and their
-        // dependencies to the same link set, per samth, 2013 April 22.
-        //
-        // TODO: implement that for the declared modules
-        //
-        // Example:
-        //     module "A" {
-        //         import "B" as B;
-        //         B.hello();
-        //     }
-        //     alert("got here");
-        //
-        // Note that toplevel does not import "A", so the body of "A"
-        // will not execute, and we will not call B.hello().
-        // Nevertheless, we load "B.js" before executing the script.
-        //
-        for (let i = 0; i < pairs.length; i++) {
-            let [client, request] = pairs[i];
-            let referer = {name: client, address: actualAddress};
-            let fullName, load;
-            try {
-                [fullName, load] = loader.startModuleLoad(referer, request, sync);
-            } catch (exc) {
-                return this.fail(exc);
-            }
-            fullNames[i] = fullName;
-
-            if (load.status !== "linked") {
-                for (let j = 0; j < sets.length; j++)
-                    AddLoadToLinkSet(sets[j], load);
-            }
-        }
-
-        this.status = "loaded";
-        this.script = script;
-        this.dependencies = fullNames;
-        if (!sync) {
-            for (let i = 0; i < sets.length; i++)
-                LinkSetOnLoad(sets[i], this);
+        let pendingLoad = $MapGet(loader.loads, fullName);
+        if (pendingLoad === undefined) {
+            $MapSet(loader.loads, fullName, load);
+        } else if (pendingLoad !== load) {
+            throw $SyntaxError("script declares module \"" + fullName + "\", " +
+                               "which is already loading");
         }
     }
 
-    //> #### LoadOnEndRun(load) Abstract Operation
+    // `$ScriptImports` returns an array of `[client, request]` pairs.
+    //
+    // `client` tells where the import appears. It is the full name of the
+    // enclosing module, or null for toplevel imports.
+    //
+    // `request` is the name being imported.  It is not necessarily a full
+    // name; we pass it to `Loader.startModuleLoad` which will call the
+    // `normalize` hook.
+    //
+    let pairs = $ScriptImports(script);
+    let fullNames = [];
+    let sets = load.linkSets;
 
-    // **`onEndRun`** - Called when the `link` hook returns a Module object.
-    onEndRun() {
-        $Assert(this.status === "loading");
-        this.status = "linked";
+    // P4 ISSUE: Execution order when multiple LinkSets become linkable
+    // at once.
+    //
+    // Proposed: When a fetch fulfill callback fires and completes the
+    // dependency graph of multiple link sets at once, they are
+    // linked and executed in the order of the original
+    // load()/evalAsync() calls.
+    //
+    // samth is unsure but thinks probably so.
+
+    // When we load a script, we add all its modules and their
+    // dependencies to the same link set, per samth, 2013 April 22.
+    //
+    // TODO: implement that for the declared modules
+    //
+    // Example:
+    //     module "A" {
+    //         import "B" as B;
+    //         B.hello();
+    //     }
+    //     alert("got here");
+    //
+    // Note that toplevel does not import "A", so the body of "A"
+    // will not execute, and we will not call B.hello().
+    // Nevertheless, we load "B.js" before executing the script.
+    //
+    for (let i = 0; i < pairs.length; i++) {
+        let [client, request] = pairs[i];
+        let referer = {name: client, address: actualAddress};
+        let fullName, load;
+        try {
+            [fullName, load] = loader.startModuleLoad(referer, request, sync);
+        } catch (exc) {
+            return load.fail(exc);
+        }
+        fullNames[i] = fullName;
+
+        if (load.status !== "linked") {
+            for (let j = 0; j < sets.length; j++)
+                AddLoadToLinkSet(sets[j], load);
+        }
+    }
+
+    load.status = "loaded";
+    load.script = script;
+    load.dependencies = fullNames;
+    if (!sync) {
         for (let i = 0; i < sets.length; i++)
-            LinkSetOnLoad(sets[i], this);
+            LinkSetOnLoad(sets[i], load);
     }
+}
 
-    //> #### LoadFail(load, exc) Abstract Operation
 
-    // **`fail`** - Fail this load. All `LinkSet`s that require it also fail.
-    fail(exc) {
-        $Assert(this.status === "loading");
-        this.status = "failed";
-        this.exception = exc;
-        let sets = $SetElements(this.linkSets);
-        for (let i = 0; i < sets.length; i++)
-            LinkSetFail(sets[i], exc);
-        $Assert($SetSize(this.linkSets) === 0);
-    }
+//> #### OnEndRun(load) Abstract Operation
+//>
 
-    //> #### LoadOnLinkSetFail(load, loaderImpl, linkSet) Abstract Operation
+// Called when the `link` hook returns a Module object.
+function OnEndRun(load) {
+    $Assert(load.status === "loading");
+    load.status = "linked";
+    for (let i = 0; i < sets.length; i++)
+        LinkSetOnLoad(sets[i], load);
+}
 
-    // **`onLinkSetFail`** - This is called when a LinkSet associated with this
-    // load fails.  If this load is not needed by any surviving LinkSet, drop
-    // it.
-    onLinkSetFail(loaderImpl, linkSet) {
-        $Assert($SetHas(this.linkSets, linkSet));
-        $SetDelete(this.linkSets, linkSet);
-        if ($SetSize(this.linkSets) === 0) {
-            for (let i = 0; i < this.fullNames.length; i++) {
-                let fullName = this.fullNames[i];
-                let currentLoad = $MapGet(loaderImpl.loads, fullName);
-                if (currentLoad === this)
-                    $MapDelete(loaderImpl.loads, fullName);
-            }
+
+//> #### LoadFail(load, exc) Abstract Operation
+//>
+
+// **`fail`** - Fail this load. All `LinkSet`s that require it also fail.
+function LoadFail(load, exc) {
+    $Assert(load.status === "loading");
+    load.status = "failed";
+    load.exception = exc;
+    let sets = $SetElements(load.linkSets);
+    for (let i = 0; i < sets.length; i++)
+        LinkSetFail(sets[i], exc);
+    $Assert($SetSize(load.linkSets) === 0);
+}
+
+//> #### OnLinkSetFail(load, loaderImpl, linkSet) Abstract Operation
+//>
+
+// **`onLinkSetFail`** - This is called when a LinkSet associated with this
+// load fails.  If this load is not needed by any surviving LinkSet, drop
+// it.
+function OnLinkSetFail(load loaderImpl, linkSet) {
+    $Assert($SetHas(this.linkSets, linkSet));
+    $SetDelete(this.linkSets, linkSet);
+    if ($SetSize(this.linkSets) === 0) {
+        for (let i = 0; i < this.fullNames.length; i++) {
+            let fullName = this.fullNames[i];
+            let currentLoad = $MapGet(loaderImpl.loads, fullName);
+            if (currentLoad === this)
+                $MapDelete(loaderImpl.loads, fullName);
         }
     }
 }
+
 
 //> ### Link sets
 //>
@@ -1122,9 +1128,8 @@ function AddLoadToLinkSet(linkSet, load) {
 
 //> #### LinkSetOnLoad(linkSet, load) Abstract Operation
 //>
-//> `Load.prototype.finish` calls this after one `Load`
-//> successfully finishes, and after kicking off loads for all its
-//> dependencies.
+//> `FinishLoad` calls this after one `Load` successfully finishes, and after
+//> kicking off loads for all its dependencies.
 //>
 function LinkSetOnLoad(linkSet, load) {
     $Assert($SetHas(linkSet.loads, load));
