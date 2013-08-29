@@ -445,12 +445,11 @@ function Loader_resolve(normalized, options) {
 //> This is the hook that must be overloaded in order to make the `import`
 //> keyword work.
 //>
-//> The `fetch` hook should load the requested address and call the
-//> `fulfill` callback, passing two arguments: the fetched source, as a
-//> string; and the actual address where it was found (after all redirects),
-//> also as a string.
+//> The fetch hook should load the requested address and call the fulfill
+//> callback, passing two arguments: the fetched source, as a string; and the
+//> actual address where it was found (after all redirects), also as a string.
 //>
-//> `options.type` is the string `"module"` when fetching a standalone
+//> options.type is the string `"module"` when fetching a standalone
 //> module, and `"script"` when fetching a script.
 //>
 //> *When this hook is called:*  For all modules and scripts whose source
@@ -464,13 +463,13 @@ function Loader_resolve(normalized, options) {
 //> we're loading a script, not a module; but it does call the `fetch` and
 //> `translate` hooks, per samth, 2013 April 22.)
 //>
-//> *Default behavior:*  Pass a `TypeError` to the `reject` callback.
+//> *Default behavior:*  Pass a `TypeError` to the reject callback.
 //>
-//> *Synchronous calls to `fulfill` and `reject`:*  The `fetch` hook may
-//> call the `fulfill` or `reject` callback synchronously rather than
-//> waiting for the next event loop turn.  `fulfill` schedules the pipeline
+//> *Synchronous calls to fulfill and reject:*  The `fetch` hook may
+//> call the fulfill or reject callback synchronously rather than
+//> waiting for the next event loop turn.  fulfill schedules the pipeline
 //> to resume asynchronously.  Per meeting, 2013 April 26.  *Rationale:* It
-//> would be strange for a synchronous `fulfill` callback to synchronously
+//> would be strange for a synchronous fulfill callback to synchronously
 //> call `translate`/`link` hooks, and then `normalize`/`resolve`/`fetch`
 //> hooks for dependencies, before the first `fetch` hook has returned.
 //>
@@ -485,13 +484,12 @@ function Loader_fetch(address, fulfill, reject, options) {
 
 //> #### Loader.prototype.translate ( src, options )
 //>
-//> Optionally translate `src` from some other language into ECMAScript.
+//> Optionally translate src from some other language into ECMAScript.
 //>
 //> *When this hook is called:*  For all modules and scripts.  (It is not
-//> decided whether this is called for direct eval scripts; see
-//> [issue #8](https://github.com/jorendorff/js-loaders/issues/8).)
+//> decided whether this is called for direct eval scripts; see issue #8.)
 //>
-//> *Default behavior:*  Return `src` unchanged.
+//> *Default behavior:*  Return src unchanged.
 //>
 //> When the translate method is called, the following steps are taken:
 //>
@@ -508,7 +506,7 @@ function Loader_translate(src, options) {
 //> are three options.
 //>
 //>  1. The link hook may return `undefined`. The loader then uses the
-//>     default linking behavior.  It parses `src` as a script or module
+//>     default linking behavior.  It parses src as a script or module
 //>     body, looks at its imports, loads all dependencies asynchronously,
 //>     and finally links them as a unit and adds them to the registry.
 //>
@@ -542,7 +540,7 @@ function Loader_translate(src, options) {
 //>
 //>     (This feature is provided in order to support using `import` to
 //>     import pre-ES6 modules such as AMD modules. See
-//>     [issue #19](https://github.com/jorendorff/js-loaders/issues/19).)
+//>     issue #19.)
 //>
 //> *When this hook is called:*  After the `translate` hook, for modules
 //> only.
