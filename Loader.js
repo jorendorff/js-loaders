@@ -202,14 +202,23 @@ function Loader(options) {
     // methods, everything private is stored on a separate `LoaderImpl`
     // object which is not accessible from user code.
 
-    // Bug: this calls Loader_create directly. The spec requires instead
+    // Bug: this calls Loader_create directly. The spec will require instead
     // calling Loader[@@create](); we will change this when symbols are
     // implemented.
-    var loader = callFunction(Loader_create, Loader);
-    var loaderData = LoaderData(loader);
+    //
+    // The slightly weird .initialized check below mimics what other builtin
+    // classes do with regard to @@create.
+    //
+    var loader = this;
+    var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
+    if (loaderData === undefined || loaderData.initialized) {
+        loader = callFunction(Loader_create, Loader);
+        loaderData = LoaderData(loader);
+    }
 
     loaderData.global = options.global;  // P4 ISSUE: ToObject here?
     loaderData.strict = ToBoolean(options.strict);
+    loaderData.initialized = true;
 
     // P4 ISSUE: Detailed behavior of hooks.
     //
@@ -287,7 +296,9 @@ function Loader_create() {
 
         // Various configurable options.
         global: undefined,
-        strict: false
+        strict: false,
+
+        initialized: false
     };
 
     $WeakMapSet(loaderInternalDataMap, loader, internalData);
