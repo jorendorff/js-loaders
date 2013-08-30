@@ -1120,7 +1120,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     // If the module has already been linked, we are done.
     let existingModule = $MapGet(loaderData.modules, normalized);
     if (existingModule !== undefined)
-        return [normalized, {status: "linked", module: existingModule});
+        return [normalized, {status: "linked", module: existingModule}];
 
     // If the module is already loaded, we are done.
     let load = $MapGet(loaderData.loads, normalized);
