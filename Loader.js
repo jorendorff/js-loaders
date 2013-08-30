@@ -206,19 +206,24 @@ function Loader(options) {
     // calling Loader[@@create](); we will change this when symbols are
     // implemented.
     //
-    // The slightly weird .initialized check below mimics what other builtin
+    // The slightly weird check for .module below mimics what other builtin
     // classes do with regard to @@create.
     //
     var loader = this;
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
-    if (loaderData === undefined || loaderData.initialized) {
+    if (loaderData === undefined || loaderData.module !== undefined) {
         loader = callFunction(Loader_create, Loader);
         loaderData = LoaderData(loader);
     }
 
-    loaderData.global = options.global;  // P4 ISSUE: ToObject here?
-    loaderData.strict = ToBoolean(options.strict);
-    loaderData.initialized = true;
+    // Fallible operations.
+    var global = options.global;  // P4 ISSUE: ToObject here?
+    var strict = ToBoolean(options.strict);
+
+    // Initialize infallibly.
+    loaderData.global = global;
+    loaderData.strict = strict;
+    loaderData.module = $MapNew();
 
     // P4 ISSUE: Detailed behavior of hooks.
     //
@@ -282,7 +287,10 @@ function Loader_create() {
         // imports, such modules are not exposed to user code.  See
         // `EnsureExecuted()`.
         //
-        modules: $MapNew(),
+        // This is initially undefined but is populated with a new Map
+        // when the constructor executes.
+        //
+        modules: undefined,
 
         // **`this.loads`** stores information about modules that are
         // loading or loaded but not yet linked.  (TODO - fix that sentence
@@ -296,9 +304,7 @@ function Loader_create() {
 
         // Various configurable options.
         global: undefined,
-        strict: false,
-
-        initialized: false
+        strict: false
     };
 
     $WeakMapSet(loaderInternalDataMap, loader, internalData);
@@ -317,7 +323,17 @@ function LoaderData(value) {
 
 //> ### Properties of the Loader Prototype Object
 //>
-
+//> The abstract operation thisLoader(*value*) performs the following steps:
+//>
+//> 1. If Type(*value*) is Object and value has a [[modules]] internal data property, then
+//>     1. Let m be *value*.[[modules]].
+//>     2. If m is not **undefined**, then return *value*.
+//> 2. Throw a **TypeError** exception.
+//>
+//> The phrase "this Loader" within the specification of a method refers to the
+//> result returned by calling the abstract operation thisLoader with the this
+//> value of the method invocation passed as the argument.
+//>
 
 //> #### Loader.prototype.global
 //>
@@ -326,8 +342,8 @@ function LoaderData(value) {
 //> steps:
 //>
 function Loader_global() {
-    //> 1. Let L be ThisLoader(the this value).
-    //> 2. Return the value of L's [[global]] internal data property.
+    //> 1. Let L be this Loader.
+    //> 2. Return L.[[global]].
     return LoaderData(this).global;
 }
 //>
@@ -340,8 +356,8 @@ function Loader_global() {
 //> steps:
 //>
 function Loader_strict() {
-    //> 1. Let L be ThisLoader(the this value).
-    //> 2. Return the value of L's [[strict]] internal data property.
+    //> 1. Let L be this Loader.
+    //> 2. Return L.[[strict]].
     return getImpl(this).strict;
 }
 //>
