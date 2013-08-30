@@ -23,7 +23,6 @@
 // parts are in decent shape:
 //
 //   * the public `Loader` class;
-//   * the `LoaderImpl` constructor;
 //   * the methods for loading and running code:
 //     `eval`, `evalAsync`, `load`, and `import`;
 //   * the methods for directly accessing the module map:
@@ -197,11 +196,20 @@
 
 //> #### Loader ( options )
 
-function Loader(options) {
-    // Since ES6 does not have support for private state or private
-    // methods, everything private is stored on a separate `LoaderImpl`
-    // object which is not accessible from user code.
 
+// Implementation note: Since ES6 does not have support for private state or
+// private methods, the "internal data properties" of Loader objects are stored
+// on a separate object which is not accessible from user code.
+//
+// So what the specification refers to as `loader.[[modules]]` is implemented
+// as `GetLoaderInternalData(loader).modules`.
+//
+// The simplest way to connect the two objects without exposing this internal
+// data to user code is to use a `WeakMap`.
+//
+let loaderInternalDataMap = $WeakMapNew();
+
+function Loader(options) {
     // Bug: this calls Loader_create directly. The spec will require instead
     // calling Loader[@@create](); we will change this when symbols are
     // implemented.
@@ -212,8 +220,10 @@ function Loader(options) {
     var loader = this;
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
     if (loaderData === undefined || loaderData.module !== undefined) {
+        // Implementation note: `callFunction` is SpiderMonkey magic;
+        // the following line means Loader_create.[[Call]](Loader, empty List).
         loader = callFunction(Loader_create, Loader);
-        loaderData = LoaderData(loader);
+        loaderData = GetLoaderInternalData(loader);
     }
 
     // Fallible operations.
@@ -268,11 +278,6 @@ function Loader(options) {
 
 let LoaderPrototype = Loader.prototype;
 
-// In this implementation, each public `Loader` object's internal data
-// properties are stored on a private object.  The simplest way to connect the
-// two without exposing this internal data to user code is to use a `WeakMap`.
-let loaderInternalDataMap = $WeakMapNew();
-
 function Loader_create() {
     var loader = Object.create(LoaderPrototype);
     var internalData = {
@@ -312,7 +317,7 @@ function Loader_create() {
 }
 
 // Get the internal data for a given `Loader` object.
-function LoaderData(value) {
+function GetLoaderInternalData(value) {
     let internalData = $WeakMapGet(loaderInternalDataMap, value);
     if (internalData === undefined)
         throw $TypeError("Loader method called on incompatible object");
@@ -344,7 +349,7 @@ function LoaderData(value) {
 function Loader_global() {
     //> 1. Let L be this Loader.
     //> 2. Return L.[[global]].
-    return LoaderData(this).global;
+    return GetLoaderInternalData(this).global;
 }
 //>
 
@@ -358,7 +363,7 @@ function Loader_global() {
 function Loader_strict() {
     //> 1. Let L be this Loader.
     //> 2. Return L.[[strict]].
-    return getImpl(this).strict;
+    return GetLoaderInternalData(this).strict;
 }
 //>
 
@@ -382,11 +387,9 @@ function Loader_strict() {
 // module that is not already loaded, a `SyntaxError` is thrown.
 //
 function Loader_eval(src, options) {
-    return getImpl(this).eval(src, options);
-}
+    var loaderData = GetLoaderInternalData(this);
 
-function LoaderImpl_eval(src, options) {
-    let address = LoaderImpl.unpackAddressOption(options, null);
+    let address = UnpackAddressOption(options, null);
 
     // The loader works in three basic phases: load, link, and execute.
     // During the **load phase**, code is loaded and parsed, and import
@@ -407,7 +410,7 @@ function LoaderImpl_eval(src, options) {
     // this doesn't throw, then we have everything we need and load phase
     // is done.
     //
-    this.onFulfill(load, {}, null, "script", true, src, address);
+    OnFulfill(this, load, {}, null, "script", true, src, address);
 
     // The **link phase** links each imported name to the corresponding
     // module or export.
@@ -435,10 +438,8 @@ function Loader_evalAsync(src,
                           callback = value => {},
                           errback = exc => { throw exc; })
 {
-    getImpl(this).evalAsync(src, options, callback, errback);
-}
+    var loaderData = GetLoaderInternalData(this);
 
-function LoaderImpl_evalAsync(src, options, callback, errback) {
     // P4 ISSUE: Check callability of callbacks here (and everywhere
     // success/failure callbacks are provided)?  It would be a mercy,
     // since the TypeError if they are not functions happens much later
@@ -449,14 +450,14 @@ function LoaderImpl_evalAsync(src, options, callback, errback) {
     //     if (typeof errback !== "function")
     //         throw $TypeError("Loader.load: error callback must be a function");
     //
-    let address = LoaderImpl.unpackAddressOption(options, errback);
+    let address = UnpackAddressOption(options, errback);
     if (address === undefined)
         return;
 
     let load = new Load([]);
-    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+    let run = MakeEvalCallback(load, callback, errback);
     CreateLinkSet(this, load, run, errback);
-    this.onFulfill(load, {}, null, "script", false, src, address);
+    OnFulfill(this, load, {}, null, "script", false, src, address);
 }
 
 //>
@@ -480,12 +481,8 @@ function Loader_load(address,
                      errback = exc => { throw exc; },
                      options = undefined)
 {
-    getImpl(this).load(address, callback, errback, options);
-}
-
-function LoaderImpl_load(address, callback, errback, options) {
     // Build a referer object.
-    let refererAddress = LoaderImpl.unpackAddressOption(options, errback);
+    let refererAddress = UnpackAddressOption(options, errback);
     if (refererAddress === undefined)
         return;
     let referer = {name: null, address: refererAddress};
@@ -504,7 +501,7 @@ function LoaderImpl_load(address, callback, errback, options) {
     let metadata = {};
 
     let load = new Load([]);
-    let run = LoaderImpl.makeEvalCallback(load, callback, errback);
+    let run = MakeEvalCallback(load, callback, errback);
     CreateLinkSet(this, load, run, errback);
     return CallFetch(this, load, address, referer, metadata, null, "script");
 }
@@ -525,10 +522,6 @@ function Loader_import(moduleName,
                        errback = exc => { throw exc; },
                        options = undefined)
 {
-    getImpl(this).import(moduleName, callback, errback, options);
-}
-
-function LoaderImpl_import(moduleName, callback, errback, options) {
     // Unpack `options`.  Build the referer object that we will pass to
     // `startModuleLoad`.
     let name = null;
@@ -539,15 +532,15 @@ function LoaderImpl_import(moduleName, callback, errback, options) {
             return;
         }
     }
-    let address = LoaderImpl.unpackAddressOption(options, errback);
+    let address = UnpackAddressOption(options, errback);
     if (address === undefined)
         return;
     let referer = {name, address};
 
-    // `this.startModuleLoad` starts us along the pipeline.
+    // `StartModuleLoad` starts us along the pipeline.
     let fullName, load;
     try {
-        [fullName, load] = this.startModuleLoad(referer, moduleName, false);
+        [fullName, load] = StartModuleLoad(this, referer, moduleName, false);
     } catch (exc) {
         AsyncCall(errback, exc);
         return;
@@ -634,13 +627,13 @@ function LoaderImpl_import(moduleName, callback, errback, options) {
 // executed yet.
 //
 function Loader_get(name) {
-    let impl = getImpl(this);
+    let loaderData = GetLoaderInternalData(this);
 
     // Throw a TypeError if `name` is not a string.
     if (typeof name !== "string")
         throw $TypeError("module name must be a string");
 
-    let m = $MapGet(impl.modules, name);
+    let m = $MapGet(loaderData.modules, name);
 
     // If the module is in the registry but has never been executed, first
     // synchronously execute the module and any dependencies that have not
@@ -660,12 +653,12 @@ function Loader_get(name) {
 // This doesn't call any hooks or execute any module code.
 //
 function Loader_has(name) {
-    let impl = getImpl(this);
+    let loaderData = GetLoaderInternalData(this);
 
     if (typeof name !== "string")
         throw $TypeError("module name must be a string");
 
-    return $MapHas(impl.modules, name);
+    return $MapHas(loaderData.modules, name);
 }
 
 
@@ -674,7 +667,7 @@ function Loader_has(name) {
 
 // **`set`** - Put a module into the registry.
 function Loader_set(name, module) {
-    getImpl(this).set(name, module);
+    let loaderData = GetLoaderInternalData(this);
 
     if (typeof name !== "string")
         throw $TypeError("module name must be a string");
@@ -700,7 +693,7 @@ function Loader_set(name, module) {
     // module-declaration for the same name, that will produce a link-time
     // error. per samth, 2013 April 22.
     //
-    $MapSet(impl.modules, name, module);
+    $MapSet(loaderData.modules, name, module);
 
     return this;
 }
@@ -739,17 +732,17 @@ function Loader_set(name, module) {
 //    bug.
 //
 function Loader_delete(name) {
-    let impl = getImpl(this);
+    let loaderData = GetLoaderInternalData(this);
 
     // If there is no module with the given name in the registry, this does
     // nothing.
     //
     // `loader.delete("A")` has no effect at all if
-    // `!loaderImpl.modules.has("A")`, even if "A" is currently loading (an
-    // entry exists in `loaderImpl.loads`).  This is analogous to `.set()`.
+    // `!loaderData.modules.has("A")`, even if "A" is currently loading (an
+    // entry exists in `loaderData.loads`).  This is analogous to `.set()`.
     // per (reading between the lines) discussions with dherman, 2013 April
     // 17, and samth, 2013 April 22.
-    $MapDelete(impl.modules, name);
+    $MapDelete(loaderData.modules, name);
 
     return this;
 }
@@ -902,7 +895,7 @@ function Loader_translate(src, options) {
 //>     and finally links them as a unit and adds them to the registry.
 //>
 //>     The module bodies will then be executed on demand; see
-//>     `ensureExecuted` in impl.js.
+//>     `EnsureExecuted`.
 //>
 //>  2. The hook may return a full `Module` instance object.  The loader
 //>     then simply adds that module to the registry.
@@ -952,7 +945,7 @@ function Loader_link(src, options) {
 // Define all the built-in objects and functions of the ES6 standard
 // library associated with this loader's intrinsics as properties on
 // `obj`.
-function Loader_defineBuiltins(obj = getImpl(this).global) {
+function Loader_defineBuiltins(obj = GetLoaderInternalData(this).global) {
     $DefineBuiltins(obj, this);
     return obj;
 }
@@ -1053,7 +1046,9 @@ function MakeEvalCallback(load, callback, errback) {
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
+function StartModuleLoad(loader, referer, name, sync) {
+    var loaderData = GetLoaderInternalData(loader);
+
     // Call the `normalize` hook to get a normalized module name and
     // metadata.  See the comment on `normalize()`.
     //
@@ -1068,7 +1063,7 @@ function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
         // but `eval()` creates a new referer object for each call to the
         // `normalize()` hook, since they are not abstractly all part of a
         // single load.)
-        let result = impl.loader.normalize(request, {referer});
+        let result = loader.normalize(request, {referer});
 
         // Interpret the `result`.
         //
@@ -1123,12 +1118,12 @@ function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
     }
 
     // If the module has already been linked, we are done.
-    let existingModule = $MapGet(impl.modules, normalized);
+    let existingModule = $MapGet(loaderData.modules, normalized);
     if (existingModule !== undefined)
         return [normalized, {status: "linked", module: existingModule});
 
     // If the module is already loaded, we are done.
-    let load = $MapGet(impl.loads, normalized);
+    let load = $MapGet(loaderData.loads, normalized);
     if (load !== undefined && load.status === "loaded")
         return [normalized, load];
 
@@ -1151,15 +1146,15 @@ function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
     // From this point `startModuleLoad` cannot throw.
 
     // Create a `Load` object for this module load.  Once this object is in
-    // `impl.loads`, `LinkSets` may add themselves to its set of waiting
+    // `loaderData.loads`, `LinkSets` may add themselves to its set of waiting
     // link sets.  Errors must be reported using `LoadFail(load, exc)`.
     load = new Load([normalized]);
-    $MapSet(impl.loads, normalized, load);
+    $MapSet(loaderData.loads, normalized, load);
 
     let address, type;
     try {
         // Call the `resolve` hook.
-        let result = impl.loader.resolve(normalized, {referer, metadata});
+        let result = loader.resolve(normalized, {referer, metadata});
 
         // Interpret the result.
         type = "module";
@@ -1205,17 +1200,17 @@ function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
                     if (typeof name !== "string")
                         throw $TypeError("module names must be strings");
                     if (name !== normalized) {
-                        if ($MapHas(impl.modules, name)) {
+                        if ($MapHas(loaderData.modules, name)) {
                             throw $TypeError(
                                 "loader.resolve hook claims module \"" +
                                     name + "\" is at <" + address + "> but " +
                                     "it is already loaded");
                         }
 
-                        let existingLoad = $MapGet(impl.loads, name);
+                        let existingLoad = $MapGet(loaderData.loads, name);
                         if (existingLoad === undefined) {
                             $ArrayPush(load.fullNames, name);
-                            $MapSet(impl.loads, name, load);
+                            $MapSet(loaderData.loads, name, load);
                         } else if (existingLoad !== load) {
                             throw $TypeError(
                                 "loader.resolve hook claims module \"" +
@@ -1233,19 +1228,19 @@ function LoaderImpl_startModuleLoad(impl, referer, name, sync) {
         }
     } catch (exc) {
         // `load` is responsible for firing error callbacks and removing
-        // itself from `impl.loads`.
+        // itself from `loaderData.loads`.
         LoadFail(load, exc);
         return [normalized, load];
     }
 
     // Start the fetch.
-    CallFetch(impl, load, address, referer, metadata, normalized, type);
+    CallFetch(loader, load, address, referer, metadata, normalized, type);
 
     return [normalized, load];
 }
 
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
-function CallFetch(impl, load, address, referer, metadata, normalized, type) {
+function CallFetch(loader, load, address, referer, metadata, normalized, type) {
     let options = {referer, metadata, normalized, type};
     let errback = exc => LoadFail(load, exc);
 
@@ -1287,7 +1282,7 @@ function CallFetch(impl, load, address, referer, metadata, normalized, type) {
         // Therefore use `AsyncCall` here, at the cost of an extra event
         // loop turn.
         AsyncCall(() =>
-                  this.onFulfill(load, metadata, normalized, type, false, src, actualAddress));
+                  OnFulfill(loader, load, metadata, normalized, type, false, src, actualAddress));
     }
 
     function reject(exc) {
@@ -1299,7 +1294,7 @@ function CallFetch(impl, load, address, referer, metadata, normalized, type) {
     }
 
     try {
-        this.loader.fetch(address, fulfill, reject, options);
+        loader.fetch(address, fulfill, reject, options);
     } catch (exc) {
         // Some care is taken here to prevent even a badly-behaved fetch
         // hook from causing errback() to be called twice.
@@ -1311,7 +1306,9 @@ function CallFetch(impl, load, address, referer, metadata, normalized, type) {
 }
 
 // **`onFulfill`** - This is called once a fetch succeeds.
-function OnFulfill(impl, load, metadata, normalized, type, sync, src, actualAddress) {
+function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAddress) {
+    var loaderData = GetLoaderInternalData(loader);
+
     // If all link sets that required this load have failed, do nothing.
     if ($SetSize(load.linkSets) === 0)
         return;
@@ -1328,30 +1325,30 @@ function OnFulfill(impl, load, metadata, normalized, type, sync, src, actualAddr
         }
 
         // Call the `translate` hook.
-        src = impl.loader.translate(src, {metadata, normalized, type, actualAddress});
+        src = loader.translate(src, {metadata, normalized, type, actualAddress});
         if (typeof src !== "string")
             throw $TypeError("translate hook must return a string");
 
         // Call the `link` hook, if we are loading a module.
         let linkResult =
             type === "module"
-            ? impl.loader.link(src, {metadata, normalized, type, actualAddress})
+            ? loader.link(src, {metadata, normalized, type, actualAddress})
         : undefined;
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
-            let script = $Parse(impl, src, normalized, actualAddress, impl.strict);
-            FinishLoad(load, impl, actualAddress, script, sync);
+            let script = $Parse(loader, src, normalized, actualAddress, loaderData.strict);
+            FinishLoad(load, loader, actualAddress, script, sync);
         } else if (!IsObject(linkResult)) {
             throw $TypeError("link hook must return an object or undefined");
         } else if ($IsModule(linkResult)) {
-            if ($MapHas(impl.modules, normalized)) {
+            if ($MapHas(loaderData.modules, normalized)) {
                 throw $TypeError("fetched module \"" + normalized + "\" " +
                                  "but a module with that name is already " +
                                  "in the registry");
             }
             let mod = linkResult;
-            $MapSet(impl.modules, normalized, mod);
+            $MapSet(loaderData.modules, normalized, mod);
             OnEndRun(load);
         } else {
             let mod = null;
@@ -1683,21 +1680,23 @@ function LoadFail(load, exc) {
     $Assert($SetSize(load.linkSets) === 0);
 }
 
-//> #### OnLinkSetFail(load, loaderImpl, linkSet) Abstract Operation
+//> #### OnLinkSetFail(load, loader, linkSet) Abstract Operation
 //>
 
 // **`onLinkSetFail`** - This is called when a LinkSet associated with this
 // load fails.  If this load is not needed by any surviving LinkSet, drop
 // it.
-function OnLinkSetFail(load loaderImpl, linkSet) {
+function OnLinkSetFail(load, loader, linkSet) {
+    var loaderData = GetLoaderInternalData(loader);
+
     $Assert($SetHas(this.linkSets, linkSet));
     $SetDelete(this.linkSets, linkSet);
     if ($SetSize(this.linkSets) === 0) {
         for (let i = 0; i < this.fullNames.length; i++) {
             let fullName = this.fullNames[i];
-            let currentLoad = $MapGet(loaderImpl.loads, fullName);
+            let currentLoad = $MapGet(loaderData.loads, fullName);
             if (currentLoad === this)
-                $MapDelete(loaderImpl.loads, fullName);
+                $MapDelete(loaderData.loads, fullName);
         }
     }
 }
@@ -1708,11 +1707,11 @@ function OnLinkSetFail(load loaderImpl, linkSet) {
 //> A *link set* represents a call to `loader.evalAsync()`, `.load()`, or
 //> `.import()`.
 //>
-//> #### CreateLinkSet(loaderImpl, startingLoad, callback, errback) Abstract Operation
+//> #### CreateLinkSet(loader, startingLoad, callback, errback) Abstract Operation
 //>
-function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
+function CreateLinkSet(loader, startingLoad, callback, errback) {
     var linkSet = Object.create(null);
-    linkSet.loaderImpl = loaderImpl;
+    linkSet.loader = loader;
     linkSet.startingLoad = startingLoad;
     linkSet.callback = callback;
     linkSet.errback = errback;
@@ -1732,11 +1731,12 @@ function CreateLinkSet(loaderImpl, startingLoad, callback, errback) {
 //> or loaded but not linked, add the `Load` to the given linkSet.
 //>
 function LinkSetAddLoadByName(linkSet, fullName) {
-    if (!$MapHas(linkSet.loaderImpl.modules, fullName)) {
+    var loaderData = GetLoaderInternalData(linkSet.loader);
+    if (!$MapHas(loaderData.modules, fullName)) {
         // We add `depLoad` even if it is done loading, because the
         // association keeps the `Load` alive (`Load`s are
-        // reference-counted; see `Load.onLinkSetFail`).
-        let depLoad = $MapGet(linkSet.loaderImpl.loads, fullName);
+        // reference-counted; see `OnLinkSetFail`).
+        let depLoad = $MapGet(loaderData.loads, fullName);
         AddLoadToLinkSet(linkSet, depLoad);
     }
 }
@@ -1807,6 +1807,7 @@ function LinkSetOnLoad(linkSet, load) {
 //> commit all the modules in linkSet to the loader's module registry.
 //>
 function LinkSetLink(linkSet) {
+    let loaderData = GetLoaderInternalData(linkSet.loader);
     let linkedNames = [];
     let linkedModules = [];
     let seen = $SetNew();
@@ -1824,26 +1825,26 @@ function LinkSetLink(linkSet) {
             let fullName = declared[i];
             let mod = $ScriptGetDeclaredModule(script, fullName);
 
-            if ($MapHas(linkSet.loaderImpl.modules, fullName)) {
+            if ($MapHas(loaderData.modules, fullName)) {
                 throw $SyntaxError(
                     "script declares module \"" + fullName + "\", " +
                         "which is already loaded");
             }
             if (load === undefined) {
-                if ($MapHas(linkSet.loaderImpl.loads, fullName)) {
+                if ($MapHas(loaderData.loads, fullName)) {
                     throw $SyntaxError(
                         "script declares module \"" + fullName + "\", " +
                             "which is already loading");
                 }
             } else {
-                let current = $MapGet(linkSet.loaderImpl.loads, fullName);
+                let current = $MapGet(loaderData.loads, fullName);
 
                 // These two cases can happen if a script unexpectedly
                 // declares modules not named by `resolve().extra`.
                 if (current === undefined) {
                     // Make sure no other script in the same LinkSet
                     // declares it too.
-                    $MapSet(linkSet.loaderImpl.loads, fullName, linkSet);
+                    $MapSet(loaderData.loads, fullName, linkSet);
                 } else if (current !== linkSet) {
                     throw $SyntaxError(
                         "script declares module \"" + fullName + "\", " +
@@ -1866,9 +1867,9 @@ function LinkSetLink(linkSet) {
         let mods = [];
         for (let i = 0; i < deps.length; i++) {
             let fullName = deps[i];
-            let mod = $MapGet(linkSet.loaderImpl.modules, fullName);
+            let mod = $MapGet(loaderData.modules, fullName);
             if (mod === undefined) {
-                let depLoad = $MapGet(linkSet.loaderImpl.loads, fullName);
+                let depLoad = $MapGet(loaderData.loads, fullName);
                 if (depLoad === undefined || depLoad.status !== "loaded") {
                     throw $SyntaxError(
                         "module \"" + fullName + "\" was deleted from the loader");
@@ -1901,8 +1902,8 @@ function LinkSetLink(linkSet) {
     // Move the fully linked modules from the `loads` table to the
     // `modules` table.
     for (let i = 0; i < linkedNames.length; i++) {
-        $MapDelete(linkSet.loaderImpl.loads, linkedNames[i]);
-        $MapSet(linkSet.loaderImpl.modules, linkedNames[i], linkedModules[i]);
+        $MapDelete(loaderData.loads, linkedNames[i]);
+        $MapSet(loaderData.modules, linkedNames[i], linkedModules[i]);
     }
 }
 
@@ -1914,7 +1915,7 @@ function LinkSetLink(linkSet) {
 function LinkSetFail(linkSet, exc) {
     let loads = $SetElements(linkSet.loads);
     for (let i = 0; i < loads.length; i++)
-        loads[i].onLinkSetFail(linkSet.loaderImpl, linkSet);
+        OnLinkSetFail(loads[i], linkSet.loader, linkSet);
     AsyncCall(linkSet.errback, exc);
 }
 
