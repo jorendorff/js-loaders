@@ -1589,16 +1589,17 @@ function OnLinkSetFail(load, loader, linkSet) {
 //> #### CreateLinkSet(loader, startingLoad, callback, errback) Abstract Operation
 //>
 function CreateLinkSet(loader, startingLoad, callback, errback) {
-    var linkSet = Object.create(null);
-    linkSet.loader = loader;
-    linkSet.startingLoad = startingLoad;
-    linkSet.callback = callback;
-    linkSet.errback = errback;
-    linkSet.loads = $SetNew();
+    var linkSet = {
+        loader: loader,
+        startingLoad: startingLoad,
+        callback: callback,
+        errback: errback,
+        loads: $SetNew(),
 
-    // Invariant: `this.loadingCount` is the number of `Load`s in
-    // `this.loads` whose `.status` is `"loading"`.
-    linkSet.loadingCount = 0;
+        // Invariant: `this.loadingCount` is the number of `Load`s in
+        // `this.loads` whose `.status` is `"loading"`.
+        loadingCount: 0
+    };
 
     AddLoadToLinkSet(linkSet, startingLoad);
     return linkSet;
@@ -1997,5 +1998,3 @@ function define(target, source) {
 //> ### The System Object
 //>
 var System = new Loader;
-
-
