@@ -70,48 +70,46 @@
 //
 // * `$Parse(loader, src, moduleName, address, strict)` parses a script or
 //   module body. If `moduleName` is null, then `src` is parsed as an ES6
-//   Program; otherwise `moduleName` is a string, and `src` is parsed as a
-//   module body.  `$Parse` detects ES "early errors" and throws
-//   `SyntaxError`.  On success, it returns a script object.  This is the
-//   only way script objects are created.  (Script objects are never exposed
-//   to user code; they are for use with the following intrinsics only.)
+//   Script; otherwise `moduleName` is a string, and `src` is parsed as a
+//   ModuleBody.  `$Parse` detects ES "early errors" and throws `SyntaxError`
+//   or `ReferenceError`.  On success, it returns a code object: either a
+//   Script object or a ModuleBody object.  This is the only way code objects
+//   are created.  (Code objects are never exposed to user code; they are for
+//   use with the following intrinsics only.)
 //
 //   Note that this does not execute any of the code in `src`.
 //
-// * `$ScriptGetDeclaredModule(script, name)` returns a `Module` object for
-//   a module declared in the body of the given `script`.
+// The next four primitives operate on both scripts and modules.
 //
-//   Modules declared in scripts must be linked and executed before they
-//   are exposed to user code.
+// * `$CodeImports(code)` returns an array of strings representing every
+//   import-declaration in the given Script or ModuleBody.  See the comment in
+//   `Loader.eval()`.
 //
-// * `$ScriptImports(script)` returns an array of pairs representing every
-//   import-declaration in `script`. See the comment in `Loader.eval()`.
-//
-// * `$LinkScript(script, modules)` links a script to all the modules
-//   requested in its imports. `modules` is an array of `Module` objects,
-//   the same length as `$ScriptImports(script)`.
+// * `$LinkCode(code, modules)` links a script to all the modules requested
+//   in its imports.  `modules` is an array of `Module` objects, the same
+//   length as `$CodeImports(code)`.
 //
 //   Throws if any `import`-`from` declaration in `script` imports a name
 //   that the corresponding module does not export.
-//
-// * `$ModuleGetDeclaringScript(module)` returns a script object. If
-//   `$ScriptGetDeclaredModule(script, name) === module` for some string
-//   `name`, then `$ModuleGetDeclaringScript(module) === script`.
-//
-// The two remaining primitives operate on both scripts and modules.
 //
 // * `$CodeExecute(c)` executes the body of a script or module. If `c` is a
 //   module, return undefined. If it's a script, return the value of the
 //   last-executed expression statement (just like `eval`).
 //
 // * `$CodeGetLinkedModules(c)` returns an array of the modules linked to
-//   `c` in a previous `$LinkScript` call.  (We could perhaps do without
+//   `c` in a previous `$LinkCode` call.  (We could perhaps do without
 //   this by caching this information in a WeakMap.)
 //
-// TODO: Consider removing `$ScriptImports` in favor of a `$CodeImports` that
-// we call separately on modules and scripts; `$LinkScript` would become
-// `$CodeLink` and then `$CodeGetLinkedModules` could really be replaced with a
-// `WeakMap`.
+// The next two primitives operate only on modules.
+//
+// * `$ModuleBodyToModuleObject(code)` returns a `Module` object for
+//   the given ModuleBody `code`.
+//
+//   Modules declared in scripts must be linked and executed before they
+//   are exposed to user code.
+//
+// * `$ModuleObjectToModuleBody(module)` returns a ModuleBody object `code`
+//   such that `$ModuleBodyToModuleObject(code) === module`.
 //
 // The remaining primitives are not very interesting. These are capabilities
 // that JS provides via builtin methods. We use primitives rather than the
@@ -551,7 +549,7 @@ function Loader_import(moduleName,
     function success() {
         let m = load.status === "linked"
             ? load.module
-            : $ScriptGetDeclaredModule(load.script, load.fullName);
+            : $ModuleBodyToModuleObject(load.script);
         try {
             if (m === undefined) {
                 throw $TypeError("import(): module \"" + load.fullName +
@@ -1259,8 +1257,8 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
-            let script = $Parse(loader, src, normalized, actualAddress, loaderData.strict);
-            FinishLoad(load, loader, actualAddress, script, sync);
+            let code = $Parse(loader, src, normalized, actualAddress, loaderData.strict);
+            FinishLoad(load, loader, actualAddress, code, sync);
         } else if (!IsObject(linkResult)) {
             throw $TypeError("link hook must return an object or undefined");
         } else if ($IsModule(linkResult)) {
@@ -1456,7 +1454,7 @@ function CreateLoad(fullName) {
     };
 }
 
-//> #### FinishLoad(load, loader, actualAddress, script, sync) Abstract Operation
+//> #### FinishLoad(load, loader, actualAddress, code, sync) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `link` hook), and
 // after the script or module's syntax has been checked. `finish` does two
@@ -1471,20 +1469,16 @@ function CreateLoad(fullName) {
 // On success, this transitions the `Load` from `"loading"` status to
 // `"loaded"`.
 //
-function FinishLoad(load, loader, actualAddress, script, sync) {
+function FinishLoad(load, loader, actualAddress, code, sync) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
-    // `$ScriptImports` returns an array of `[client, request]` pairs.
+    // `$CodeImports` returns an array of the names being imported.  These
+    // are not necessarily full names; we pass them to `Loader.startModuleLoad`
+    // which will call the `normalize` hook.
     //
-    // `client` tells where the import appears. It is the full name of the
-    // enclosing module, or null for toplevel imports.
-    //
-    // `request` is the name being imported.  It is not necessarily a full
-    // name; we pass it to `Loader.startModuleLoad` which will call the
-    // `normalize` hook.
-    //
-    let pairs = $ScriptImports(script);
+    let refererName = load.fullName;
+    let names = $CodeImports(code);
     let fullNames = [];
     let sets = load.linkSets;
 
@@ -1498,8 +1492,8 @@ function FinishLoad(load, loader, actualAddress, script, sync) {
     //
     // samth is unsure but thinks probably so.
 
-    // When we load a script, we add all its modules and their
-    // dependencies to the same link set, per samth, 2013 April 22.
+    // When we load a script or module, we add all its dependencies to
+    // the same link set, per samth, 2013 April 22.
     //
     // TODO: implement that for the declared modules
     //
@@ -1514,9 +1508,9 @@ function FinishLoad(load, loader, actualAddress, script, sync) {
     // will not execute, and we will not call B.hello().
     // Nevertheless, we load "B.js" before executing the script.
     //
-    for (let i = 0; i < pairs.length; i++) {
-        let [client, request] = pairs[i];
-        let referer = {name: client, address: actualAddress};
+    for (let i = 0; i < names.length; i++) {
+        let request = names[i];
+        let referer = {name: refererName, address: actualAddress};
         let fullName, load;
         try {
             [fullName, load] = loader.startModuleLoad(referer, request, sync);
@@ -1532,7 +1526,7 @@ function FinishLoad(load, loader, actualAddress, script, sync) {
     }
 
     load.status = "loaded";
-    load.script = script;
+    load.script = code;
     load.dependencies = fullNames;
     if (!sync) {
         for (let i = 0; i < sets.length; i++)
@@ -1699,15 +1693,13 @@ function LinkSetLink(linkSet) {
     // modules.
     function walk(load) {
         // XXX TODO - assert something about load.status here
-        let script = load.script;
-        $SetAdd(seen, script);
+        let code = load.script;
+        $SetAdd(seen, code);
 
         // First, if load is a module, check for errors and add it to the list
         // of modules to link.
         if (load.fullName !== null) {
             let fullName = load.fullName;
-            let mod = $ScriptGetDeclaredModule(script, fullName);
-
             if ($MapHas(loaderData.modules, fullName)) {
                 throw $SyntaxError(
                     "script declares module \"" + fullName + "\", " +
@@ -1736,6 +1728,8 @@ function LinkSetLink(linkSet) {
             }
 
             $ArrayPush(linkedNames, fullName);
+
+            let mod = $ModuleBodyToModuleObject(code);
             $ArrayPush(linkedModules, mod);
         }
 
@@ -1757,7 +1751,7 @@ function LinkSetLink(linkSet) {
                     throw $SyntaxError(
                         "module \"" + fullName + "\" was deleted from the loader");
                 }
-                mod = $ScriptGetDeclaredModule(depLoad.script, fullName);
+                mod = $ModuleBodyToModuleObject(depLoad.script);
                 if (mod === undefined) {
                     throw $SyntaxError(
                         "module \"" + fullName + "\" was deleted from the loader");
@@ -1768,9 +1762,10 @@ function LinkSetLink(linkSet) {
             $ArrayPush(mods, mod);
         }
 
-        // Finally, link the script or module.  This throws if the script tries
-        // to import bindings from a module that the module does not export.
-        $LinkScript(script, mods);
+        // Finally, link the script or module.  This throws if the code in
+        // question tries to import bindings from a module that the module does
+        // not export.
+        $LinkCode(code, mods);
     }
 
     // Link all the scripts and modules together.
@@ -1912,7 +1907,7 @@ function EnsureExecuted(start) {
         if ($IsModule(m)) {
             // The `$SetRemove` call here means that if we already plan to
             // execute this script, move it to execute after `m`.
-            let script = $ModuleGetDeclaringScript(m);
+            let script = $ModuleObjectToModuleBody(m);
             $SetRemove(schedule, script);
             $SetAdd(schedule, script);
         }
