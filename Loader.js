@@ -1612,19 +1612,18 @@ function LoadFail(load, exc) {
 //> #### OnLinkSetFail(load, loader, linkSet) Abstract Operation
 //>
 
-// **`onLinkSetFail`** - This is called when a LinkSet associated with this
-// load fails.  If this load is not needed by any surviving LinkSet, drop
-// it.
+// This is called when a LinkSet associated with *load* fails.  If *load* is
+// not needed by any surviving LinkSet, drop it.
 function OnLinkSetFail(load, loader, linkSet) {
     var loaderData = GetLoaderInternalData(loader);
 
-    $Assert($SetHas(this.linkSets, linkSet));
-    $SetDelete(this.linkSets, linkSet);
-    if ($SetSize(this.linkSets) === 0) {
-        for (let i = 0; i < this.fullNames.length; i++) {
-            let fullName = this.fullNames[i];
+    $Assert($SetHas(load.linkSets, linkSet));
+    $SetDelete(load.linkSets, linkSet);
+    if ($SetSize(load.linkSets) === 0) {
+        for (let i = 0; i < load.fullNames.length; i++) {
+            let fullName = load.fullNames[i];
             let currentLoad = $MapGet(loaderData.loads, fullName);
-            if (currentLoad === this)
+            if (currentLoad === load)
                 $MapDelete(loaderData.loads, fullName);
         }
     }
