@@ -1184,7 +1184,7 @@ function CallFetch(loader, load, address, referer, metadata, normalized, type) {
             throw $TypeError("fetch() fulfill callback: fetch already completed");
         fetchCompleted = true;
 
-        if ($SetSize(load.loadSets) === 0)
+        if ($SetSize(load.linkSets) === 0)
             return;
 
         if (typeof src !== "string") {
@@ -1211,7 +1211,7 @@ function CallFetch(loader, load, address, referer, metadata, normalized, type) {
         if (fetchCompleted)
             throw $TypeError("fetch() reject callback: fetch already completed");
         fetchCompleted = true;
-        if ($SetSize(load.loadSets) !== 0)
+        if ($SetSize(load.linkSets) !== 0)
             AsyncCall(errback, exc);
     }
 
