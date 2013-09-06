@@ -78,13 +78,6 @@
 //
 //   Note that this does not execute any of the code in `src`.
 //
-// * `$ScriptDeclaredModuleNames(script)` returns an array of strings, the
-//   names of all modules declared in the script.
-//
-//   A script declares modules using this syntax: `module "vc" {
-//   ... }`.  Modules don't nest, and they can only occur at toplevel, so
-//   there is a single flat array for the whole script.
-//
 // * `$ScriptGetDeclaredModule(script, name)` returns a `Module` object for
 //   a module declared in the body of the given `script`.
 //
@@ -1466,15 +1459,13 @@ function CreateLoad(fullName) {
 //> #### FinishLoad(load, loader, actualAddress, script, sync) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `link` hook), and
-// after the script or module's syntax has been checked. `finish` does three
+// after the script or module's syntax has been checked. `finish` does two
 // things:
 //
-//   1. Process module declarations.
-//
-//   2. Process imports. This may trigger additional loads (though if
+//   1. Process imports. This may trigger additional loads (though if
 //      `sync` is true, it definitely won't: we'll throw instead).
 //
-//   3. Call `LinkSetOnLoad` on any listening `LinkSet`s (see that abstract
+//   2. Call `LinkSetOnLoad` on any listening `LinkSet`s (see that abstract
 //      operation for the conclusion of the load/link/run process).
 //
 // On success, this transitions the `Load` from `"loading"` status to
@@ -1483,38 +1474,6 @@ function CreateLoad(fullName) {
 function FinishLoad(load, loader, actualAddress, script, sync) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
-
-    // Check to see if `script` declares any modules that are already loaded or
-    // loading.  If so, throw a `SyntaxError`.  If not, add entries to
-    // `loader.loads` for each declared module.
-    //
-    // *Rationale:* Consider two `evalAsync` calls.
-    //
-    //     System.evalAsync('module "x" { import "y" as y; }', {}, ok, err);
-    //     System.evalAsync('module "x" { import "z" as z; }', {}, ok, err);
-    //
-    // There's no sense in letting them race trying to load "y" and "z"
-    // after we know one of the two `module "x"` declarations must fail.
-    // Instead, the second `evalAsync` fails immediately.  Per meeting,
-    // 2013 April 26.
-    //
-    // TODO - Consider unifying this with similar code in LinkSet.link().
-    //
-    let declared = $ScriptDeclaredModuleNames(script);
-    for (let i = 0; i < declared.length; i++) {
-        let fullName = declared[i];
-        if ($MapHas(loader.modules, fullName)) {
-            throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                               "which is already loaded");
-        }
-        let pendingLoad = $MapGet(loader.loads, fullName);
-        if (pendingLoad === undefined) {
-            $MapSet(loader.loads, fullName, load);
-        } else if (pendingLoad !== load) {
-            throw $SyntaxError("script declares module \"" + fullName + "\", " +
-                               "which is already loading");
-        }
-    }
 
     // `$ScriptImports` returns an array of `[client, request]` pairs.
     //
@@ -1743,10 +1702,10 @@ function LinkSetLink(linkSet) {
         let script = load.script;
         $SetAdd(seen, script);
 
-        // First, note all modules declared in this script.
-        let declared = $ScriptDeclaredModuleNames(script);
-        for (let i = 0; i < declared.length; i++) {
-            let fullName = declared[i];
+        // First, if load is a module, check for errors and add it to the list
+        // of modules to link.
+        if (load.fullName !== null) {
+            let fullName = load.fullName;
             let mod = $ScriptGetDeclaredModule(script, fullName);
 
             if ($MapHas(loaderData.modules, fullName)) {
@@ -1809,9 +1768,8 @@ function LinkSetLink(linkSet) {
             $ArrayPush(mods, mod);
         }
 
-        // Finally, link the script.  This throws if the script tries
-        // to import bindings from a module that the module does not
-        // export.
+        // Finally, link the script or module.  This throws if the script tries
+        // to import bindings from a module that the module does not export.
         $LinkScript(script, mods);
     }
 
