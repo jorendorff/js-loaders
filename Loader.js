@@ -961,6 +961,8 @@ function Loader_defineBuiltins(obj = GetLoaderInternalData(this).global) {
 //
 function UnpackAddressOption(options, errback) {
     if (options !== undefined && "address" in options) {
+        // BUG: this property access can throw, and we don't catch it and
+        // forward to errback.
         let address = options.address;
         if (typeof address !== "string") {
             let exc = $TypeError("options.address must be a string, if present");
