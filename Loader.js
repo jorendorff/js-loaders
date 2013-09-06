@@ -37,8 +37,8 @@
 //
 // Some parts are not implemented at all yet:
 //
-//   * the last bit of plumbing connecting the load pipeline back to the success
-//     and failure callbacks provided by load/evalAsync/import;
+//   * an API for compiling modules and putting them into the loader;
+//   * making the loader hooks all asynchronous;
 //   * support for custom link hooks that create dynamic-linked ("factory-made")
 //     modules;
 //   * intrinsics;
@@ -378,6 +378,7 @@ function Loader_strict() {
 // module that is not already loaded, a `SyntaxError` is thrown.
 //
 function Loader_eval(src, options) {
+    src = $ToString(src);
     var loaderData = GetLoaderInternalData(this);
 
     let address = UnpackAddressOption(options, undefined);
@@ -429,6 +430,7 @@ function Loader_evalAsync(src,
                           callback = value => {},
                           errback = exc => { throw exc; })
 {
+    src = $ToString(src);
     var loaderData = GetLoaderInternalData(this);
 
     // P4 ISSUE: Check callability of callbacks here (and everywhere
@@ -1229,6 +1231,10 @@ function CallFetch(loader, load, address, referer, metadata, normalized, type) {
 
 // **`onFulfill`** - This is called once a fetch succeeds.
 function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAddress) {
+    // TODO - simplify since type is always "module" if normalized is non-null
+    // and "script" otherwise.
+    $Assert(typeof src === "string");
+
     var loaderData = GetLoaderInternalData(loader);
 
     // If all link sets that required this load have failed, do nothing.
@@ -1237,10 +1243,8 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 
     try {
         // Check arguments to `fulfill` callback.
-        if (typeof src !== "string") {
-            throw $TypeError("fetch hook fulfill callback: " +
-                             "first argument must be a string");
-        }
+        // ISSUE - What are the type requirements on addresses, exactly?  We
+        // already did this in CallFetch, but not from other call sites.
         if (typeof actualAddress !== "string") {
             throw $TypeError("fetch hook fulfill callback: " +
                              "second argument must be a string");
@@ -1255,7 +1259,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
         let linkResult =
             type === "module"
             ? loader.link(src, {metadata, normalized, type, actualAddress})
-        : undefined;
+            : undefined;
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
