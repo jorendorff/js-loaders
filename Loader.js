@@ -397,7 +397,7 @@ function Loader_eval(src, options) {
 
     // The `Load` object here is *pro forma*; `eval` is synchronous and
     // thus cannot fetch code.
-    let load = new Load([]);
+    let load = CreateLoad([]);
     let linkSet = CreateLinkSet(this, load, null, null);
 
     // Finish loading `src`.  This is the part where, in an *asynchronous*
@@ -454,7 +454,7 @@ function Loader_evalAsync(src,
     if (address === undefined)
         return;
 
-    let load = new Load([]);
+    let load = CreateLoad([]);
     let run = MakeEvalCallback(load, callback, errback);
     CreateLinkSet(this, load, run, errback);
     OnFulfill(this, load, {}, null, "script", false, src, address);
@@ -500,7 +500,7 @@ function Loader_load(address,
     //
     let metadata = {};
 
-    let load = new Load([]);
+    let load = CreateLoad([]);
     let run = MakeEvalCallback(load, callback, errback);
     CreateLinkSet(this, load, run, errback);
     return CallFetch(this, load, address, referer, metadata, null, "script");
@@ -1148,7 +1148,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     // Create a `Load` object for this module load.  Once this object is in
     // `loaderData.loads`, `LinkSets` may add themselves to its set of waiting
     // link sets.  Errors must be reported using `LoadFail(load, exc)`.
-    load = new Load([normalized]);
+    load = CreateLoad([normalized]);
     $MapSet(loaderData.loads, normalized, load);
 
     let address;
