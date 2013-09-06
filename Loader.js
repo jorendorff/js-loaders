@@ -1151,81 +1151,10 @@ function StartModuleLoad(loader, referer, name, sync) {
     load = new Load([normalized]);
     $MapSet(loaderData.loads, normalized, load);
 
-    let address, type;
+    let address;
     try {
         // Call the `resolve` hook.
-        let result = loader.resolve(normalized, {referer, metadata});
-
-        // Interpret the result.
-        type = "module";
-        if (typeof result === "string") {
-            address = result;
-        } else if (IsObject(result)) {
-            // `result.address` must be present and must be a string.
-            if (!("address" in result)) {
-                throw $TypeError("Object returned from loader.resolve hook " +
-                                 "must have a .address property");
-            }
-            address = result.address;
-            if (typeof address !== "string") {
-                throw $TypeError(".address property of object returned from " +
-                                 "loader.resolve hook must be a string");
-            }
-
-            // `result.extra` is optional, but if present must be an
-            // iterable object, a collection of module names.  It indicates
-            // that the resource at `result.address` is a script containing
-            // those modules.  (The module we're loading, named by
-            // `normalized`, may be present in `result.extra` or not.)
-            //
-            // This means the loader can merge the following imports in
-            // a single load:
-            //
-            //     import "a" as a, "b" as b;
-            //
-            // if it knows in advance the address of a script that contains
-            // module declarations for both `a` and `b`.
-            //
-            if ("extra" in result) {
-                let extra = result.extra;
-                if (!IsObject(extra)) {
-                    throw $TypeError(
-                        ".extra property of object returned from " +
-                            "loader.resolve hook must be an object");
-                }
-
-                // Record a load in progress for all other modules defined
-                // in the same script.
-                for (let name of extra) {
-                    if (typeof name !== "string")
-                        throw $TypeError("module names must be strings");
-                    if (name !== normalized) {
-                        if ($MapHas(loaderData.modules, name)) {
-                            throw $TypeError(
-                                "loader.resolve hook claims module \"" +
-                                    name + "\" is at <" + address + "> but " +
-                                    "it is already loaded");
-                        }
-
-                        let existingLoad = $MapGet(loaderData.loads, name);
-                        if (existingLoad === undefined) {
-                            $ArrayPush(load.fullNames, name);
-                            $MapSet(loaderData.loads, name, load);
-                        } else if (existingLoad !== load) {
-                            throw $TypeError(
-                                "loader.resolve hook claims module \"" +
-                                    name + "\" is at <" + address + "> but " +
-                                    "it is already loading or loaded");
-                        }
-                    }
-                }
-
-                type = "script";
-            }
-        } else {
-            throw $TypeError("loader.resolve hook must return a " +
-                             "string or an object with .address");
-        }
+        address = loader.resolve(normalized, {referer, metadata});
     } catch (exc) {
         // `load` is responsible for firing error callbacks and removing
         // itself from `loaderData.loads`.
@@ -1234,7 +1163,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     }
 
     // Start the fetch.
-    CallFetch(loader, load, address, referer, metadata, normalized, type);
+    CallFetch(loader, load, address, referer, metadata, normalized, "module");
 
     return [normalized, load];
 }
