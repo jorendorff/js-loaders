@@ -1583,8 +1583,8 @@ function OnLinkSetFail(load, loader, linkSet) {
 
 //> ### Link sets
 //>
-//> A *link set* represents a call to `loader.evalAsync()`, `.load()`, or
-//> `.import()`.
+//> A *link set* represents a call to `loader.eval()`, `.evalAsync()`,
+//> `.load()`, or `.import()`.
 //>
 //> #### CreateLinkSet(loader, startingLoad, callback, errback) Abstract Operation
 //>
