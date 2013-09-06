@@ -1113,12 +1113,12 @@ function StartModuleLoad(loader, referer, name, sync) {
     // If the module has already been linked, we are done.
     let existingModule = $MapGet(loaderData.modules, normalized);
     if (existingModule !== undefined)
-        return [normalized, {status: "linked", module: existingModule}];
+        return {status: "linked", fullName: normalized, module: existingModule};
 
     // If the module is already loaded, we are done.
     let load = $MapGet(loaderData.loads, normalized);
     if (load !== undefined && load.status === "loaded")
-        return [normalized, load];
+        return load;
 
     // If we can't wait for the module to load, we are done.
     if (sync) {
@@ -1133,7 +1133,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     // If the module is already loading, we are done.
     if (load !== undefined) {
         $Assert(load.status === "loading");
-        return [normalized, load];
+        return load;
     }
 
     // From this point `startModuleLoad` cannot throw.
