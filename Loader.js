@@ -389,7 +389,7 @@ function Loader_strict() {
 function Loader_eval(src, options) {
     var loaderData = GetLoaderInternalData(this);
 
-    let address = UnpackAddressOption(options, null);
+    let address = UnpackAddressOption(options, undefined);
 
     // The loader works in three basic phases: load, link, and execute.
     // During the **load phase**, code is loaded and parsed, and import
@@ -974,9 +974,9 @@ function UnpackAddressOption(options, errback) {
         if (typeof address !== "string") {
             let exc = $TypeError("options.address must be a string, if present");
 
-            // `errback` is null when the caller is synchronous `eval()`.
-            // In that case, just throw.
-            if (errback === null)
+            // `errback` is undefined if and only if the caller is synchronous
+            // `eval()`.  In that case, just throw.
+            if (errback === undefined)
                 throw exc;
 
             // Otherwise, report the error asynchronously.  The caller must
