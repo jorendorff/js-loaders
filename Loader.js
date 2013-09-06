@@ -397,7 +397,7 @@ function Loader_eval(src, options) {
 
     // The `Load` object here is *pro forma*; `eval` is synchronous and
     // thus cannot fetch code.
-    let load = CreateLoad([]);
+    let load = CreateLoad(null);
     let linkSet = CreateLinkSet(this, load, null, null);
 
     // Finish loading `src`.  This is the part where, in an *asynchronous*
@@ -454,7 +454,7 @@ function Loader_evalAsync(src,
     if (address === undefined)
         return;
 
-    let load = CreateLoad([]);
+    let load = CreateLoad(null);
     let run = MakeEvalCallback(load, callback, errback);
     CreateLinkSet(this, load, run, errback);
     OnFulfill(this, load, {}, null, "script", false, src, address);
@@ -500,7 +500,7 @@ function Loader_load(address,
     //
     let metadata = {};
 
-    let load = CreateLoad([]);
+    let load = CreateLoad(null);
     let run = MakeEvalCallback(load, callback, errback);
     CreateLinkSet(this, load, run, errback);
     return CallFetch(this, load, address, referer, metadata, null, "script");
@@ -1148,7 +1148,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     // Create a `Load` object for this module load.  Once this object is in
     // `loaderData.loads`, `LinkSets` may add themselves to its set of waiting
     // link sets.  Errors must be reported using `LoadFail(load, exc)`.
-    load = CreateLoad([normalized]);
+    load = CreateLoad(normalized);
     $MapSet(loaderData.loads, normalized, load);
 
     let address;
@@ -1444,17 +1444,17 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //         .exception is an exception value
 //
 
-//> #### CreateLoad(fullNames) Abstract Operation
+//> #### CreateLoad(fullName) Abstract Operation
 //>
 // A new `Load` begins in the `"loading"` state.
 //
-// The constructor argument is an array of the module names that we're
-// loading.
+// If the argument fullName is `null`, we are loading a script. Otherwise we
+// are loading a module, and fullName is the full name of that module.
 //
-function CreateLoad(fullNames) {
+function CreateLoad(fullName) {
     return {
         status: "loading",
-        fullNames: fullNames,
+        fullName: fullName,
         script: null,
         dependencies: null,
         linkSets: $SetNew(),
@@ -1463,9 +1463,8 @@ function CreateLoad(fullNames) {
     };
 }
 
-
 //> #### FinishLoad(load, loader, actualAddress, script, sync) Abstract Operation
-
+//>
 // The loader calls this after the last loader hook (the `link` hook), and
 // after the script or module's syntax has been checked. `finish` does three
 // things:
@@ -1582,10 +1581,8 @@ function FinishLoad(load, loader, actualAddress, script, sync) {
     }
 }
 
-
 //> #### OnEndRun(load) Abstract Operation
 //>
-
 // Called when the `link` hook returns a Module object.
 function OnEndRun(load) {
     $Assert(load.status === "loading");
@@ -1594,11 +1591,10 @@ function OnEndRun(load) {
         LinkSetOnLoad(sets[i], load);
 }
 
-
 //> #### LoadFail(load, exc) Abstract Operation
 //>
 
-// **`fail`** - Fail this load. All `LinkSet`s that require it also fail.
+// Fail this load. All `LinkSet`s that require it also fail.
 function LoadFail(load, exc) {
     $Assert(load.status === "loading");
     load.status = "failed";
@@ -1620,8 +1616,8 @@ function OnLinkSetFail(load, loader, linkSet) {
     $Assert($SetHas(load.linkSets, linkSet));
     $SetDelete(load.linkSets, linkSet);
     if ($SetSize(load.linkSets) === 0) {
-        for (let i = 0; i < load.fullNames.length; i++) {
-            let fullName = load.fullNames[i];
+        let fullName = load.fullName;
+        if (fullName !== null) {
             let currentLoad = $MapGet(loaderData.loads, fullName);
             if (currentLoad === load)
                 $MapDelete(loaderData.loads, fullName);
