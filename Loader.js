@@ -531,9 +531,9 @@ function Loader_import(moduleName,
     let referer = {name, address};
 
     // `StartModuleLoad` starts us along the pipeline.
-    let fullName, load;
+    let load;
     try {
-        [fullName, load] = StartModuleLoad(this, referer, moduleName, false);
+        load = StartModuleLoad(this, referer, moduleName, false);
     } catch (exc) {
         AsyncCall(errback, exc);
         return;
@@ -551,10 +551,10 @@ function Loader_import(moduleName,
     function success() {
         let m = load.status === "linked"
             ? load.module
-            : $ScriptGetDeclaredModule(load.script, fullName);
+            : $ScriptGetDeclaredModule(load.script, load.fullName);
         try {
             if (m === undefined) {
-                throw $TypeError("import(): module \"" + fullName +
+                throw $TypeError("import(): module \"" + load.fullName +
                                  "\" was deleted from the loader");
             }
             EnsureExecuted(m);
@@ -1152,13 +1152,13 @@ function StartModuleLoad(loader, referer, name, sync) {
         // `load` is responsible for firing error callbacks and removing
         // itself from `loaderData.loads`.
         LoadFail(load, exc);
-        return [normalized, load];
+        return load;
     }
 
     // Start the fetch.
     CallFetch(loader, load, address, referer, metadata, normalized, "module");
 
-    return [normalized, load];
+    return load;
 }
 
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
