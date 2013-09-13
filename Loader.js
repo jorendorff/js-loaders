@@ -1985,7 +1985,7 @@ function EnsureExecuted(start) {
     let result;
     schedule = $SetElements(schedule);
     for (let i = 0; i < schedule.length; i++)
-        result = ExecuteScriptOrModuleOnce(schedule[i]);
+        result = EvaluateScriptOrModuleOnce(schedule[i]);
     return result;
 }
 
