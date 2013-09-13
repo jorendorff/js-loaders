@@ -408,7 +408,7 @@ function Loader_eval(src, options) {
 
     // The **link phase** links each imported name to the corresponding
     // module or export.
-    LinkSetLink(linkSet);
+    LinkLinkSet(linkSet);
 
     // During the **evaluate phase**, we first evaluate module bodies
     // for any modules needed by `script` that haven't already run.
@@ -1680,13 +1680,13 @@ function LinkSetOnLoad(linkSet, load) {
 // non-determinism since multiple link sets can be in-flight at once.
 
 
-//> #### LinkSetLink(linkSet) Abstract Operation
+//> #### LinkLinkSet(linkSet) Abstract Operation
 //>
 //> Link all scripts and modules in linkSet to each other and to modules in the
 //> registry.  This is done in a synchronous walk of the graph.  On success,
 //> commit all the modules in linkSet to the loader's module registry.
 //>
-function LinkSetLink(linkSet) {
+function LinkLinkSet(linkSet) {
     let loaderData = GetLoaderInternalData(linkSet.loader);
     let linkedNames = [];
     let linkedModules = [];
