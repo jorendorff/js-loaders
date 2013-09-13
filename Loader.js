@@ -1366,18 +1366,28 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //
 // Errors related to a `LinkSet`:
 //
+//   - If a script or module A tries to import a binding from a module B that
+//     isn't among B's exports, that's a static link error. We throw a
+//     ReferenceError.
+//
+//   - Import cycles: If module A has `import {x} from "B"; export x;`, and
+//     vice versa, that's a static link error. We throw a SyntaxError. (There
+//     are several syntactic variants on this, where imports and exports form a
+//     cycle, such that the thing being imported/exported is never actually
+//     defined anywhere.)
+//
+//   - "export * from" cycles: If module A has `export * from "B"`, and vice
+//     versa, that's a static link error.  We throw a SyntaxError.
+//
 //   - During linking, we can find that a factory-made module is
 //     involved in an import cycle. This is an error.
-//
-//   - A "static" linking error: a script or module X tries to import
-//     a binding from a module Y that isn't among Y's exports.
 //
 //   - A factory function can throw or return an invalid value.
 //
 //   - After linking, we add all modules to the registry.  This fails if
 //     there's already an entry for any of the module names.
 //
-//   - Execution of a module body or a script can throw.
+//   - Evaluation of a module body or a script can throw.
 //
 // Other:
 //
