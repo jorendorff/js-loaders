@@ -86,9 +86,9 @@
 //   `export ExportSpecifierSet from ModuleSpecifier;` in the given Script or
 //   ModuleBody.  See the comment in `Loader.eval()`.
 //
-// * `$LinkCode(code, modules)` links a script to all the modules requested
+// * `$Link(body, modules)` links a script to all the modules requested
 //   in its imports.  `modules` is an array of `Module` objects, the same
-//   length as `$DependencyNames(code)`.
+//   length as `$DependencyNames(body)`.
 //
 //   Throws if any `import`-`from` declaration in `script` imports a name
 //   that the corresponding module does not export.
@@ -97,20 +97,20 @@
 //   module, return undefined. If it's a script, return the value of the
 //   last-executed expression statement (just like `eval`).
 //
-// * `$CodeGetLinkedModules(c)` returns an array of the modules linked to
-//   `c` in a previous `$LinkCode` call.  (We could perhaps do without
-//   this by caching this information in a WeakMap.)
+// * `$GetLinkedModules(body)` returns an array of the modules linked to `body`
+//   in a previous `$Link` call.  (We could perhaps do without this by caching
+//   this information in a WeakMap.)
 //
 // The next two primitives operate only on modules.
 //
-// * `$ModuleBodyToModuleObject(code)` returns a `Module` object for
-//   the given ModuleBody `code`.
+// * `$ModuleBodyToModuleObject(body)` returns a `Module` object for
+//   the given ModuleBody `body`.
 //
 //   Modules declared in scripts must be linked and executed before they
 //   are exposed to user code.
 //
-// * `$ModuleObjectToModuleBody(module)` returns a ModuleBody object `code`
-//   such that `$ModuleBodyToModuleObject(code) === module`.
+// * `$ModuleObjectToModuleBody(module)` returns a ModuleBody object `body`
+//   such that `$ModuleBodyToModuleObject(body) === module`.
 //
 // The remaining primitives are not very interesting. These are capabilities
 // that JS provides via builtin methods. We use primitives rather than the
@@ -668,7 +668,7 @@ function Loader_set(name, module) {
 
     // Entries in the module registry must actually be `Module`s.
     // *Rationale:* We use `Module`-specific intrinsics like
-    // `$CodeGetLinkedModules` and `$Evaluate` on them.  per samth,
+    // `$GetLinkedModules` and `$Evaluate` on them.  per samth,
     // 2013 April 22.
     if (!$IsModule(module))
         throw $TypeError("Module object required");
@@ -709,7 +709,7 @@ function Loader_set(name, module) {
 // finishes, it will find that a module it was counting on has vanished.
 // Linking will fail.
 //
-// **`.delete()` and already-linked code:** `loader.delete("A")` removes
+// **`.delete()` and already-linked modules:** `loader.delete("A")` removes
 // only `A` from the registry, and not other modules linked against `A`,
 // for several reasons:
 //
@@ -1811,7 +1811,7 @@ function LinkSetLink(linkSet) {
         // Finally, link the script or module.  This throws if the script or
         // module in question tries to import bindings from a module that the
         // module does not export.
-        $LinkCode(body, mods);
+        $Link(body, mods);
     }
 
     // Link all the scripts and modules together.
@@ -1942,7 +1942,7 @@ function EnsureExecuted(start) {
 
     function walk(m) {
         $SetAdd(seen, m);
-        let deps = $CodeGetLinkedModules(m);
+        let deps = $GetLinkedModules(m);
         for (let i = 0; i < deps.length; i++) {
             let dep = deps[i];
             if (!$SetHas(seen, dep))
