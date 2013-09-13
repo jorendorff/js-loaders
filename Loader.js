@@ -72,22 +72,23 @@
 //   module body. If `moduleName` is null, then `src` is parsed as an ES6
 //   Script; otherwise `moduleName` is a string, and `src` is parsed as a
 //   ModuleBody.  `$Parse` detects ES "early errors" and throws `SyntaxError`
-//   or `ReferenceError`.  On success, it returns a code object: either a
-//   Script object or a ModuleBody object.  This is the only way code objects
-//   are created.  (Code objects are never exposed to user code; they are for
-//   use with the following intrinsics only.)
+//   or `ReferenceError`.  On success, it returns either a Script object or a
+//   ModuleBody object.  This is the only way objects of these types are
+//   created.  (Script and ModuleBody objects are never exposed to user code;
+//   they are for use with the following intrinsics only.)
 //
 //   Note that this does not execute any of the code in `src`.
 //
 // The next four primitives operate on both scripts and modules.
 //
-// * `$CodeImports(code)` returns an array of strings representing every
-//   import-declaration in the given Script or ModuleBody.  See the comment in
-//   `Loader.eval()`.
+// * `$DependencyNames(body)` returns an array of strings representing every
+//   ImportDeclaration and every ExportDeclaration of the form
+//   `export ExportSpecifierSet from ModuleSpecifier;` in the given Script or
+//   ModuleBody.  See the comment in `Loader.eval()`.
 //
 // * `$LinkCode(code, modules)` links a script to all the modules requested
 //   in its imports.  `modules` is an array of `Module` objects, the same
-//   length as `$CodeImports(code)`.
+//   length as `$DependencyNames(code)`.
 //
 //   Throws if any `import`-`from` declaration in `script` imports a name
 //   that the corresponding module does not export.
@@ -1479,12 +1480,12 @@ function FinishLoad(load, loader, actualAddress, code, sync) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
-    // `$CodeImports` returns an array of the names being imported.  These
+    // `$DependencyNames` returns an array of the names being imported.  These
     // are not necessarily full names; we pass them to `Loader.startModuleLoad`
     // which will call the `normalize` hook.
     //
     let refererName = load.fullName;
-    let names = $CodeImports(code);
+    let names = $DependencyNames(code);
     let fullNames = [];
     let sets = load.linkSets;
 
