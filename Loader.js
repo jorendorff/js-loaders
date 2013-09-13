@@ -1560,26 +1560,6 @@ function LoadFail(load, exc) {
     $Assert($SetSize(load.linkSets) === 0);
 }
 
-//> #### OnLinkSetFail(load, loader, linkSet) Abstract Operation
-//>
-
-// This is called when a LinkSet associated with *load* fails.  If *load* is
-// not needed by any surviving LinkSet, drop it.
-function OnLinkSetFail(load, loader, linkSet) {
-    var loaderData = GetLoaderInternalData(loader);
-
-    $Assert($SetHas(load.linkSets, linkSet));
-    $SetDelete(load.linkSets, linkSet);
-    if ($SetSize(load.linkSets) === 0) {
-        let fullName = load.fullName;
-        if (fullName !== null) {
-            let currentLoad = $MapGet(loaderData.loads, fullName);
-            if (currentLoad === load)
-                $MapDelete(loaderData.loads, fullName);
-        }
-    }
-}
-
 
 //> ### Link sets
 //>
@@ -1615,7 +1595,7 @@ function LinkSetAddLoadByName(linkSet, fullName) {
     if (!$MapHas(loaderData.modules, fullName)) {
         // We add `depLoad` even if it is done loading, because the
         // association keeps the `Load` alive (`Load`s are
-        // reference-counted; see `OnLinkSetFail`).
+        // reference-counted; see `LinkSetFail`).
         let depLoad = $MapGet(loaderData.loads, fullName);
         AddLoadToLinkSet(linkSet, depLoad);
     }
@@ -1836,6 +1816,27 @@ function LinkSetFail(linkSet, exc) {
         OnLinkSetFail(loads[i], linkSet.loader, linkSet);
     AsyncCall(linkSet.errback, exc);
 }
+
+//> #### OnLinkSetFail(load, loader, linkSet) Abstract Operation
+//>
+
+// This is called when a LinkSet associated with *load* fails.  If *load* is
+// not needed by any surviving LinkSet, drop it.
+function OnLinkSetFail(load, loader, linkSet) {
+    var loaderData = GetLoaderInternalData(loader);
+
+    $Assert($SetHas(load.linkSets, linkSet));
+    $SetDelete(load.linkSets, linkSet);
+    if ($SetSize(load.linkSets) === 0) {
+        let fullName = load.fullName;
+        if (fullName !== null) {
+            let currentLoad = $MapGet(loaderData.loads, fullName);
+            if (currentLoad === load)
+                $MapDelete(loaderData.loads, fullName);
+        }
+    }
+}
+
 
 
 //> ### Module and script evaluation
