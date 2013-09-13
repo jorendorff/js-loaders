@@ -552,7 +552,7 @@ function Loader_import(moduleName,
     function success() {
         let m = load.status === "linked"
             ? load.module
-            : $ModuleBodyToModuleObject(load.script);
+            : $ModuleBodyToModuleObject(load.body);
         try {
             if (m === undefined) {
                 throw $TypeError("import(): module \"" + load.fullName +
@@ -998,7 +998,7 @@ function MakeEvalCallback(load, callback, errback) {
         // what the spec is expected to say.
         let result;
         try {
-            result = EnsureExecuted(load.script);
+            result = EnsureExecuted(load.body);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
@@ -1264,8 +1264,8 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
-            let code = $Parse(loader, src, normalized, actualAddress, loaderData.strict);
-            FinishLoad(load, loader, actualAddress, code, sync);
+            let body = $Parse(loader, src, normalized, actualAddress, loaderData.strict);
+            FinishLoad(load, loader, actualAddress, body, sync);
         } else if (!IsObject(linkResult)) {
             throw $TypeError("link hook must return an object or undefined");
         } else if ($IsModule(linkResult)) {
@@ -1416,11 +1416,11 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //     may be waiting for unrelated dependencies to load.
 //
 //         .status === "loaded"
-//         .script is a script or null
+//         .body is a Script or ModuleBody, or null
 //         .factory is a callable object or null
 //         .dependencies is an Array of strings (full module names)
 //
-//     Exactly one of `[.script, .factory]` is non-null.
+//     Exactly one of `[.body, .factory]` is non-null.
 //
 //     The load leaves this state when a `LinkSet` successfully links the
 //     module and moves it into the loader's module registry.
@@ -1461,7 +1461,7 @@ function CreateLoad(fullName) {
     };
 }
 
-//> #### FinishLoad(load, loader, actualAddress, code, sync) Abstract Operation
+//> #### FinishLoad(load, loader, actualAddress, body, sync) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `link` hook), and
 // after the script or module's syntax has been checked. `finish` does two
@@ -1476,7 +1476,7 @@ function CreateLoad(fullName) {
 // On success, this transitions the `Load` from `"loading"` status to
 // `"loaded"`.
 //
-function FinishLoad(load, loader, actualAddress, code, sync) {
+function FinishLoad(load, loader, actualAddress, body, sync) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
@@ -1485,7 +1485,7 @@ function FinishLoad(load, loader, actualAddress, code, sync) {
     // which will call the `normalize` hook.
     //
     let refererName = load.fullName;
-    let names = $DependencyNames(code);
+    let names = $DependencyNames(body);
     let fullNames = [];
     let sets = load.linkSets;
 
@@ -1533,7 +1533,7 @@ function FinishLoad(load, loader, actualAddress, code, sync) {
     }
 
     load.status = "loaded";
-    load.script = code;
+    load.body = body;
     load.dependencies = fullNames;
     if (!sync) {
         for (let i = 0; i < sets.length; i++)
@@ -1739,8 +1739,8 @@ function LinkSetLink(linkSet) {
     // modules.
     function walk(load) {
         // XXX TODO - assert something about load.status here
-        let code = load.script;
-        $SetAdd(seen, code);
+        let body = load.body;
+        $SetAdd(seen, body);
 
         // First, if load is a module, check for errors and add it to the list
         // of modules to link.
@@ -1775,7 +1775,7 @@ function LinkSetLink(linkSet) {
 
             $ArrayPush(linkedNames, fullName);
 
-            let mod = $ModuleBodyToModuleObject(code);
+            let mod = $ModuleBodyToModuleObject(body);
             $ArrayPush(linkedModules, mod);
         }
 
@@ -1797,21 +1797,21 @@ function LinkSetLink(linkSet) {
                     throw $SyntaxError(
                         "module \"" + fullName + "\" was deleted from the loader");
                 }
-                mod = $ModuleBodyToModuleObject(depLoad.script);
+                mod = $ModuleBodyToModuleObject(depLoad.body);
                 if (mod === undefined) {
                     throw $SyntaxError(
                         "module \"" + fullName + "\" was deleted from the loader");
                 }
-                if (!$SetHas(seen, depLoad.script))
+                if (!$SetHas(seen, depLoad.body))
                     walk(depLoad);
             }
             $ArrayPush(mods, mod);
         }
 
-        // Finally, link the script or module.  This throws if the code in
-        // question tries to import bindings from a module that the module does
-        // not export.
-        $LinkCode(code, mods);
+        // Finally, link the script or module.  This throws if the script or
+        // module in question tries to import bindings from a module that the
+        // module does not export.
+        $LinkCode(body, mods);
     }
 
     // Link all the scripts and modules together.
