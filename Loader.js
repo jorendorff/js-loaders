@@ -1812,23 +1812,21 @@ function LinkLinkSet(linkSet) {
 //>
 function LinkSetFail(linkSet, exc) {
     let loads = $SetElements(linkSet.loads);
-    let loader = linkSet.loader;
+    let loaderData = GetLoaderInternalData(linkSet.loader);
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
 
-    // If *load* is not needed by any surviving LinkSet, drop it.
-    var loaderData = GetLoaderInternalData(loader);
-
-    $Assert($SetHas(load.linkSets, linkSet));
-    $SetDelete(load.linkSets, linkSet);
-    if ($SetSize(load.linkSets) === 0) {
-        let fullName = load.fullName;
-        if (fullName !== null) {
-            let currentLoad = $MapGet(loaderData.loads, fullName);
-            if (currentLoad === load)
-                $MapDelete(loaderData.loads, fullName);
+        // If load is not needed by any surviving LinkSet, drop it.
+        $Assert($SetHas(load.linkSets, linkSet));
+        $SetDelete(load.linkSets, linkSet);
+        if ($SetSize(load.linkSets) === 0) {
+            let fullName = load.fullName;
+            if (fullName !== null) {
+                let currentLoad = $MapGet(loaderData.loads, fullName);
+                if (currentLoad === load)
+                    $MapDelete(loaderData.loads, fullName);
+            }
         }
-    }
     }
     AsyncCall(linkSet.errback, exc);
 }
