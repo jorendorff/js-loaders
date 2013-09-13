@@ -1141,7 +1141,7 @@ function StartModuleLoad(loader, referer, name, sync) {
 
     // Create a `Load` object for this module load.  Once this object is in
     // `loaderData.loads`, `LinkSets` may add themselves to its set of waiting
-    // link sets.  Errors must be reported using `LoadFail(load, exc)`.
+    // link sets.  Errors must be reported using `LoadFailed(load, exc)`.
     load = CreateLoad(normalized);
     $MapSet(loaderData.loads, normalized, load);
 
@@ -1152,7 +1152,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     } catch (exc) {
         // `load` is responsible for firing error callbacks and removing
         // itself from `loaderData.loads`.
-        LoadFail(load, exc);
+        LoadFailed(load, exc);
         return load;
     }
 
@@ -1165,7 +1165,7 @@ function StartModuleLoad(loader, referer, name, sync) {
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
 function CallFetch(loader, load, address, referer, metadata, normalized, type) {
     let options = {referer, metadata, normalized, type};
-    let errback = exc => LoadFail(load, exc);
+    let errback = exc => LoadFailed(load, exc);
 
     // *Rationale for `fetchCompleted`:* The fetch hook is user code.
     // Callbacks the Loader passes to it are subject to every variety of
@@ -1290,8 +1290,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
     } catch (exc) {
         if (sync)
             throw exc;
-        else
-            LoadFail(load, exc);
+        LoadFailed(load, exc);
     }
 }
 
@@ -1546,17 +1545,18 @@ function OnEndRun(load) {
         LinkSetOnLoad(sets[i], load);
 }
 
-//> #### LoadFail(load, exc) Abstract Operation
+//> #### LoadFailed(load, exc) Abstract Operation
 //>
-
-// Fail this load. All `LinkSet`s that require it also fail.
-function LoadFail(load, exc) {
+//> Mark load as having failed. All `LinkSet`s that require it also
+//> fail.
+//>
+function LoadFailed(load, exc) {
     $Assert(load.status === "loading");
     load.status = "failed";
     load.exception = exc;
     let sets = $SetElements(load.linkSets);
     for (let i = 0; i < sets.length; i++)
-        LinkSetFail(sets[i], exc);
+        LinkSetFailed(sets[i], exc);
     $Assert($SetSize(load.linkSets) === 0);
 }
 
@@ -1595,7 +1595,7 @@ function LinkSetAddLoadByName(linkSet, fullName) {
     if (!$MapHas(loaderData.modules, fullName)) {
         // We add `depLoad` even if it is done loading, because the
         // association keeps the `Load` alive (`Load`s are
-        // reference-counted; see `LinkSetFail`).
+        // reference-counted; see `LinkSetFailed`).
         let depLoad = $MapGet(loaderData.loads, fullName);
         AddLoadToLinkSet(linkSet, depLoad);
     }
@@ -1607,7 +1607,7 @@ function AddLoadToLinkSet(linkSet, load) {
     // This case can happen in `import`, for example if a `resolve` or
     // `fetch` hook throws.
     if (load.status === "failed")
-        return LinkSetFail(linkSet, load.exception);
+        return LinkSetFailed(linkSet, load.exception);
 
     if (!$SetHas(linkSet.loads, load)) {
         $SetAdd(linkSet.loads, load);
@@ -1637,7 +1637,7 @@ function LinkSetOnLoad(linkSet, load) {
         try {
             linkSet.link();
         } catch (exc) {
-            LinkSetFail(linkSet, exc);
+            LinkSetFailed(linkSet, exc);
             return;
         }
 
@@ -1805,20 +1805,22 @@ function LinkLinkSet(linkSet) {
     }
 }
 
-//> #### LinkSetFail(linkSet, exc) Abstract Operation
+//> #### LinkSetFailed(linkSet, exc) Abstract Operation
 //>
-//> Mark linkSet as failed.  Detach it from all loads and schedule the error
-//> callback.
+//> Mark linkSet as having failed.  Detach it from all loads and
+//> schedule the error callback.
 //>
-function LinkSetFail(linkSet, exc) {
+function LinkSetFailed(linkSet, exc) {
     let loads = $SetElements(linkSet.loads);
     let loaderData = GetLoaderInternalData(linkSet.loader);
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
 
-        // If load is not needed by any surviving LinkSet, drop it.
+        // Detach load from linkSet.
         $Assert($SetHas(load.linkSets, linkSet));
         $SetDelete(load.linkSets, linkSet);
+
+        // If load is not needed by any surviving LinkSet, drop it.
         if ($SetSize(load.linkSets) === 0) {
             let fullName = load.fullName;
             if (fullName !== null) {
