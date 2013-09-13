@@ -30,7 +30,7 @@
 //   * the loader hooks and the loading pipeline that calls them;
 //   * dependency loading;
 //   * linking;
-//   * execution order;
+//   * evaluation order;
 //   * error handling;
 //   * the browser's configuration method, `ondemand`;
 //   * the browser's custom loader hooks: `normalize`, `resolve`, and `fetch`.
@@ -77,7 +77,7 @@
 //   created.  (Script and ModuleBody objects are never exposed to user code;
 //   they are for use with the following intrinsics only.)
 //
-//   Note that this does not execute any of the code in `src`.
+//   Note that this does not run any of the code in `src`.
 //
 // The next four primitives operate on both scripts and modules.
 //
@@ -93,9 +93,9 @@
 //   Throws if any `import`-`from` declaration in `script` imports a name
 //   that the corresponding module does not export.
 //
-// * `$Evaluate(body)` executes the body of a script or module. If `body` is a
+// * `$Evaluate(body)` runs the body of a script or module. If `body` is a
 //   module, return undefined. If it's a script, return the value of the
-//   last-executed expression statement (just like `eval`).
+//   last-evaluated expression statement (just like `eval`).
 //
 // * `$GetLinkedModules(body)` returns an array of the modules linked to `body`
 //   in a previous `$Link` call.  (We could perhaps do without this by caching
@@ -106,7 +106,7 @@
 // * `$ModuleBodyToModuleObject(body)` returns a `Module` object for
 //   the given ModuleBody `body`.
 //
-//   Modules declared in scripts must be linked and executed before they
+//   Modules declared in scripts must be linked and evaluated before they
 //   are exposed to user code.
 //
 // * `$ModuleObjectToModuleBody(module)` returns a ModuleBody object `body`
@@ -275,23 +275,24 @@ function Loader_create() {
     var internalData = {
         loader: loader,
 
-        // **`this.modules`** is the module registry.  It maps full module
-        // names to `Module` objects.
+        // **`this.modules`** is the module registry.  It maps full
+        // module names to `Module` objects.
         //
         // This map only ever contains `Module` objects that have been
-        // fully linked.  However it can contain modules whose bodies have
-        // not yet started to execute.  Except in the case of cyclic
+        // fully linked.  However it can contain modules whose bodies
+        // have not yet been evaluated.  Except in the case of cyclic
         // imports, such modules are not exposed to user code.  See
-        // `EnsureExecuted()`.
+        // `EnsureEvaluated()`.
         //
         // This is initially undefined but is populated with a new Map
-        // when the constructor executes.
+        // when the constructor runs.
         //
         modules: undefined,
 
         // **`this.loads`** stores information about modules that are
-        // loading or loaded but not yet linked.  (TODO - fix that sentence
-        // for OnEndRun.)  It maps full module names to `Load` objects.
+        // loading or loaded but not yet linked.  (TODO - fix that
+        // sentence for OnEndRun.)  It maps full module names to `Load`
+        // objects.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
@@ -384,7 +385,7 @@ function Loader_eval(src, options) {
 
     let address = UnpackAddressOption(options, undefined);
 
-    // The loader works in three basic phases: load, link, and execute.
+    // The loader works in three basic phases: load, link, and evaluate.
     // During the **load phase**, code is loaded and parsed, and import
     // dependencies are traversed.
 
@@ -409,10 +410,10 @@ function Loader_eval(src, options) {
     // module or export.
     LinkSetLink(linkSet);
 
-    // During the **execute phase**, we first execute module bodies for any
-    // modules needed by `script` that haven't already executed.  Then we
-    // evaluate `script` and return that value.
-    return EnsureExecuted(script);
+    // During the **evaluate phase**, we first evaluate module bodies
+    // for any modules needed by `script` that haven't already run.
+    // Then we evaluate `script` and return that value.
+    return EnsureEvaluated(script);
 }
 
 
@@ -463,7 +464,7 @@ function Loader_evalAsync(src,
 
 // **`load`** - Asynchronously load and run a script.  If the script
 // contains import declarations, this can cause modules to be loaded,
-// linked, and executed.
+// linked, and evaluated.
 //
 // On success, pass the result of evaluating the script to the success
 // callback.
@@ -507,7 +508,7 @@ function Loader_load(address,
 //> #### Loader.prototype.import ( moduleName, callback, errback, options )
 //>
 
-// **`import`** - Asynchronously load, link, and execute a module and any
+// **`import`** - Asynchronously load, link, and evaluate a module and any
 // dependencies it imports.  On success, pass the `Module` object to the
 // success callback.
 //
@@ -558,7 +559,7 @@ function Loader_import(moduleName,
                 throw $TypeError("import(): module \"" + load.fullName +
                                  "\" was deleted from the loader");
             }
-            EnsureExecuted(m);
+            EnsureEvaluated(m);
         } catch (exc) {
             return errback(exc);
         }
@@ -616,9 +617,9 @@ function Loader_import(moduleName,
 //
 // Throw a TypeError if `name` is not a string.
 //
-// If the module is in the registry but has never been executed, first
-// synchronously execute the module and any dependencies that have not
-// executed yet.
+// If the module is in the registry but has never been evaluated, first
+// synchronously evaluate the bodies of the module and any dependencies
+// that have not evaluated yet.
 //
 function Loader_get(name) {
     let loaderData = GetLoaderInternalData(this);
@@ -629,11 +630,8 @@ function Loader_get(name) {
 
     let m = $MapGet(loaderData.modules, name);
 
-    // If the module is in the registry but has never been executed, first
-    // synchronously execute the module and any dependencies that have not
-    // executed yet.
     if (m !== undefined)
-        EnsureExecuted(m);
+        EnsureEvaluated(m);
     return m;
 }
 
@@ -644,7 +642,7 @@ function Loader_get(name) {
 // **`has`** - Return `true` if a module with the given full name is in the
 // registry.
 //
-// This doesn't call any hooks or execute any module code.
+// This doesn't call any hooks or run any module code.
 //
 function Loader_has(name) {
     let loaderData = GetLoaderInternalData(this);
@@ -750,7 +748,7 @@ function Loader_delete(name) {
 //> registry under their full module name.)
 //>
 //> *When this hook is called:*  For all imports, including imports in
-//> scripts.  It is not called for the main script body executed by a call
+//> scripts.  It is not called for the main script body evaluated by a call
 //> to `loader.load()`, `.eval()`, or `.evalAsync()`.
 //>
 //> After calling this hook, if the full module name is in the registry,
@@ -830,12 +828,12 @@ function Loader_resolve(normalized, options) {
 //> options.type is the string `"module"` when fetching a standalone
 //> module, and `"script"` when fetching a script.
 //>
-//> *When this hook is called:*  For all modules and scripts whose source
-//> is not directly provided by the caller.  It is not called for the script
-//> bodies executed by `loader.eval()` and `.evalAsync()`, since those do
-//> not need to be fetched.  `loader.evalAsync()` can trigger this hook, for
-//> modules imported by the script.  `loader.eval()` is synchronous and thus
-//> never triggers the `fetch` hook.
+//> *When this hook is called:* For all modules and scripts whose source
+//> is not directly provided by the caller.  It is not called for the
+//> script bodies evaluated by `loader.eval()` and `.evalAsync()`, since
+//> those do not need to be fetched.  `loader.evalAsync()` can trigger
+//> this hook, for modules imported by the script.  `loader.eval()` is
+//> synchronous and thus never triggers the `fetch` hook.
 //>
 //> (`loader.load()` does not call `normalize`, `resolve`, or `link`, since
 //> we're loading a script, not a module; but it does call the `fetch` and
@@ -888,8 +886,8 @@ function Loader_translate(src, options) {
 //>     body, looks at its imports, loads all dependencies asynchronously,
 //>     and finally links them as a unit and adds them to the registry.
 //>
-//>     The module bodies will then be executed on demand; see
-//>     `EnsureExecuted`.
+//>     The module bodies will then be evaluated on demand; see
+//>     `EnsureEvaluated`.
 //>
 //>  2. The hook may return a full `Module` instance object.  The loader
 //>     then simply adds that module to the registry.
@@ -988,8 +986,8 @@ function UnpackAddressOption(options, errback) {
 }
 
 // **`MakeEvalCallback`** - Create and return a callback, to be called
-// after linking is complete, that executes the script loaded by the given
-// `load`.
+// after linking is complete, that evaluates the script loaded by the
+// given `load`.
 function MakeEvalCallback(load, callback, errback) {
     return () => {
         // Tail calls would be equivalent to AsyncCall, except for
@@ -998,7 +996,7 @@ function MakeEvalCallback(load, callback, errback) {
         // what the spec is expected to say.
         let result;
         try {
-            result = EnsureExecuted(load.body);
+            result = EnsureEvaluated(load.body);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
@@ -1127,7 +1125,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     if (sync) {
         // Throw a `SyntaxError`. *Rationale:* `SyntaxError` is already
         // used for a few conditions that can be detected statically
-        // (before a script begins to execute) but are not really syntax
+        // (before a script begins to run) but are not really syntax
         // errors per se.  Reusing it seems better than inventing a new
         // Error subclass.
         throw $SyntaxError("eval: module not loaded: \"" + normalized + "\"");
@@ -1310,7 +1308,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //  1. Compute the set F of `LinkSet`s we are going to fail.
 //
 //       * If the error is related to a single `LinkSet` (that is, it
-//         is a link error or an execution error in a module or script),
+//         is a link error or an runtime error in a module or script),
 //         then F = a set containing just that `LinkSet`.
 //
 //       * If the error is related to an in-flight `Load` (that is, it has to
@@ -1413,17 +1411,18 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //     returns a Module object.
 //
 // 2.  Loaded:  Source is available and has been translated and parsed.
-//     Dependencies have been identified.  But the module hasn't been linked or
-//     executed yet.  We are waiting for dependencies.
+//     Dependencies have been identified.  But the module hasn't been
+//     linked or evaluated yet.  We are waiting for dependencies.
 //
-//     This implementation treats the `Module` object as already existing at
-//     this point (except for factory-made modules).  But it has not been
-//     linked and thus must not be exposed to script yet.
+//     This implementation treats the `Module` object as already
+//     existing at this point (except for factory-made modules).  But it
+//     has not been linked and thus must not be exposed to script yet.
 //
-//     The `"loaded"` state says nothing about the status of the dependencies;
-//     they may all be linked and executed and yet there may not be any
-//     `LinkSet` that's ready to link and execute this module.  The `LinkSet`
-//     may be waiting for unrelated dependencies to load.
+//     The `"loaded"` state says nothing about the status of the
+//     dependencies; they may all be linked and evaluated and yet there
+//     may not be any `LinkSet` that's ready to link and evaluate this
+//     module.  The `LinkSet` may be waiting for unrelated dependencies
+//     to load.
 //
 //         .status === "loaded"
 //         .body is a Script or ModuleBody, or null
@@ -1436,8 +1435,8 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //     module and moves it into the loader's module registry.
 //
 // 3.  Done:  The module has been linked and added to the loader's module
-//     registry.  Its body may or may not have been executed yet (see
-//     `EnsureExecuted`).
+//     registry.  Its body may or may not have been evaluated yet (see
+//     `EnsureEvaluated`).
 //
 //         .status === "linked"
 //
@@ -1494,12 +1493,12 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     let fullNames = [];
     let sets = load.linkSets;
 
-    // P4 ISSUE: Execution order when multiple LinkSets become linkable
+    // P4 ISSUE: Evaluation order when multiple LinkSets become linkable
     // at once.
     //
     // Proposed: When a fetch fulfill callback fires and completes the
     // dependency graph of multiple link sets at once, they are
-    // linked and executed in the order of the original
+    // linked and evaluated in the order of the original
     // load()/evalAsync() calls.
     //
     // samth is unsure but thinks probably so.
@@ -1670,7 +1669,7 @@ function LinkSetOnLoad(linkSet, load) {
 //
 //     loader.evalAsync('module x from "x"; module y from "y";', {}, f);
 //
-// The above code implies that we wait to execute "x" until "y" has also
+// The above code implies that we wait to evaluate "x" until "y" has also
 // been fetched. Even if "x" turns out to be linkable and runnable, its
 // dependencies are all satisfied, it links correctly, and it has no direct
 // or indirect dependency on "y", we still wait.
@@ -1839,21 +1838,22 @@ function LinkSetFail(linkSet, exc) {
 }
 
 
-//> ### Module and script execution
+//> ### Module and script evaluation
 //>
-//> Module bodies are executed on demand, as late as possible.  The loader uses
-//> the function `EnsureExecuted`, defined below, to execute scripts.  The
-//> loader always calls `EnsureExecuted` before returning a Module object to
-//> user code.
+//> Module bodies are evaluated on demand, as late as possible.  The
+//> loader uses the function `EnsureEvaluated`, defined below, to run
+//> scripts.  The loader always calls `EnsureEvaluated` before returning
+//> a Module object to user code.
 //>
-//> There is one way a module can be exposed to script before it has executed.
-//> In the case of an import cycle, whichever module executes first can observe
-//> the others before they have executed.  Simply put, we have to start
-//> somewhere: one of the modules in the cycle must run before the others.
+//> There is one way a module can be exposed to script before its body
+//> has been evaluated.  In the case of an import cycle, whichever
+//> module is evaluated first can observe the others before they are
+//> evaluated.  Simply put, we have to start somewhere: one of the
+//> modules in the cycle must run before the others.
 //>
-
-// **`evaluatedBody`** - The set of all scripts and modules we have ever passed
-// to `$Evaluate()`; that is, everything we've ever tried to execute.
+// **`evaluatedBody`** - The set of all scripts and modules we have ever
+// passed to `$Evaluate()`; that is, all the code we've ever tried to
+// run.
 //
 // (Of course instead of a hash table, an implementation could implement this
 // using a bit per script/module.)
@@ -1863,7 +1863,7 @@ var evaluatedBody = $WeakMapNew();
 //> #### EvaluateScriptOrModuleOnce(body) Abstract Operation
 //>
 //> Evaluate the given script or module body, but only if we
-//> have never tried to execute it before.
+//> have never tried to evaluate it before.
 //>
 function EvaluateScriptOrModuleOnce(body) {
     if (!$WeakMapHas(evaluatedBody, body)) {
@@ -1872,19 +1872,19 @@ function EvaluateScriptOrModuleOnce(body) {
     }
 }
 
-//> #### EnsureExecuted(start) Abstract Operation
+//> #### EnsureEvaluated(start) Abstract Operation
 //>
-//> Walk the dependency graph of the script or module start, executing any
-//> script or module bodies that have not already executed (including, finally,
-//> start itself).
+//> Walk the dependency graph of the script or module start, evaluating
+//> any script or module bodies that have not already been evaluated
+//> (including, finally, start itself).
 //>
 //> start and its dependencies must already be linked.
 //>
 //> On success, start and all its dependencies, transitively, will have started
-//> to execute exactly once.
+//> to evaluate exactly once.
 //>
-function EnsureExecuted(start) {
-    // *Why the graph walk doesn't stop at already-executed modules:*  It's a
+function EnsureEvaluated(start) {
+    // *Why the graph walk doesn't stop at already-evaluated modules:*  It's a
     // matter of correctness.  Here is the test case:
     //
     //     <script>
@@ -1893,27 +1893,27 @@ function EnsureExecuted(start) {
     //     <script>
     //       module "x" { import "y" as y; throw fit; }
     //       module "y" { import "x" as x; ok = true; }
-    //       import "y" as y;  // marks "x" as executed, but not "y"
+    //       import "y" as y;  // marks "x" as evaluated, but not "y"
     //     </script>
     //     <script>
-    //       import "x" as x;  // must execute "y" but not "x"
+    //       import "x" as x;  // must evaluate "y" but not "x"
     //       assert(ok === true);
     //     </script>
     //
-    // When we `EnsureExecuted` the third script, module `x` is already marked
-    // as executed, but one of its dependencies, `y`, isn't.  In order to
-    // achieve the desired postcondition, we must find `y` anyway and execute
-    // it.
+    // When we `EnsureEvaluated` the third script, module `x` is already
+    // marked as evaluated, but one of its dependencies, `y`, isn't.  In
+    // order to achieve the desired postcondition, we must find `y`
+    // anyway and evaluate it.
     //
-    // Cyclic imports, combined with exceptions during module execution
+    // Cyclic imports, combined with exceptions during module evaluation
     // interrupting this algorithm, are the culprit.
     //
     // The remedy: when walking the dependency graph, do not stop at
-    // already-marked-executed modules.
+    // already-marked-evaluated modules.
     //
-    // (The implementation could optimize this by marking each module with an
-    // extra "no need to walk this subtree" bit when all dependencies,
-    // transitively, are found to have been executed.)
+    // (The implementation could optimize this by marking each module
+    // with an extra "no need to walk this subtree" bit when all
+    // dependencies, transitively, are found to have been evaluated.)
 
     // Another test case:
     //
@@ -1924,12 +1924,12 @@ function EnsureExecuted(start) {
     //     assert(log === "xy");
 
     // Build a *schedule* giving the sequence in which modules and scripts
-    // should execute.
+    // should be evaluated.
     //
-    // **Execution order** - *Modules* execute in depth-first, left-to-right,
-    // post order, stopping at cycles.
+    // **Evaluation order** - *Modules* are evaluated in depth-first,
+    // left-to-right, post order, stopping at cycles.
     //
-    // The *script* that contains one or more required modules is executed
+    // The *script* that contains one or more required modules is evaluated
     // immediately after the last of the modules it declares that are in the
     // dependency set, per dherman, 2013 May 21.
     //
@@ -1948,7 +1948,7 @@ function EnsureExecuted(start) {
 
         if ($IsModule(m)) {
             // The `$SetRemove` call here means that if we already plan to
-            // execute this script, move it to execute after `m`.
+            // evaluate this script, move it to be evaluated after `m`.
             let script = $ModuleObjectToModuleBody(m);
             $SetRemove(schedule, script);
             $SetAdd(schedule, script);
@@ -1959,24 +1959,24 @@ function EnsureExecuted(start) {
 
     // Run the code.
     //
-    // **Exceptions during execution** - Module bodies can throw exceptions,
+    // **Exceptions during evaluation** - Module bodies can throw exceptions,
     // which are propagated to the caller.
     //
     // When this happens, we leave the module in the registry (per samth, 2013
     // April 16) because re-loading the module and running it again is not
     // likely to make things better.
     //
-    // Other fully linked modules in the same LinkSet are also left in the
-    // registry (per dherman, 2013 April 18).  Some of those may be unrelated
-    // to the module that threw.  Since their "has ever started executing" bit
-    // is not yet set, they will be executed on demand.  This allows unrelated
-    // modules to finish loading and initializing successfully, if they are
-    // needed.
+    // Other fully linked modules in the same LinkSet are also left in
+    // the registry (per dherman, 2013 April 18).  Some of those may be
+    // unrelated to the module that threw.  Since their "has ever
+    // started being evaluated" bit is not yet set, they will be
+    // evaluated on demand.  This allows unrelated modules to finish
+    // loading and initializing successfully, if they are needed.
     //
-    // **Nesting** - While executing a module body, calling `eval()` or
-    // `System.get()` can cause other module bodies to execute.  That is,
-    // module body execution can nest.  However no individual module's body
-    // will be executed more than once.
+    // **Nesting** - While evaluating a module body, calling `eval()` or
+    // `System.get()` can cause other module bodies to be evaluated.
+    // That is, module body evaluation can nest.  However no individual
+    // module's body will be evaluated more than once.
     //
     let result;
     schedule = $SetElements(schedule);
