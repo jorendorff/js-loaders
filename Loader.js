@@ -1915,23 +1915,11 @@ function EnsureEvaluated(start) {
     // with an extra "no need to walk this subtree" bit when all
     // dependencies, transitively, are found to have been evaluated.)
 
-    // Another test case:
-    //
-    //     var log = "";
-    //     module "x" { import "y" as y; log += "x"; }
-    //     module "y" { log += "y"; }
-    //     import "x" as x, "y" as y;
-    //     assert(log === "xy");
-
     // Build a *schedule* giving the sequence in which modules and scripts
     // should be evaluated.
     //
-    // **Evaluation order** - *Modules* are evaluated in depth-first,
+    // **Evaluation order** - Modules are evaluated in depth-first,
     // left-to-right, post order, stopping at cycles.
-    //
-    // The *script* that contains one or more required modules is evaluated
-    // immediately after the last of the modules it declares that are in the
-    // dependency set, per dherman, 2013 May 21.
     //
     let seen = $SetNew();
     let schedule = $SetNew();
