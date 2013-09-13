@@ -1139,7 +1139,7 @@ function StartModuleLoad(loader, referer, name, sync) {
         return load;
     }
 
-    // From this point `startModuleLoad` cannot throw.
+    // From this point `StartModuleLoad` cannot throw.
 
     // Create a `Load` object for this module load.  Once this object is in
     // `loaderData.loads`, `LinkSets` may add themselves to its set of waiting
@@ -1490,12 +1490,7 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
-    // `$DependencyNames` returns an array of the names being imported.  These
-    // are not necessarily full names; we pass them to `Loader.startModuleLoad`
-    // which will call the `normalize` hook.
-    //
     let refererName = load.fullName;
-    let names = $DependencyNames(body);
     let fullNames = [];
     let sets = load.linkSets;
 
@@ -1509,32 +1504,23 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     //
     // samth is unsure but thinks probably so.
 
-    // When we load a script or module, we add all its dependencies to
-    // the same link set, per samth, 2013 April 22.
+    // Add all dependencies to the same link set.
     //
-    // TODO: implement that for the declared modules
+    // $DependencyNames returns an array of the names being imported.  These
+    // are not necessarily full names; we pass them to StartModuleLoad which
+    // will call the `normalize` hook.
     //
-    // Example:
-    //     module "A" {
-    //         import "B" as B;
-    //         B.hello();
-    //     }
-    //     alert("got here");
-    //
-    // Note that toplevel does not import "A", so the body of "A"
-    // will not execute, and we will not call B.hello().
-    // Nevertheless, we load "B.js" before executing the script.
-    //
+    let names = $DependencyNames(body);
     for (let i = 0; i < names.length; i++) {
         let request = names[i];
         let referer = {name: refererName, address: actualAddress};
-        let fullName, load;
+        let load;
         try {
-            [fullName, load] = loader.startModuleLoad(referer, request, sync);
+            load = StartModuleLoad(loader, referer, request, sync);
         } catch (exc) {
             return load.fail(exc);
         }
-        fullNames[i] = fullName;
+        fullNames[i] = load.fullName;
 
         if (load.status !== "linked") {
             for (let j = 0; j < sets.length; j++)
