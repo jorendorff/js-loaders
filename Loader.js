@@ -92,7 +92,7 @@
 //   Throws if any `import`-`from` declaration in `script` imports a name
 //   that the corresponding module does not export.
 //
-// * `$CodeExecute(c)` executes the body of a script or module. If `c` is a
+// * `$Evaluate(body)` executes the body of a script or module. If `body` is a
 //   module, return undefined. If it's a script, return the value of the
 //   last-executed expression statement (just like `eval`).
 //
@@ -667,7 +667,7 @@ function Loader_set(name, module) {
 
     // Entries in the module registry must actually be `Module`s.
     // *Rationale:* We use `Module`-specific intrinsics like
-    // `$CodeGetLinkedModules` and `$CodeExecute` on them.  per samth,
+    // `$CodeGetLinkedModules` and `$Evaluate` on them.  per samth,
     // 2013 April 22.
     if (!$IsModule(module))
         throw $TypeError("Module object required");
@@ -1696,6 +1696,44 @@ function LinkSetLink(linkSet) {
     let linkedModules = [];
     let seen = $SetNew();
 
+    // NOTE: This code is all obsolete. We need new code for validating the link set,
+    // implementing the following rough sketch of an algorithm:
+    //
+    // Build a graph: if module or script C contains:
+    //     module Identifier from D; - no edge
+    //     import { } from D; - no edge
+    //     import D;  - no edge
+    //     import Identifier from D;
+    //       edge (C, internal, Identifier) -> (D, external, Identifier)
+    //     import { IdentifierName as Identifier, ... } from D;
+    //       edges (C, internal, Identifier) -> (D, external, IdentifierName)
+    //     export { Identifier as IdentifierName, ...} from D;
+    //       edges (C, external, IdentifierName) -> (D, external, Identifier)
+    //     export * from D;
+    //       contributes to separate graph, expands to
+    //       edges (C, external, X) -> (D, external, X) for each name X exported by D
+    //     export BindingList;
+    //       edges (C, external, Name1) -> (C, internal, Name2) for each binding
+    //     export <binding form>
+    //       edges (C, external, Name) -> (C, internal, Name) for each binding
+    // And if a module is created using new Module(obj) rather than by loading
+    // a ModuleBody, then it provides
+    //   edges (M, external, Name) -> (M, internal, Name) for each of its exports.
+    //
+    // It's an error if A -> B and A -> C for two triples B and C.
+    // dherman says this can't happen here because it's a SyntaxError; we
+    // wouldn't reach this point.  Certainly it can't happen except possibly
+    // with "export * from".
+    //
+    // It's a link error if there are any cycles in the graph.
+    //
+    // For each triple A such that A -> B, bind A to the end of the -> chain.
+    //
+    // It's a link error if the end of the chain is external.
+    //
+    // </NOTE>
+
+
     // Depth-first walk of the import tree, stopping at already-linked
     // modules.
     function walk(load) {
@@ -1817,23 +1855,23 @@ function LinkSetFail(linkSet, exc) {
 //> somewhere: one of the modules in the cycle must run before the others.
 //>
 
-// **`executedCode`** - The set of all scripts and modules we have ever passed
-// to `$CodeExecute()`; that is, everything we've ever tried to execute.
+// **`evaluatedBody`** - The set of all scripts and modules we have ever passed
+// to `$Evaluate()`; that is, everything we've ever tried to execute.
 //
 // (Of course instead of a hash table, an implementation could implement this
 // using a bit per script/module.)
 //
-var executedCode = $WeakMapNew();
+var evaluatedBody = $WeakMapNew();
 
-//> #### ExecuteScriptOrModuleOnce(code) Abstract Operation
+//> #### EvaluateScriptOrModuleOnce(body) Abstract Operation
 //>
-//> Execute the given script or module code, but only if we
+//> Evaluate the given script or module body, but only if we
 //> have never tried to execute it before.
 //>
-function ExecuteScriptOrModuleOnce(code) {
-    if (!$WeakMapHas(executedCode, code)) {
-        $WeakMapSet(executedCode, code, true);
-        return $CodeExecute(code);
+function EvaluateScriptOrModuleOnce(body) {
+    if (!$WeakMapHas(evaluatedBody, body)) {
+        $WeakMapSet(evaluatedBody, body, true);
+        return $Evaluate(body);
     }
 }
 
