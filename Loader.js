@@ -1812,17 +1812,11 @@ function LinkLinkSet(linkSet) {
 //>
 function LinkSetFail(linkSet, exc) {
     let loads = $SetElements(linkSet.loads);
-    for (let i = 0; i < loads.length; i++)
-        OnLinkSetFail(loads[i], linkSet.loader, linkSet);
-    AsyncCall(linkSet.errback, exc);
-}
+    let loader = linkSet.loader;
+    for (let i = 0; i < loads.length; i++) {
+        let load = loads[i];
 
-//> #### OnLinkSetFail(load, loader, linkSet) Abstract Operation
-//>
-
-// This is called when a LinkSet associated with *load* fails.  If *load* is
-// not needed by any surviving LinkSet, drop it.
-function OnLinkSetFail(load, loader, linkSet) {
+    // If *load* is not needed by any surviving LinkSet, drop it.
     var loaderData = GetLoaderInternalData(loader);
 
     $Assert($SetHas(load.linkSets, linkSet));
@@ -1835,6 +1829,8 @@ function OnLinkSetFail(load, loader, linkSet) {
                 $MapDelete(loaderData.loads, fullName);
         }
     }
+    }
+    AsyncCall(linkSet.errback, exc);
 }
 
 
