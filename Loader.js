@@ -1682,7 +1682,7 @@ function LinkSetOnLoad(linkSet, load) {
 
 // **Timing and grouping of dependencies** - Consider
 //
-//     loader.evalAsync('import "x" as x; import "y" as y;', {}, f);
+//     loader.evalAsync('module x from "x"; module y from "y";', {}, f);
 //
 // The above code implies that we wait to execute "x" until "y" has also
 // been fetched. Even if "x" turns out to be linkable and runnable, its
