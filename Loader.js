@@ -101,6 +101,51 @@
 //   in a previous `$Link` call.  (We could perhaps do without this by caching
 //   this information in a WeakMap.)
 //
+// * `ALL`, `DEFAULT`, `MODULE` - Numeric constants related to
+//   `$GetLinkingInfo` (below).
+//
+
+// * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
+//   import/export/module declarations in the given Script or Module.
+//
+//   The objects all look like this:
+//
+//       {
+//           // These are non-null for declarations which import something from
+//           // another module.
+//           importModule: string or null,
+//           importName: string or null or ALL or DEFAULT or MODULE,
+//
+//           // This is non-null for declarations which create a module-level
+//           // binding.
+//           localName: string or null,
+//
+//           // This is non-null for declarations which export something. (It's
+//           // always null in a script because scripts can't have exports.)
+//           exportName: string or null or ALL or DEFAULT
+//       }
+//
+//   The objects created for each kind of declaration are as follows:
+//
+//       module x from "A";
+//         {importModule: "A", importName: MODULE, localName: "x", exportName: null}
+//       import "A";
+//         {importModule: "A", importName: null, localName: null, exportName: null}
+//       import x from "A";
+//         {importModule: "A", importName: DEFAULT, localName: "x", exportName: null}
+//       import {x1 as y1} from "A";
+//         {importModule: "A", importName: "x1", localName: "y1", exportName: null}
+//       export {x1 as y1} from "A";
+//         {importModule: "A", importName: "x1", localName: null, exportName: "y1"}
+//       export * from "A";
+//         {importModule: "A", importName, ALL, localName: null, exportName: ALL}
+//       export {x1 as y1};
+//         {importModule: null, importName: null, localName: "x1", exportName: "y1"}
+//       export default = EXPR;
+//         {importModule: null, importName: null, localName: null, exportName: DEFAULT}
+//       export *;
+//         is expressed as multiple elements of the preceding form
+//
 // The next two primitives operate only on modules.
 //
 // * `$ModuleBodyToModuleObject(body)` returns a `Module` object for
@@ -127,11 +172,13 @@
 // * `$SetNew()` ~= new Set
 // * `$SetHas(set, v)` ~= set.has(v)
 // * `$SetAdd(set, v)` ~= set.add(v)
+// * `$SetElements(set)` ~= [...set]
 // * `$MapNew()` ~= new Map
 // * `$MapHas(map, key)` ~= map.has(key)
 // * `$MapGet(map, key)` ~= map.get(key)
 // * `$MapSet(map, key, value)` ~= map.set(key, value)
 // * `$MapDelete(map, key)` ~= map.delete(key)
+// * `$MapValues(map) ~= [...map.values()]
 // * `$WeakMapNew()` ~= new WeakMap
 // * `$WeakMapGet(map, key)` ~= map.get(key)
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
@@ -1425,12 +1472,17 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //
 //         .status === "loaded"
 //         .body is a Script or ModuleBody, or null
+//         .linkingInfo is an Array of objects representing all
+//             import, export, and module declarations in .body;
+//             see $GetLinkingInfo() for details
+//         .dependencies is a Map of strings (module requests)
+//             to strings (full module names)
 //         .factory is a callable object or null
-//         .dependencies is an Array of strings (full module names)
 //
 //     Exactly one of `[.body, .factory]` is non-null.
+//     If .body is null, then .linkingInfo and .dependencies are null.
 //
-//     The load leaves this state when a `LinkSet` successfully links the
+//     The load leaves this state when a LinkSet successfully links the
 //     module and moves it into the loader's module registry.
 //
 // 3.  Done:  The module has been linked and added to the loader's module
@@ -1461,7 +1513,8 @@ function CreateLoad(fullName) {
     return {
         status: "loading",
         fullName: fullName,
-        script: null,
+        body: null,
+        linkingInfo: null,
         dependencies: null,
         linkSets: $SetNew(),
         factory: null,
@@ -1492,6 +1545,8 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     let fullNames = [];
     let sets = load.linkSets;
 
+    let linkingInfo = $GetLinkingInfo(body);
+
     // P4 ISSUE: Evaluation order when multiple LinkSets become linkable
     // at once.
     //
@@ -1502,33 +1557,32 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     //
     // samth is unsure but thinks probably so.
 
-    // Add all dependencies to the same link set.
-    //
-    // $DependencyNames returns an array of the names being imported.  These
-    // are not necessarily full names; we pass them to StartModuleLoad which
-    // will call the `normalize` hook.
-    //
-    let names = $DependencyNames(body);
-    for (let i = 0; i < names.length; i++) {
-        let request = names[i];
-        let referer = {name: refererName, address: actualAddress};
-        let load;
-        try {
-            load = StartModuleLoad(loader, referer, request, sync);
-        } catch (exc) {
-            return load.fail(exc);
-        }
-        fullNames[i] = load.fullName;
+    // Find all dependencies by walking the list of import-declarations.  For
+    // each new dependency, create a new Load and add it to the same link set.
+    let dependencies = $MapNew();
+    for (let i = 0; i < linkingInfo.length; i++) {
+        let request = linkingInfo[i].importModule;
+        if (!$MapHas(names, request)) {
+            let referer = {name: refererName, address: actualAddress};
+            let depLoad;
+            try {
+                depLoad = StartModuleLoad(loader, referer, request, sync);
+            } catch (exc) {
+                return load.fail(exc);
+            }
+            $MapSet(names, request, depLoad.fullName);
 
-        if (load.status !== "linked") {
-            for (let j = 0; j < sets.length; j++)
-                AddLoadToLinkSet(sets[j], load);
+            if (depLoad.status !== "linked") {
+                for (let j = 0; j < sets.length; j++)
+                    AddLoadToLinkSet(sets[j], depLoad);
+            }
         }
     }
 
     load.status = "loaded";
     load.body = body;
-    load.dependencies = fullNames;
+    load.linkingInfo = linkingInfo;
+    load.dependencies = dependencies;
     if (!sync) {
         for (let i = 0; i < sets.length; i++)
             LinkSetOnLoad(sets[i], load);
@@ -1617,8 +1671,9 @@ function AddLoadToLinkSet(linkSet, load) {
         } else {
             // Transitively add not-yet-linked dependencies.
             $Assert(load.status == "loaded");
-            for (let i = 0; i < load.dependencies.length; i++)
-                LinkSetAddLoadByName(linkSet, load.dependencies[i]);
+            let fullNames = $MapValues(load.dependencies);
+            for (let i = 0; i < fullNames.length; i++)
+                LinkSetAddLoadByName(linkSet, fullNames[i]);
         }
     }
 }
@@ -1672,43 +1727,6 @@ function LinkLinkSet(linkSet) {
     let linkedModules = [];
     let seen = $SetNew();
 
-    // NOTE: This code is all obsolete. We need new code for validating the link set,
-    // implementing the following rough sketch of an algorithm:
-    //
-    // Build a graph: if module or script C contains:
-    //     module Identifier from D; - no edge
-    //     import { } from D; - no edge
-    //     import D;  - no edge
-    //     import Identifier from D;
-    //       edge (C, internal, Identifier) -> (D, external, Identifier)
-    //     import { IdentifierName as Identifier, ... } from D;
-    //       edges (C, internal, Identifier) -> (D, external, IdentifierName)
-    //     export { Identifier as IdentifierName, ...} from D;
-    //       edges (C, external, IdentifierName) -> (D, external, Identifier)
-    //     export * from D;
-    //       contributes to separate graph, expands to
-    //       edges (C, external, X) -> (D, external, X) for each name X exported by D
-    //     export BindingList;
-    //       edges (C, external, Name1) -> (C, internal, Name2) for each binding
-    //     export <binding form>
-    //       edges (C, external, Name) -> (C, internal, Name) for each binding
-    // And if a module is created using new Module(obj) rather than by loading
-    // a ModuleBody, then it provides
-    //   edges (M, external, Name) -> (M, internal, Name) for each of its exports.
-    //
-    // It's an error if A -> B and A -> C for two triples B and C.
-    // dherman says this can't happen here because it's a SyntaxError; we
-    // wouldn't reach this point.  Certainly it can't happen except possibly
-    // with "export * from".
-    //
-    // It's a link error if there are any cycles in the graph.
-    //
-    // For each triple A such that A -> B, bind A to the end of the -> chain.
-    //
-    // It's a link error if the end of the chain is external.
-    //
-    // </NOTE>
-
 
     // Depth-first walk of the import tree, stopping at already-linked
     // modules.
@@ -1761,7 +1779,7 @@ function LinkLinkSet(linkSet) {
         // Intervening calls to `loader.set()` or `loader.delete()` can
         // cause things to be missing.
         //
-        let deps = load.dependencies;
+        let deps = $MapValues(load.dependencies);
         let mods = [];
         for (let i = 0; i < deps.length; i++) {
             let fullName = deps[i];
