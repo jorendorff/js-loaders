@@ -136,10 +136,13 @@
 //         {importModule: "A", importName, ALL, localName: null, exportName: ALL}
 //       export {x1 as y1};
 //         {importModule: null, importName: null, localName: "x1", exportName: "y1"}
+//       unless the binding x1 was declared as an import, like `import {z as x1} from "A"`,
+//       in which case:
+//         {importModule: "A", importName: "z", localName: "x1", exportName: "y1"}
+//       export *;
+//         is expressed as multiple elements of the preceding two forms
 //       export default = EXPR;
 //         {importModule: null, importName: null, localName: null, exportName: DEFAULT}
-//       export *;
-//         is expressed as multiple elements of the preceding form
 //
 // The next two primitives operate only on modules.
 //
