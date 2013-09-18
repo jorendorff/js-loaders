@@ -104,7 +104,6 @@
 // * `ALL`, `DEFAULT`, `MODULE` - Numeric constants related to
 //   `$GetLinkingInfo` (below).
 //
-
 // * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
 //   import/export/module declarations in the given Script or Module.
 //
@@ -1513,10 +1512,10 @@ function CreateLoad(fullName) {
     return {
         status: "loading",
         fullName: fullName,
+        linkSets: $SetNew(),
         body: null,
         linkingInfo: null,
         dependencies: null,
-        linkSets: $SetNew(),
         factory: null,
         exception: null
     };
@@ -1559,6 +1558,11 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
 
     // Find all dependencies by walking the list of import-declarations.  For
     // each new dependency, create a new Load and add it to the same link set.
+    //
+    // The module-specifiers in import-declarations, and thus the .importModule
+    // fields of the objects in `linkingInfo`, are not necessarily full names.
+    // We pass them to StartModuleLoad which will call the `normalize` hook.
+    //
     let dependencies = $MapNew();
     for (let i = 0; i < linkingInfo.length; i++) {
         let request = linkingInfo[i].importModule;
