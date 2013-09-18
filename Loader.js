@@ -81,14 +81,10 @@
 //
 // The next four primitives operate on both scripts and modules.
 //
-// * `$DependencyNames(body)` returns an array of strings representing every
-//   ImportDeclaration and every ExportDeclaration of the form
-//   `export ExportSpecifierSet from ModuleSpecifier;` in the given Script or
-//   ModuleBody.  See the comment in `Loader.eval()`.
-//
-// * `$Link(body, modules)` links a script to all the modules requested
-//   in its imports.  `modules` is an array of `Module` objects, the same
-//   length as `$DependencyNames(body)`.
+// * `$Link(body, modules)` links a script to all the modules requested in its
+//   imports.  `modules` is an array of `Module` objects. (**NOTE**: This is
+//   insufficient in its current form to cope with `export * from`, and it will
+//   soon go away in favor of more bite-sized primitives.)
 //
 //   Throws if any `import`-`from` declaration in `script` imports a name
 //   that the corresponding module does not export.
