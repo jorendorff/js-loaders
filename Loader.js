@@ -643,6 +643,37 @@ function Loader_import(moduleName,
 //>
 
 
+//> #### Loader.prototype.define ( names, moduleBodies, callback, errback )
+//>
+function Loader_define(names, moduleBodies, callback, errback) {
+    names = [...names];
+    moduleBodies = [...moduleBodies];
+
+    if (names.length === 0) {
+        AsyncCall(success);
+        return;
+    }
+
+    // If any element of names isn't a string, error.
+    // If any two names are the same, error.
+    // If any names already exist in the registry, error.
+    // If any names are names of modules for which a Load is in flight, error. (???)
+    // Make a LinkSet.
+    // Pre-populate it with phony Load objects for the given modules.
+    // Kick off real Loads for any additional modules imported by the given moduleBodies.
+    // Let the link set finish loading, and run the real linking algorithm.
+    // Success callback does the rest.
+    CreateLinkSet(this, ???, success, errback);
+
+    function success() {
+        let arr = [];
+        for (let i = 0; i < names.length; i++)
+            $ArrayPush(arr, callFunction(Loader_get, this, names[i]));
+        return callback(arr);
+    }
+}
+
+
 // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
 // `.load()`, and `.import()` all take two callback arguments, `callback`
 // and `errback`, the success and failure callbacks respectively.
