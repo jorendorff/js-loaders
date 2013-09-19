@@ -79,23 +79,37 @@
 //
 //   Note that this does not run any of the code in `src`.
 //
-// The next four primitives operate on both scripts and modules.
+// The next six primitives operate on both scripts and modules.
 //
-// * `$Link(body, modules)` links a script to all the modules requested in its
-//   imports.  `modules` is an array of `Module` objects. (**NOTE**: This is
-//   insufficient in its current form to cope with `export * from`, and it will
-//   soon go away in favor of more bite-sized primitives.)
+// * `$DefineConstant(body, name, value)` defines a constant binding in the
+//   toplevel declarative environment of `body`, with the given `name` and `value`.
+//   This is only used to implement `module a from "A";` declarations, so
+//   `value` is always a Module object.
 //
-//   Throws if any `import`-`from` declaration in `script` imports a name
-//   that the corresponding module does not export.
+// * `$LinkImport(body, name, sourceModule, sourceName)` defines an import
+//   binding. `body` is a Module or Script object.
+//
+//   `sourceModule` is the module in which the desired binding is actually
+//   declared (not just as a re-export but as a slot). None of the arguments
+//   are export names; both `name` and `sourceName` are binding names.
+//
+//   The result of `$LinkImport` is that in `body`'s scope, `name` becomes an
+//   alias for the binding in `sourceModule`'s scope with the name
+//   `sourceName`.
+//
+//   `name` must be a string; `sourceName` is either a string or DEFAULT to
+//   link `name` to the slot created by `export default = EXPR;`.
+//
+// * `$Link(body, modules)` - OBSOLETE. This is used in a non-working
+//   implementation of linking, below.
 //
 // * `$Evaluate(body)` runs the body of a script or module. If `body` is a
 //   module, return undefined. If it's a script, return the value of the
 //   last-evaluated expression statement (just like `eval`).
 //
-// * `$GetLinkedModules(body)` returns an array of the modules linked to `body`
-//   in a previous `$Link` call.  (We could perhaps do without this by caching
-//   this information in a WeakMap.)
+// * `$GetLinkedModules(body)` - OBSOLETE. Returns an array of the modules
+//   linked to `body` in a previous `$Link` call.  (We could perhaps do without
+//   this by caching this information in a WeakMap.)
 //
 // * `ALL`, `DEFAULT`, `MODULE` - Numeric constants related to
 //   `$GetLinkingInfo` (below).
@@ -138,7 +152,7 @@
 //         {importModule: null, importName: null, localName: "x1", exportName: "y1"}
 //       unless the binding x1 was declared as an import, like `import {z as x1} from "A"`,
 //       in which case:
-//         {importModule: "A", importName: "z", localName: "x1", exportName: "y1"}
+//         {importModule: "A", importName: "z", localName: null, exportName: "y1"}
 //       export *;
 //         is expressed as multiple elements of the preceding two forms
 //       export default = EXPR;
@@ -1516,7 +1530,8 @@ function CreateLoad(fullName) {
         linkingInfo: null,
         dependencies: null,
         factory: null,
-        exception: null
+        exception: null,
+        linkageComputed: false,
     };
 }
 
@@ -1716,6 +1731,130 @@ function LinkSetOnLoad(linkSet, load) {
 // order would be less deterministic. The design opts for a bit more
 // determinism in common cases&mdash;though it is still possible to trigger
 // non-determinism since multiple link sets can be in-flight at once.
+
+
+
+//> ### Linkage
+//>
+//> #### ComputeLinkageForLoad(linkSet, load) Abstract Operation
+//>
+function ComputeLinkageForLoad(linkSet, load) {
+    if (load.linkageComputed === undefined)
+        throw SyntaxError("'export * from' cycle detected");
+    if (!load.linkageComputed) {
+        load.linkageComputed = undefined;
+
+        // TODO: replace each `export * from "A"` edge in load.linkingInfo with
+        // the appropriate collection of implicit edges.
+        //
+        // This involves recursively doing ComputeLinkageForLoad linkage for A
+        // first.
+        //
+        // (This implementation requires that ordinary `export *;` declarations
+        // are desugared by $GetLinkingInfo. ISSUE: They may need to be marked
+        // as implicit in order to handle conflicts with `export * from`
+        // declarations correctly. But perhaps not.)
+        ???
+
+        load.linkageComputed = true;
+    }
+}
+
+//> #### ComputeLinkage(linkSet) Abstract Operation
+//>
+function ComputeLinkage(linkSet) {
+    let components = $SetElements(linkSet.loads);
+    for (let i = 0; i < components.length; i++) {
+        let load = components[i];
+        $Assert(load.status === "loaded" || load.status === "linked");
+        ComputeLinkageForLoad(load);
+    }
+}
+
+//> #### LinkComponents(linkSet) Abstract Operation
+//>
+function LinkComponents(linkSet) {
+    let loader = linkSet.loader;
+    let components = $SetElements(linkSet.loads);
+    for (let i = 0; i < components.length; i++) {
+        let load = components[i];
+        let edges = load.linkingInfo;
+        for (let j = 0; j < edges.length; j++) {
+            Link(loader, load, edges[j]);
+        }
+    }
+}
+
+//> #### FindModuleForLink(loader, fullName) Abstract Operation
+//>
+function FindModuleForLink(loader, fullName) {
+    let loaderData = GetLoaderInternalData(loader);
+    let fullName = deps[i];
+    let mod = $MapGet(loaderData.modules, fullName);
+    if (mod !== undefined)
+        return mod;
+
+    let depLoad = $MapGet(loaderData.loads, fullName);
+    if (depLoad === undefined || depLoad.status !== "loaded") {
+        throw $SyntaxError(
+            "module \"" + fullName + "\" was deleted from the loader");
+    }
+    return $ModuleBodyToModuleObject(depLoad.body);
+}
+
+//> #### Link(loader, load, edge) Abstract Operation
+//>
+function Link(loader, load, edge) {
+    if (edge.importModule !== null) {
+        var fullName = $MapGet(load.dependencies, edge.importModule);
+        var sourceModule = FindModuleForLink(loader, fullName);
+        if (edge.localName !== null) {
+            $Assert(edge.exportName === null);
+            if (edge.localName === MODULE)
+                $DefineConstant(load.body, edge.localName, sourceModule);
+            else
+                $LinkImport(load.body, edge.localName, sourceModule, edge.importName);
+        } else if (edge.exportName !== null) {
+            // This implementation does not do anything for exports of the form
+            // {importModule: null, importName: null, localName: "x", exportName: "y"}
+            // It assumes such local exports are handled by $Parse().
+            LinkExport(load, edge.exportName, sourceModule, edge.importName, []);
+        }
+    }
+}
+
+/*
+TODO:
+
+LinkExport(M: Module, external: string, link: ExportLink, visited: List(ExportReference)) : ExportBinding
+
+    If link.[[Resolved]] = *true* then:
+      Let exports = M.[[Exports]].
+      Add {[[External]]: external, [[Binding]]: link.[[Binding]]} to exports.
+      Return link.[[Binding]].
+    Else:
+      Let ref = link.[[Reference]].
+      If ref is in visited, throw a new SyntaxError.
+      Add ref to visited.
+      Let b = ResolveExport(ref, visited).
+      ReturnIfAbrupt(b).
+      Let exports = M.[[Exports]].
+      Add {[[External]]: external, [[Binding]]: b} to exports.
+      Return b.
+
+ResolveExport(ref: ExportReference, visited: List(ExportReference)) : ExportBinding
+
+    Let M = ref.[[Module]].
+    Let external = ref.[[External]].
+    Let exports = M.[[Exports]].
+    If exports has a record r such that r.external = external, the return r.[[Binding]].
+    Let edges = M.[[Linkage]].
+    If edges = *undefined* (M is fully linked) then throw a new ReferenceError.
+    Let e be the edge in edges such that e.[[LinkType]] = *export* and e.[[Name]] = external.
+    If no such edge exists throw a new ReferenceError.
+    Let b = LinkExport(M, export, e.[[Link]], visited).
+    Return b.
+*/
 
 
 //> #### LinkLinkSet(linkSet) Abstract Operation
