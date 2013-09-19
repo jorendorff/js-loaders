@@ -646,29 +646,79 @@ function Loader_import(moduleName,
 //> #### Loader.prototype.define ( names, moduleBodies, callback, errback )
 //>
 function Loader_define(names, moduleBodies, callback, errback) {
-    names = [...names];
-    moduleBodies = [...moduleBodies];
+    // ISSUE: Two separate iterables is dumb. Why not an iterable of pairs?
+    // Then you could pass in a Map, and the semantics below would not be so
+    // bizarre.
+    let loaderData = GetLoaderInternalData(this);
 
-    if (names.length === 0) {
-        AsyncCall(success);
-        return;
+    let linkSet = undefined;
+    let loads = [];
+    try {
+        let nameSet = $SetNew();
+        for (let name of names) {
+            if (typeof name !== "string")
+                throw $TypeError("define(): argument 1 must be an iterable of strings");
+            if ($SetHas(nameSet, name))
+                throw $TypeError("define(): argument 1 contains a duplicate entry '" + name + "'");
+            if ($MapHas(loaderData.modules, name))
+                throw $TypeError("define(): module already loaded: '" + name + "'");
+            if ($MapHas(loaderData.loads, name))
+                throw $TypeError("define(): module already loading: '" + name + "'");
+            $SetAdd(nameSet, name);
+        }
+        names = $SetElements(nameSet);
+        moduleBodies = [...moduleBodies];
+        if (names.length !== moduleBodies.length)
+            throw $TypeError("define(): names and moduleBodies must be the same length");
+
+        if (names.length === 0) {
+            AsyncCall(success);
+            return;
+        }
+
+        // Make a LinkSet.
+        // Pre-populate it with phony Load objects for the given modules.
+        // Kick off real Loads for any additional modules imported by the given moduleBodies.
+        // Let the link set finish loading, and run the real linking algorithm.
+        // Success callback does the rest.
+        for (let i = 0; i < names.length; i++) {
+            let fullName = names[i];
+            let load = CreateLoad(fullName);
+            $MapSet(loaderData.loads, fullName, load);
+            if (linkSet === undefined)
+                linkSet = CreateLinkSet(this, load, success, errback);
+            else
+                AddLoadToLinkSet(linkSet, load);
+            $ArrayPush(loads, load);
+        }
+    } catch (exc) {
+        if (linkSet === undefined)
+            AsyncCall(errback, exc);
+        else
+            LinkSetFailed(linkSet, exc);
     }
 
-    // If any element of names isn't a string, error.
-    // If any two names are the same, error.
-    // If any names already exist in the registry, error.
-    // If any names are names of modules for which a Load is in flight, error. (???)
-    // Make a LinkSet.
-    // Pre-populate it with phony Load objects for the given modules.
-    // Kick off real Loads for any additional modules imported by the given moduleBodies.
-    // Let the link set finish loading, and run the real linking algorithm.
-    // Success callback does the rest.
-    CreateLinkSet(this, ???, success, errback);
+    for (let i = 0; i < names.length; i++) {
+        // TODO: This status check is here because I think OnFulfill could
+        // cause the LinkSet to fail, which may or may not have cause all the
+        // other loads to fail. Need to try to observe this happening.
+        if (loads[i].status === "loading")
+            OnFulfill(this, loads[i], {}, names[i], "module", false, moduleBodies[i], null);
+    }
 
     function success() {
+        // ISSUE: need to cope with Loader.prototype.set()/delete() having been
+        // called in the mean time so that Loader_get returns some
+        // other module, or null. Probably need to catch errors here and
+        // route them to errback.
         let arr = [];
-        for (let i = 0; i < names.length; i++)
-            $ArrayPush(arr, callFunction(Loader_get, this, names[i]));
+        try {
+            for (let i = 0; i < names.length; i++)
+                $ArrayPush(arr, callFunction(Loader_get, this, names[i]));
+        } catch (exc) {
+            AsyncCall(errback, exc);
+            return;
+        }
         return callback(arr);
     }
 }
