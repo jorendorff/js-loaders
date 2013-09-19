@@ -169,6 +169,15 @@
 // * `$ModuleObjectToModuleBody(module)` returns a ModuleBody object `body`
 //   such that `$ModuleBodyToModuleObject(body) === module`.
 //
+// Loader iterators require a little private state. These could be implemented
+// using a WeakMap, but intrinsics are more efficient.
+//
+// * `$SetLoaderIteratorPrivate(iter, value)` stores `value` in an internal
+//   data property of `iter`.
+//
+// * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
+//   using $SetLoaderIteratorPrivate.
+//
 // The remaining primitives are not very interesting. These are capabilities
 // that JS provides via builtin methods. We use primitives rather than the
 // builtin methods because user code can delete or replace the methods.
@@ -190,7 +199,11 @@
 // * `$MapGet(map, key)` ~= map.get(key)
 // * `$MapSet(map, key, value)` ~= map.set(key, value)
 // * `$MapDelete(map, key)` ~= map.delete(key)
-// * `$MapValues(map) ~= [...map.values()]
+// * `$MapValues(map)` ~= [...map.values()]
+// * `$MapEntriesIterator(map)` ~= map.entries()
+// * `$MapKeysIterator(map)` ~= map.keys()
+// * `$MapValuesIterator(map)` ~= map.values()
+// * `$MapIteratorNext(map)` ~= mapiter.next()
 // * `$WeakMapNew()` ~= new WeakMap
 // * `$WeakMapGet(map, key)` ~= map.get(key)
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
@@ -668,7 +681,7 @@ function Loader_import(moduleName,
 // loads.
 
 
-//> #### Loader.prototype.get
+//> #### Loader.prototype.get ( name )
 //>
 
 // **`get`** - Get a module by name from the registry.  The argument `name`
@@ -796,6 +809,41 @@ function Loader_delete(name) {
     $MapDelete(loaderData.modules, name);
 
     return this;
+}
+
+
+//> #### *LoaderIterator*.prototype.next ( )
+//>
+function LoaderIterator(iterator) {
+    $SetLoaderIteratorPrivate(this, iterator);
+}
+
+function LoaderIterator_next() {
+    return $MapIteratorNext($GetLoaderIteratorPrivate(this));
+}
+
+
+//> #### Loader.prototype[@@iterator] ( )
+//> #### Loader.prototype.entries ( )
+//>
+function Loader_entries() {
+    let loaderData = GetLoaderInternalData(this);
+    return new LoaderIterator($MapEntriesIterator(loaderData.modules));
+}
+
+
+//> #### Loader.prototype.keys ( )
+//>
+function Loader_keys() {
+    let loaderData = GetLoaderInternalData(this);
+    return new LoaderIterator($MapKeysIterator(loaderData.modules));
+}
+
+//> #### Loader.prototype.values ( )
+//>
+function Loader_values() {
+    let loaderData = GetLoaderInternalData(this);
+    return new LoaderIterator($MapValuesIterator(loaderData.modules));
 }
 
 
