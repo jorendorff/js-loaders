@@ -2299,22 +2299,6 @@ function AsyncCall(fn, ...args) {
     $QueueTask(() => fn(...args));
 }
 
-// **`define`** - Define all properties of `source` on `target`.  We use this
-// rather than property assignment in constructors, to isolate these objects
-// from setters defined on `Object.prototype`.
-function define(target, source) {
-    let keys = $ObjectKeys(source);
-    for (let i = 0; i < keys.length; i++) {
-        let name = keys[i];
-        $ObjectDefineProperty(target, name, {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: source[name]
-        });
-    }
-}
-
 
 //> ### The System Object
 //>
