@@ -1802,18 +1802,26 @@ function FindModuleForLink(loader, fullName) {
     return $ModuleBodyToModuleObject(depLoad.body);
 }
 
+//> #### LookupExport(module, externalName) Abstract Operation
+//>
+function LookupExport(module, externalName) {
+    ???
+}
+
 //> #### Link(loader, load, edge) Abstract Operation
 //>
 function Link(loader, load, edge) {
     if (edge.importModule !== null) {
-        var fullName = $MapGet(load.dependencies, edge.importModule);
-        var sourceModule = FindModuleForLink(loader, fullName);
+        let fullName = $MapGet(load.dependencies, edge.importModule);
+        let sourceModule = FindModuleForLink(loader, fullName);
         if (edge.localName !== null) {
             $Assert(edge.exportName === null);
-            if (edge.localName === MODULE)
+            if (edge.localName === MODULE) {
                 $DefineConstant(load.body, edge.localName, sourceModule);
-            else
-                $LinkImport(load.body, edge.localName, sourceModule, edge.importName);
+            } else {
+                let {module, internalName} = LookupExport(sourceModule, edge.importName);
+                $LinkImport(load.body, edge.localName, module, internalName);
+            }
         } else if (edge.exportName !== null) {
             // This implementation does not do anything for exports of the form
             // {importModule: null, importName: null, localName: "x", exportName: "y"}
