@@ -106,8 +106,8 @@
 //   The objects all look like this:
 //
 //       {
-//           // These are non-null for declarations which import something from
-//           // another module.
+//           // These are non-null for declarations which import a module or
+//           // import something from a module.
 //           importModule: string or null,
 //           importName: string or null or ALL or DEFAULT or MODULE,
 //
@@ -125,7 +125,7 @@
 //       module x from "A";
 //         {importModule: "A", importName: MODULE, localName: "x", exportName: null}
 //       import "A";
-//         {importModule: "A", importName: null, localName: null, exportName: null}
+//         {importModule: "A", importName: MODULE, localName: null, exportName: null}
 //       import x from "A";
 //         {importModule: "A", importName: DEFAULT, localName: "x", exportName: null}
 //       import {x1 as y1} from "A";
