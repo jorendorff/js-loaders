@@ -1573,7 +1573,7 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
             } catch (exc) {
                 return load.fail(exc);
             }
-            $MapSet(names, request, depLoad.fullName);
+            $MapSet(dependencies, request, depLoad.fullName);
 
             if (depLoad.status !== "linked") {
                 for (let j = 0; j < sets.length; j++)
