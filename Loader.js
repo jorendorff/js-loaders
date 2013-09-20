@@ -274,21 +274,16 @@
 let loaderInternalDataMap = $WeakMapNew();
 
 function Loader(options) {
-    // Bug: this calls Loader_create directly. The spec will require instead
-    // calling Loader[@@create](); we will change this when symbols are
-    // implemented.
-    //
-    // The slightly weird check for .module below mimics what other builtin
-    // classes do with regard to @@create.
-    //
-    var loader = this;
+    // Bug:  This calls Loader_create directly.  The spec will instead make
+    // `new Loader(options)` call `Loader[@@create]()` implicitly and pass the
+    // resulting uninitialized Loader object as the `this` value to this
+    // function.  We'll change that when symbols and @@create are implemented.
+    var loader = Loader_create();
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
-    if (loaderData === undefined || loaderData.module !== undefined) {
-        // Implementation note: `callFunction` is SpiderMonkey magic;
-        // the following line means Loader_create.[[Call]](Loader, empty List).
-        loader = callFunction(Loader_create, Loader);
-        loaderData = GetLoaderInternalData(loader);
-    }
+    if (loaderData === undefined)
+        throw $TypeError("Loader object expected");
+    if (loaderData.modules !== undefined)
+        throw $TypeError("Loader object cannot be intitialized more than once");
 
     // Fallible operations.
     var global = options.global;  // P4 ISSUE: ToObject here?
