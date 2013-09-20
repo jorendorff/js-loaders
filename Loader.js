@@ -340,8 +340,6 @@ let LoaderPrototype = Loader.prototype;
 function Loader_create() {
     var loader = Object.create(LoaderPrototype);
     var internalData = {
-        loader: loader,
-
         // **`this.modules`** is the module registry.  It maps full
         // module names to `Module` objects.
         //
