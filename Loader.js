@@ -278,7 +278,7 @@ function Loader(options) {
     // `new Loader(options)` call `Loader[@@create]()` implicitly and pass the
     // resulting uninitialized Loader object as the `this` value to this
     // function.  We'll change that when symbols and @@create are implemented.
-    var loader = Loader_create();
+    var loader = callFunction(Loader_create, Loader);
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
     if (loaderData === undefined)
         throw $TypeError("Loader object expected");
@@ -334,11 +334,10 @@ function Loader(options) {
 
 
 //> #### Loader [ @@create ] ( )
-
-let LoaderPrototype = Loader.prototype;
+//>
 
 function Loader_create() {
-    var loader = Object.create(LoaderPrototype);
+    var loader = Object.create(this.prototype);
     var internalData = {
         // **`this.modules`** is the module registry.  It maps full
         // module names to `Module` objects.
