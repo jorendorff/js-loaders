@@ -259,7 +259,21 @@
 //> ### The Loader Constructor
 
 //> #### Loader ( options )
-
+//>
+//> Each Loader object has the following internal data properties:
+//>
+//> * loader.[[modules]] - A List of Module Records, the module registry.
+//>
+//> * loader.[[loads]] - A List of Load Records. These represent ongoing
+//>   asynchronous loads of modules or scripts.
+//>
+//> * loader.[[global]] - A global object. Scripts and modules loaded by the
+//>   loader are evaluated in a lexical environment that includes a global
+//>   environment record for this global object. (XXX needs better wording)
+//>
+//> * loader.[[strict]] - A boolean value. If this value is true, all scripts
+//>   and modules loaded by the loader are strict mode code.
+//>
 
 // Implementation note: Since ES6 does not have support for private state or
 // private methods, the "internal data properties" of Loader objects are stored
