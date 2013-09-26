@@ -97,8 +97,7 @@
 //   alias for the binding in `sourceModule`'s scope with the name
 //   `sourceName`.
 //
-//   `name` must be a string; `sourceName` is either a string or DEFAULT to
-//   link `name` to the slot created by `export default = EXPR;`.
+//   `name` and `sourceName` are strings. `sourceName` may be `"default"`.
 //
 // * `$Link(body, modules)` - OBSOLETE. This is used in a non-working
 //   implementation of linking, below.
@@ -123,7 +122,7 @@
 //           // These are non-null for declarations which import a module or
 //           // import something from a module.
 //           importModule: string or null,
-//           importName: string or null or ALL or DEFAULT or MODULE,
+//           importName: string or null or ALL or MODULE,
 //
 //           // This is non-null for declarations which create a module-level
 //           // binding.
@@ -131,7 +130,7 @@
 //
 //           // This is non-null for declarations which export something. (It's
 //           // always null in a script because scripts can't have exports.)
-//           exportName: string or null or ALL or DEFAULT
+//           exportName: string or null or ALL
 //       }
 //
 //   The objects created for each kind of declaration are as follows:
@@ -141,7 +140,7 @@
 //       import "A";
 //         {importModule: "A", importName: MODULE, localName: null, exportName: null}
 //       import x from "A";
-//         {importModule: "A", importName: DEFAULT, localName: "x", exportName: null}
+//         {importModule: "A", importName: "default", localName: "x", exportName: null}
 //       import {} from "A";
 //         {importModule: "A", importName: MODULE, localName: null, exportName: null}
 //       import {x1 as y1} from "A";
@@ -158,7 +157,7 @@
 //       export *;
 //         is expressed as multiple elements of the preceding two forms
 //       export default = EXPR;
-//         {importModule: null, importName: null, localName: null, exportName: DEFAULT}
+//         {importModule: null, importName: null, localName: null, exportName: "default"}
 //
 // The next two primitives operate only on modules.
 //
