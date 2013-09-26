@@ -187,7 +187,7 @@
 // * `$Apply(f, thisv, args)` ~= thisv.apply(f, args)
 // * `$Call(f, thisv, ...args)` ~= thisv.call(f, ...args)
 // * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
-// * `$ObjectKeys(obj)` ~= Object.keys(obj)
+// * `$ObjectGetOwnPropertyNames(obj)` ~= Object.getOwnPropertyNames(obj)
 // * `$IsArray(v)` ~= Array.isArray(v)
 // * `$ArrayPush(arr, v)` ~= arr.push(v)
 // * `$ArrayPop(arr)` ~= arr.pop()
@@ -1459,7 +1459,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
             }
             let mod = linkResult;
             $MapSet(loaderData.modules, normalized, mod);
-            OnEndRun(load);
+            OnEndRun(load, mod);
         } else {
             let mod = null;
             let imports = linkResult.imports;
@@ -1580,10 +1580,10 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 
 //> ### Dependency loading
 //>
-//> A Load Record represents an attempt to find, fetch, translate, and parse a
-//> single module or script.
+//> The Load Record type represents an attempt to locate, fetch, translate, and
+//> parse a single module or script.
 //>
-//> Each Load Record contains the following fields (???terminology):
+//> Each Load Record has the following fields:
 //>
 //>   * load.[[status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
 //>
@@ -1607,22 +1607,25 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //>   * load.[[exception]] - If load.[[status]] is `"failed"`, the exception
 //>     value that was thrown, causing the load to fail. Otherwise, **null**.
 //>
-//>   * load.[[linkageComputed]] - This tristate value is used during the
-//>     processing of `export * from` declarations. **true**, **false**, or
-//>     `"pending"`.
+//>   * load.[[exports]] - A List of strings, names exported by this module;
+//>     or **null** if this is a script Load or the export set has not been
+//>     computed yet; or `"pending"` if the export set is currently being
+//>     computed.
 //>
-
+//>   * load.[[module]] - If the `.link()` hook returned a Module object,
+//>     this is that Module. Otherwise, **null**.
+//>
 // Implementation note: We also use this linkingInfo thing, not sure if that needs
 // to be part of the standard since it's a pure function of the syntax tree.
 //
 // Implementation node: This implementation uses `undefined` rather than
-// `"pending"` as the intermediate value for load.[[linkageComputed]].
+// `"pending"` as the intermediate value for load.[[exports]].
 
 
-// The goal of a `Load` is to resolve, fetch, translate, and parse a single
-// module (or a collection of modules that all live in the same script).
+// The goal of a Load is to locate, fetch, translate, and parse a single
+// module.
 //
-// A `Load` is in one of four states:
+// A Load is in one of four states:
 //
 // 1.  Loading:  Source is not available yet.
 //
@@ -1667,11 +1670,12 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //     `EnsureEvaluated`).
 //
 //         .status === "linked"
+//         .module is a Module object
 //
-//     (TODO: this might not be true in the case of the `link` loader hook
-//     returning a Module object; maybe want a separate status for that) Loads
-//     that enter this state are removed from the `loader.loads` table and
-//     from all `LinkSet`s; they become garbage.
+//     (TODO: this is not true in the case of the `link` loader hook returning
+//     a Module object; may want a separate status for that) Loads that enter
+//     this state are removed from the `loader.loads` table and from all
+//     LinkSets; they become garbage.
 //
 // 4.  Failed:  The load failed.  The load never leaves this state.
 //
@@ -1696,20 +1700,21 @@ function CreateLoad(fullName) {
         dependencies: null,
         factory: null,
         exception: null,
-        linkageComputed: false,
+        exports: null,
+        module: null
     };
 }
 
 //> #### FinishLoad(load, loader, actualAddress, body, sync) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `link` hook), and
-// after the script or module's syntax has been checked. `finish` does two
+// after the script or module's syntax has been checked. FinishLoad does two
 // things:
 //
 //   1. Process imports. This may trigger additional loads (though if
 //      `sync` is true, it definitely won't: we'll throw instead).
 //
-//   2. Call `LinkSetOnLoad` on any listening `LinkSet`s (see that abstract
+//   2. Call LinkSetOnLoad on any listening LinkSets (see that abstract
 //      operation for the conclusion of the load/link/run process).
 //
 // On success, this transitions the `Load` from `"loading"` status to
@@ -1772,12 +1777,13 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     }
 }
 
-//> #### OnEndRun(load) Abstract Operation
+//> #### OnEndRun(load, mod) Abstract Operation
 //>
 // Called when the `link` hook returns a Module object.
-function OnEndRun(load) {
+function OnEndRun(load, mod) {
     $Assert(load.status === "loading");
     load.status = "linked";
+    load.module = mod;
     for (let i = 0; i < sets.length; i++)
         LinkSetOnLoad(sets[i], load);
 }
@@ -1904,25 +1910,69 @@ function LinkSetOnLoad(linkSet, load) {
 //> #### ComputeLinkageForLoad(linkSet, load) Abstract Operation
 //>
 function ComputeLinkageForLoad(linkSet, load) {
-    if (load.linkageComputed === undefined)
+    let exports = load.exports;
+    if (exports === undefined)
         throw SyntaxError("'export * from' cycle detected");
-    if (!load.linkageComputed) {
-        load.linkageComputed = undefined;
+    if (exports === null) {
+        if (load.status === "linked") {
+            exports = $ObjectGetOwnPropertyNames(load.module);
+        } else {
+            $Assert(load.status === "loaded");
+            load.exportsComputed = undefined;
 
-        // TODO: replace each `export * from "A"` edge in load.linkingInfo with
-        // the appropriate collection of implicit edges.
-        //
-        // This involves recursively doing ComputeLinkageForLoad linkage for A
-        // first.
-        //
-        // (This implementation requires that ordinary `export *;` declarations
-        // are desugared by $GetLinkingInfo. ISSUE: They may need to be marked
-        // as implicit in order to handle conflicts with `export * from`
-        // declarations correctly. But perhaps not.)
-        ???
+            exports = $SetNew();
 
-        load.linkageComputed = true;
+            // Replace each `export * from "A"` edge in load.linkingInfo with the
+            // appropriate collection of implicit edges.
+            //
+            // This involves recursively doing ComputeLinkageForLoad linkage for A
+            // first.
+            //
+            for (let i = 0; i < load.linkingInfo.length; i++) {
+                let edge = load.linkingInfo[i];
+                let edgeExports;
+                if (edge.exportName === null) {
+                    edgeExports = [];
+                } else if (edge.exportName === ALL) {
+                    // This is an `export * from` edge.
+                    //
+                    // (This implementation requires that ordinary `export *;` declarations
+                    // are desugared by $GetLinkingInfo. ISSUE: They may need to be marked
+                    // as implicit in order to handle conflicts with `export * from`
+                    // declarations correctly. But perhaps not.)
+
+                    $Assert(edge.importName === ALL);
+
+                    let requestName = edge.importModule;
+                    let fullName = $MapGet(load.dependencies, requestName);
+
+                    let mod = $MapGet(loaderData.modules, fullName);
+                    if (mod !== undefined) {
+                        edgeExports = $ObjectGetOwnPropertyNames(mod);
+                    } else {
+                        let depLoad = $MapGet(loaderData.loads, fullName);
+                        if (depLoad === undefined || depLoad.status !== "loaded") {
+                            throw $SyntaxError(
+                                "module \"" + fullName + "\" was deleted from the loader");
+                        }
+                        edgeExports = $SetElements(ComputeLinkageForLoad(linkSet, dep));
+                    }
+                } else {
+                    $Assert(typeof edge.exportName === "string");
+                    edgeExports = [edge.exportName];
+                }
+
+                for (let j = 0; j < edgeExports.length; j++) {
+                    let name = edgeExports[j];
+                    if ($SetHas(exports, name))
+                        throw $SyntaxError("name '" + name + "' exported multiple times");
+                    $SetAdd(exports, name);
+                }
+            }
+        }
+        load.exportsComputed = exports;
     }
+    return exports;
 }
 
 //> #### ComputeLinkage(linkSet) Abstract Operation
