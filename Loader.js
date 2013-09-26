@@ -142,6 +142,8 @@
 //         {importModule: "A", importName: MODULE, localName: null, exportName: null}
 //       import x from "A";
 //         {importModule: "A", importName: DEFAULT, localName: "x", exportName: null}
+//       import {} from "A";
+//         {importModule: "A", importName: MODULE, localName: null, exportName: null}
 //       import {x1 as y1} from "A";
 //         {importModule: "A", importName: "x1", localName: "y1", exportName: null}
 //       export {x1 as y1} from "A";
