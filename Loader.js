@@ -223,16 +223,21 @@
 //> Each Loader object has the following internal data properties:
 //>
 //>   * loader.[[global]] - The global object associated with the loader. All
-//>     scripts and modules loaded by the loader run in the scope of this object.
+//>     scripts and modules loaded by the loader run in the scope of this
+//>     object. (XXX needs better wording; it is hard to be both precise and
+//>     comprehensible on this point)
 //>
 //>   * loader.[[strict]] - A boolean value, the loader's strictness setting.  If
 //>     true, all code loaded by the loader is strict-mode code.
 //>
-//> These properties are fixed when the Loader is created and can't be changed.
+//> These properties are fixed when the Loader is created and can't be
+//> changed. In addition, each Loader contains two Lists:
 //>
-//>   * loader.[[modules]] - A Map from strings to Module objects: the module
-//>     registry.
+//>   * loader.[[modules]] - A List of Module Records: the module registry.
 //>
+//>   * loader.[[loads]] - A List of Load Records. These represent ongoing
+//>     asynchronous loads of modules or scripts.
+
 
 // ### Loader hooks
 //
@@ -259,21 +264,6 @@
 //> ### The Loader Constructor
 
 //> #### Loader ( options )
-//>
-//> Each Loader object has the following internal data properties:
-//>
-//> * loader.[[modules]] - A List of Module Records, the module registry.
-//>
-//> * loader.[[loads]] - A List of Load Records. These represent ongoing
-//>   asynchronous loads of modules or scripts.
-//>
-//> * loader.[[global]] - A global object. Scripts and modules loaded by the
-//>   loader are evaluated in a lexical environment that includes a global
-//>   environment record for this global object. (XXX needs better wording)
-//>
-//> * loader.[[strict]] - A boolean value. If this value is true, all scripts
-//>   and modules loaded by the loader are strict mode code.
-//>
 
 // Implementation note: Since ES6 does not have support for private state or
 // private methods, the "internal data properties" of Loader objects are stored
@@ -1588,7 +1578,46 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 
 
 //> ### Dependency loading
+//>
+//> A Load Record represents an attempt to find, fetch, translate, and parse a
+//> single module or script.
+//>
+//> Each Load Record contains the following fields (???terminology):
+//>
+//>   * load.[[status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
+//>
+//>   * load.[[fullName]] - The normalized name of the module being loaded, or
+//>     **null** if loading a script.
+//>
+//>   * load.[[linkSets]] - A List of all LinkSets that require this load to
+//>     succeed.  There is a many-to-many relation between Loads and LinkSets.
+//>     A single `evalAsync()` call can have a large dependency tree, involving
+//>     many Loads.  Many `evalAsync()` calls can be waiting for a single Load,
+//>     if they depend on the same module.
+//>
+//>   * load.[[body]] - Once the Load reaches the `"loaded"` state, a Module or
+//>     Script syntax tree. (???terminology)
+//>
+//>   * load.[[dependencies]] - Once the Load reaches the `"loaded"` state, a
+//>     List of pairs. Each pair consists of two strings: a module name as it
+//>     appears in an `import` or `export from` declaration in load.[[body]],
+//>     and the corresponding normalized module name.
+//>
+//>   * load.[[exception]] - If load.[[status]] is `"failed"`, the exception
+//>     value that was thrown, causing the load to fail. Otherwise, **null**.
+//>
+//>   * load.[[linkageComputed]] - This tristate value is used during the
+//>     processing of `export * from` declarations. **true**, **false**, or
+//>     `"pending"`.
+//>
+
+// Implementation note: We also use this linkingInfo thing, not sure if that needs
+// to be part of the standard since it's a pure function of the syntax tree.
 //
+// Implementation node: This implementation uses `undefined` rather than
+// `"pending"` as the intermediate value for load.[[linkageComputed]].
+
+
 // The goal of a `Load` is to resolve, fetch, translate, and parse a single
 // module (or a collection of modules that all live in the same script).
 //
