@@ -2086,7 +2086,7 @@ function ComputeLinkage(linkSet) {
     for (let i = 0; i < components.length; i++) {
         let load = components[i];
         $Assert(load.status === "loaded" || load.status === "linked");
-        ComputeLinkageForLoad(load);
+        GetExportedNames(load);
     }
 }
 
