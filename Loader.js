@@ -367,7 +367,7 @@ function Loader(options) {
 function Loader_create() {
     var loader = Object.create(this.prototype);
     var internalData = {
-        // **`this.modules`** is the module registry.  It maps full
+        // **`loaderData.modules`** is the module registry.  It maps full
         // module names to `Module` objects.
         //
         // This map only ever contains `Module` objects that have been
@@ -381,10 +381,9 @@ function Loader_create() {
         //
         modules: undefined,
 
-        // **`this.loads`** stores information about modules that are
-        // loading or loaded but not yet linked.  (TODO - fix that
-        // sentence for OnEndRun.)  It maps full module names to `Load`
-        // objects.
+        // **`loaderData.loads`** stores information about modules that are
+        // loading or loaded but not yet linked.  (TODO - fix that sentence for
+        // OnEndRun.)  It maps full module names to `Load` objects.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
