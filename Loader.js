@@ -110,8 +110,7 @@
 //   linked to `body` in a previous `$Link` call.  (We could perhaps do without
 //   this by caching this information in a WeakMap.)
 //
-// * `ALL`, `DEFAULT`, `MODULE` - Numeric constants related to
-//   `$GetLinkingInfo` (below).
+// * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
 //
 // * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
 //   import/export/module declarations in the given Script or Module.
