@@ -1584,41 +1584,45 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //>
 //> Each Load Record has the following fields:
 //>
-//>   * load.[[status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
+//>   * load.[[Status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
 //>
-//>   * load.[[fullName]] - The normalized name of the module being loaded, or
+//>   * load.[[FullName]] - The normalized name of the module being loaded, or
 //>     **null** if loading a script.
 //>
-//>   * load.[[linkSets]] - A List of all LinkSets that require this load to
+//>   * load.[[LinkSets]] - A List of all LinkSets that require this load to
 //>     succeed.  There is a many-to-many relation between Loads and LinkSets.
 //>     A single `evalAsync()` call can have a large dependency tree, involving
 //>     many Loads.  Many `evalAsync()` calls can be waiting for a single Load,
 //>     if they depend on the same module.
 //>
-//>   * load.[[body]] - Once the Load reaches the `"loaded"` state, a Module or
+//>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a Module or
 //>     Script syntax tree. (???terminology)
 //>
-//>   * load.[[dependencies]] - Once the Load reaches the `"loaded"` state, a
+//>   * load.[[Dependencies]] - Once the Load reaches the `"loaded"` state, a
 //>     List of pairs. Each pair consists of two strings: a module name as it
-//>     appears in an `import` or `export from` declaration in load.[[body]],
+//>     appears in an `import` or `export from` declaration in load.[[Body]],
 //>     and the corresponding normalized module name.
 //>
-//>   * load.[[exception]] - If load.[[status]] is `"failed"`, the exception
+//>   * load.[[Exception]] - If load.[[Status]] is `"failed"`, the exception
 //>     value that was thrown, causing the load to fail. Otherwise, **null**.
 //>
-//>   * load.[[exports]] - A List of strings, names exported by this module;
-//>     or **null** if this is a script Load or the export set has not been
-//>     computed yet; or `"pending"` if the export set is currently being
-//>     computed.
+//>   * load.[[ExportedNames]] - A List of strings, names exported by this
+//>     module; or **undefined** if this is a script Load or the export set has
+//>     not been computed yet.
 //>
-//>   * load.[[module]] - If the `.link()` hook returned a Module object,
+//>   * load.[[Module]] - If the `.link()` hook returned a Module object,
 //>     this is that Module. Otherwise, **null**.
 //>
+// The spec text currently uses only .[[Module]] and makes .[[ExportedNames]]
+// an internal property of the Module object.
+//
 // Implementation note: We also use this linkingInfo thing, not sure if that needs
 // to be part of the standard since it's a pure function of the syntax tree.
 //
-// Implementation node: This implementation uses `undefined` rather than
-// `"pending"` as the intermediate value for load.[[exports]].
+// Implementation node: This implementation uses a special value of 0 as an
+// intermediate value for load.exportedNames, to indicate that the value is
+// being computed. This is necessary to detect `export * from` cycles. The spec
+// uses a List named *visited* for this purpose.
 
 
 // The goal of a Load is to locate, fetch, translate, and parse a single
@@ -1699,7 +1703,7 @@ function CreateLoad(fullName) {
         dependencies: null,
         factory: null,
         exception: null,
-        exports: null,
+        exportedNames: undefined,
         module: null
     };
 }
@@ -1783,6 +1787,7 @@ function OnEndRun(load, mod) {
     $Assert(load.status === "loading");
     load.status = "linked";
     load.module = mod;
+    load.exportedNames = $ObjectGetOwnPropertyNames(mod);
     for (let i = 0; i < sets.length; i++)
         LinkSetOnLoad(sets[i], load);
 }
@@ -1906,73 +1911,149 @@ function LinkSetOnLoad(linkSet, load) {
 
 //> ### Linkage
 //>
-//> #### ComputeLinkageForLoad(linkSet, load) Abstract Operation
-//>
-function ComputeLinkageForLoad(linkSet, load) {
-    let exports = load.exports;
-    if (exports === undefined)
-        throw SyntaxError("'export * from' cycle detected");
-    if (exports === null) {
-        if (load.status === "linked") {
-            exports = $ObjectGetOwnPropertyNames(load.module);
-        } else {
-            $Assert(load.status === "loaded");
-            load.exportsComputed = undefined;
 
-            exports = $SetNew();
+// **ExplicitExportedNames** - Return the list of names that are definitely
+// exported by a given module body, including everything that can be determined
+// "locally" (i.e. without looking at other module bodies). Exports due to
+// `export *;` are included, since they can be determined by looking at this
+// module body, but exports due to `export * from "other";` are not.
+function ExplicitExportedNames(linkingInfo) {
+    // In the spec, this would be a syntax-directed algorithm.
+    //
+    // In the implementation, this could be a primitive provided by the parser;
+    // but it's also possible to compute it from the output of $GetLinkingInfo,
+    // so that's what we do here.
+    //
+    // This implementation requires that ordinary `export *;` declarations are
+    // desugared by $GetLinkingInfo.
+    //
+    // This returns a Set instead of an Array only because the caller needs the
+    // data in a Set.
 
-            // Replace each `export * from "A"` edge in load.linkingInfo with the
-            // appropriate collection of implicit edges.
-            //
-            // This involves recursively doing ComputeLinkageForLoad linkage for A
-            // first.
-            //
-            for (let i = 0; i < load.linkingInfo.length; i++) {
-                let edge = load.linkingInfo[i];
-                let edgeExports;
-                if (edge.exportName === null) {
-                    edgeExports = [];
-                } else if (edge.exportName === ALL) {
-                    // This is an `export * from` edge.
-                    //
-                    // (This implementation requires that ordinary `export *;` declarations
-                    // are desugared by $GetLinkingInfo. ISSUE: They may need to be marked
-                    // as implicit in order to handle conflicts with `export * from`
-                    // declarations correctly. But perhaps not.)
-
-                    $Assert(edge.importName === ALL);
-
-                    let requestName = edge.importModule;
-                    let fullName = $MapGet(load.dependencies, requestName);
-
-                    let mod = $MapGet(loaderData.modules, fullName);
-                    if (mod !== undefined) {
-                        edgeExports = $ObjectGetOwnPropertyNames(mod);
-                    } else {
-                        let depLoad = $MapGet(loaderData.loads, fullName);
-                        if (depLoad === undefined || depLoad.status !== "loaded") {
-                            throw $SyntaxError(
-                                "module \"" + fullName + "\" was deleted from the loader");
-                        }
-                        edgeExports = $SetElements(ComputeLinkageForLoad(linkSet, dep));
-                    }
-                } else {
-                    $Assert(typeof edge.exportName === "string");
-                    edgeExports = [edge.exportName];
-                }
-
-                for (let j = 0; j < edgeExports.length; j++) {
-                    let name = edgeExports[j];
-                    if ($SetHas(exports, name))
-                        throw $SyntaxError("name '" + name + "' exported multiple times");
-                    $SetAdd(exports, name);
-                }
-            }
+    let result = $SetNew();
+    for (let i = 0; i < linkingInfo.length; i++) {
+        let edge = linkingInfo[i];
+        let name = edge.exportName;
+        if (typeof name === "string") {
+            $Assert(!$SetHas(result, name));
+            $SetAdd(result, name);
         }
-        load.exportsComputed = exports;
     }
+    return result;
+}
+
+// **ExportStarRequestNames** - Return an Array of the strings M that occur in
+// the syntactic context `export * from M;` in a given module body.
+function ExportStarRequestNames(linkingInfo) {
+    // In the spec, this would be a syntax-directed algorithm.
+    //
+    // In the implementation, this could be a primitive provided by the parser;
+    // but it's also possible to compute it from the output of $GetLinkingInfo,
+    // so that's what we do here.
+    //
+    let names = [];
+    for (let i = 0; i < linkingInfo.length; i++) {
+        let edge = linkingInfo[i];
+        if (edge.importName === ALL)
+            $ArrayPush(names, edge);
+    }
+    return names;
+}
+
+//> #### GetExportedNames(linkSet, load) Abstract Operation
+//>
+// (This operation is a combination of ComputeLinkage, ExportedNames, and
+// ModuleInstanceExportedNames in the draft spec language.)
+//
+// Implementation note: Instead of the list *visited*, we use a special value
+// `load.exportedNames === 0` to indicate that the set of exports is being
+// computed right now, and detect `export * from` cycles.
+//
+function GetExportedNames(linkSet, load) {
+    //> 1. If load.[[ExportedNames]] is `"pending"`, throw a SyntaxError
+    //>    exception.
+    let exports = load.exportedNames;
+    if (exports === 0)
+        throw SyntaxError("'export * from' cycle detected");
+
+    //> 2. If load.[[ExportedNames]] is not **undefined**, then return load.[[ExportedNames]].
+    if (exports !== undefined)
+        return exports;
+
+    //> 3. Set load.[[ExportedNames]] to `"pending"`.
+    $Assert(load.status === "loaded");
+    load.exportedNames = 0;
+
+    //> 4. Let body be the Module parse stored at load.[[Body]].
+    //> 5. Let exports be the ExplicitExportedNames of body.
+    //
+    // Implementation note: As implemented here, steps 5 and 6 each do a pass
+    // over load.linkingInfo.  But perhaps both those loops should actually be
+    // fused with parsing, and the data should be exposed as primitives by the
+    // parser.
+    //
+    exports = ExplicitExportedNames(load.linkingInfo);
+
+    //> 6. Let names be the ExportStarRequestNames of body.
+    let names = ExportStarRequestNames(load.linkingInfo);
+
+    //> 7. Repeat for each requestName in names,
+    for (let i = 0; i < names.length; i++) {
+        let requestName = names[i];
+
+        //>     1. Let fullName be GetDependencyFullName(load.[[Dependencies]], requestName).
+        let fullName = $MapGet(load.dependencies, requestName);
+
+        //>     2. Let mod be GetModuleFromLoaderRegistry(linkSet.[[Loader]], fullName).
+        let starExports;
+        let mod = $MapGet(loaderData.modules, fullName);
+        if (mod !== undefined) {
+            //>     3. If mod is not **undefined**,
+            //>         1. Let starExports be mod.[[ExportedNames]].
+            starExports = $ObjectGetOwnPropertyNames(mod);
+        } else {
+            //>     4. Else,
+            //>          1. Let depLoad be GetLoadFromLoader(linkSet.[[Loader]], fullName).
+            let depLoad = $MapGet(loaderData.loads, fullName);
+
+            //>          2. If depLoad is undefined or depLoad.[[Status]] is not `"loaded"`,
+            //>             throw a SyntaxError exception.
+            if (depLoad === undefined || depLoad.status !== "loaded") {
+                throw $SyntaxError(
+                    "module \"" + fullName + "\" was deleted from the loader");
+            }
+
+            //>          3. Let starExports be GetExportedNames(linkSet, depLoad).
+            starExports = GetExportedNames(linkSet, depLoad);
+        }
+
+        //>     5. If any name in starExports is already in exports,
+        //>        throw a SyntaxError exception.
+        //>     6. Add each element of starExports to exports.
+        for (let j = 0; j < starExports.length; j++) {
+            let name = starExports[j];
+
+            if ($SetHas(exports, name)) {
+                throw $SyntaxError(
+                    "duplicate export '" + name + "' " +
+                        "in module '" + load.fullName + "' " +
+                        "due to 'export * from \"" + requestName + "\"'");
+            }
+            $SetAdd(exports, name);
+        }
+    }
+
+    //> 8. Set load.[[ExportedNames]] to exports.
+    //
+    // Implementation note: in the spec, exports is just a List, but in the
+    // implementation it is a Set and we want an Array.
+    //
+    load.exportedNames = $SetElements(exports);
+
+    //> 7. Return exports.
     return exports;
 }
+
 
 //> #### ComputeLinkage(linkSet) Abstract Operation
 //>
