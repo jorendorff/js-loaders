@@ -209,8 +209,32 @@
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
 // * `$TypeError(msg)` ~= new TypeError(msg)
 // * `$SyntaxError(msg)` ~= new SyntaxError(msg)
+
+// ## Module objects
 //
+// A Module object:
 //
+//   * has null [[Prototype]] initially, or perhaps no [[Prototype]] at all
+//
+//   * has an [[Environment]] internal data property whose value is a
+//     Declarative Environment Record (consisting of all bindings declared at
+//     toplevel in the module) whose outerEnvironment is a Global Environment
+//     Record.
+//
+//   * has an [[Exports]] internal data property whose value is a List of
+//     Export Records, {[[ExportName]]: a String, [[SourceModule]]: a Module,
+//     [[BindingName]]: a String}, such that the [[ExportName]]s of the records
+//     in the List are each unique.
+//
+//   * has data properties that correspond exactly to the [[Exports]], and no
+//     other properties.
+//
+//   * has a [[Dependencies]] internal data property, a List of Modules or
+//     null.  This is populated at link time by the loader (?) and used by
+//     EnsureEvaluated.
+
+
+
 // ## The Loader class
 //
 // The public API of the module loader system is the `Loader` class.
