@@ -2059,8 +2059,8 @@ function GetExportedNames(linkSet, load) {
             if ($SetHas(exports, name)) {
                 throw $SyntaxError(
                     "duplicate export '" + name + "' " +
-                        "in module '" + load.fullName + "' " +
-                        "due to 'export * from \"" + requestName + "\"'");
+                    "in module '" + load.fullName + "' " +
+                    "due to 'export * from \"" + requestName + "\"'");
             }
             $SetAdd(exports, name);
         }
@@ -2200,7 +2200,6 @@ function LinkLinkSet(linkSet) {
     let linkedNames = [];
     let linkedModules = [];
     let seen = $SetNew();
-
 
     // Depth-first walk of the import tree, stopping at already-linked
     // modules.
