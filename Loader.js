@@ -2164,18 +2164,16 @@ TODO:
 LinkExport(M: Module, external: string, link: ExportLink, visited: List(ExportReference)) : ExportBinding
 
     If link.[[Resolved]] = *true* then:
-      Let exports = M.[[Exports]].
-      Add {[[External]]: external, [[Binding]]: link.[[Binding]]} to exports.
-      Return link.[[Binding]].
+      Let b = link.[[Binding]].
     Else:
       Let ref = link.[[Reference]].
       If ref is in visited, throw a new SyntaxError.
       Add ref to visited.
       Let b = ResolveExport(ref, visited).
       ReturnIfAbrupt(b).
-      Let exports = M.[[Exports]].
-      Add {[[External]]: external, [[Binding]]: b} to exports.
-      Return b.
+    Let exports = M.[[Exports]].
+    Add {[[External]]: external, [[Binding]]: b} to exports.
+    Return b.
 
 ResolveExport(ref: ExportReference, visited: List(ExportReference)) : ExportBinding
 
