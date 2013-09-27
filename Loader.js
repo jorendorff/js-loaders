@@ -2142,10 +2142,18 @@ function Link(loader, load, edge) {
                 $LinkImport(load.body, edge.localName, module, internalName);
             }
         } else if (edge.exportName !== null) {
-            // This implementation does not do anything for exports of the form
-            // {importModule: null, importName: null, localName: "x", exportName: "y"}
-            // It assumes such local exports are handled by $Parse().
-            LinkExport(load, edge.exportName, sourceModule, edge.importName, []);
+            if (edge.exportName === ALL) {
+                let names = $ObjectGetOwnPropertyNames(sourceModule);
+                for (let i = 0; i < names.length; i++) {
+                    let name = names[i];
+                    LinkExport(load, name, sourceModule, name, []);
+                }
+            } else {
+                // This implementation does not do anything for exports of the form
+                // {importModule: null, importName: null, localName: "x", exportName: "y"}
+                // It assumes such local exports are handled by $Parse().
+                LinkExport(load, edge.exportName, sourceModule, edge.importName, []);
+            }
         }
     }
 }
