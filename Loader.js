@@ -246,20 +246,20 @@
 //>
 //> Each Loader object has the following internal data properties:
 //>
-//>   * loader.[[global]] - The global object associated with the loader. All
+//>   * loader.[[Global]] - The global object associated with the loader. All
 //>     scripts and modules loaded by the loader run in the scope of this
 //>     object. (XXX needs better wording; it is hard to be both precise and
 //>     comprehensible on this point)
 //>
-//>   * loader.[[strict]] - A boolean value, the loader's strictness setting.  If
+//>   * loader.[[Strict]] - A boolean value, the loader's strictness setting.  If
 //>     true, all code loaded by the loader is strict-mode code.
 //>
 //> These properties are fixed when the Loader is created and can't be
 //> changed. In addition, each Loader contains two Lists:
 //>
-//>   * loader.[[modules]] - A List of Module Records: the module registry.
+//>   * loader.[[Modules]] - A List of Module Records: the module registry.
 //>
-//>   * loader.[[loads]] - A List of Load Records. These represent ongoing
+//>   * loader.[[Loads]] - A List of Load Records. These represent ongoing
 //>     asynchronous loads of modules or scripts.
 
 
@@ -293,7 +293,7 @@
 // private methods, the "internal data properties" of Loader objects are stored
 // on a separate object which is not accessible from user code.
 //
-// So what the specification refers to as `loader.[[modules]]` is implemented
+// So what the specification refers to as `loader.[[Modules]]` is implemented
 // as `GetLoaderInternalData(loader).modules`.
 //
 // The simplest way to connect the two objects without exposing this internal
@@ -422,8 +422,8 @@ function GetLoaderInternalData(value) {
 //>
 //> The abstract operation thisLoader(*value*) performs the following steps:
 //>
-//> 1. If Type(*value*) is Object and value has a [[modules]] internal data property, then
-//>     1. Let m be *value*.[[modules]].
+//> 1. If Type(*value*) is Object and value has a [[Modules]] internal data property, then
+//>     1. Let m be *value*.[[Modules]].
 //>     2. If m is not **undefined**, then return *value*.
 //> 2. Throw a **TypeError** exception.
 //>
@@ -440,7 +440,7 @@ function GetLoaderInternalData(value) {
 //>
 function Loader_global() {
     //> 1. Let L be this Loader.
-    //> 2. Return L.[[global]].
+    //> 2. Return L.[[Global]].
     return GetLoaderInternalData(this).global;
 }
 //>
@@ -454,7 +454,7 @@ function Loader_global() {
 //>
 function Loader_strict() {
     //> 1. Let L be this Loader.
-    //> 2. Return L.[[strict]].
+    //> 2. Return L.[[Strict]].
     return GetLoaderInternalData(this).strict;
 }
 //>
