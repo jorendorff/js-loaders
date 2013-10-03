@@ -322,6 +322,10 @@ function Loader(options) {
     loaderData.strict = strict;
     loaderData.module = $MapNew();
 
+    var builtins = {};
+    $DefineBuiltins(builtins);
+    $ObjectDefineProperty(loader, "builtins", builtins);
+
     // P4 ISSUE: Detailed behavior of hooks.
     //
     // As implemented here, hooks are just ordinary properties of the
@@ -1144,21 +1148,6 @@ function Loader_translate(src, options) {
 function Loader_link(src, options) {
     //> 1. Return **undefined**.
 }
-//>
-
-
-//> #### Loader.prototype.defineBuiltins ( obj )
-//>
-
-// Define all the built-in objects and functions of the ES6 standard
-// library associated with this loader's intrinsics as properties on
-// `obj`.
-function Loader_defineBuiltins(obj = GetLoaderInternalData(this).global) {
-    $DefineBuiltins(obj, this);
-    return obj;
-}
-//>
-//> The `length` property of the `defineBuiltins` method is **0**.
 //>
 
 
