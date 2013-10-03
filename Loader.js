@@ -1927,6 +1927,106 @@ function LinkSetOnLoad(linkSet, load) {
 //> ### Linkage
 //>
 
+// Before we reach this stage, we already have dependencies for each new
+// module: that is, a mapping, for each module, of request names to full module
+// names. (The values of this mapping are the same thing as the evaluation-order
+// dependencies.)
+//
+// The basic algorithm we want to describe in the spec is:
+// 
+// 1. Detect all errors:
+//      * `export * from` loops
+//      * `export from` loops
+//      * imports that do not match exports
+//      * a module we were depending on was deleted from the Loader
+//    If there are any errors, throw.
+// 
+// 2. For each module, resolve all `export * from` edges.
+//    This computes the complete set of exports for each new module.
+//    The resulting `export {name} from` edges must be stored.
+//
+// 3. Link all exports. For each module in the link set, for each export,
+//    create an export binding and a property on the Module object.  (There's
+//    some recursion in this step, but we already detected all possible
+//    errors in step 1.)
+// 
+// 4. For each import, bind it to the corresponding export.
+//
+// In a polyfill, we'll need to translate everything:
+//
+//     import {x} from "M";
+//     function showx() {
+//         alert(x);
+//     }
+//
+// ===>
+//
+//     var showx;
+//     (function (__MODULES) {
+//         showx = function () {
+//             alert(__MODULES.M.x);
+//         };
+//     })
+//
+// It may not possible to do this perfectly with direct eval.
+// It seems like a lot of work.
+
+
+//> #### Runtime Semantics: Link Errors
+//>
+//> With arguments loader and loads.
+//>
+//> The following are link errors.
+//>
+//>   * **`import` failures.**
+//>     It is a link error if there exists a triple <m_1, m_2, name>
+//>     such that HasImport(loader, loads, m_1, m_2, name) is true
+//>     and HasExport(m_2, name) is false.
+//>
+//>   * **`export from` cycles.**
+//>     It is a link error if there exists a nonempty sequence of pairs
+//>     (<m_0, e_0>, <m_1, e_1>, ..., <m_N, e_N>) such that
+//>     for all natural numbers i from 0 to N-1,
+//>     HasPassThroughExport(loader, loads, <m_i, e_i>, <m_j, e_j>) is true,
+//>     where j = (i modulo N) + 1.
+//>
+//>     NOTE This occurs if one or more modules mutually import a name from one
+//>     another in a cycle, such that all of the exports are pass-through
+//>     exports, and none refers to an actual binding. For example:
+//>
+//>         // in module "A"
+//>         export {v} from "B";
+//>
+//>         // in module "B"
+//>         export {v} from "A";  // link error: no binding declared anywhere for v
+//>
+//>   * **`export * from` cycles.**
+//>     It is a link error if there exists a nonempty sequence of Load records
+//>     (r_0, r_1, ..., r_{N-1}) in loads such that 
+//>     for all natural numbers i from 0 to N-1,
+//>     HasExportStarFrom(loader, loads, r_i, r_j) is true,
+//>     where j = (i + 1) modulo N.
+//>
+//>     NOTE This occurs if one or more modules mutually `export * from` one
+//>     another in a cycle. For example:
+//>
+//>         // in module "A"
+//>         export * from "A";  // link error: 'export * from' cycle
+//>
+//>   * **Deleted dependencies.**
+//>     It is a link error if there exists a module M and a string fullName
+//>     such that all of the following are true:
+//>     (TODO - tighten up the wording here)
+//>       * a Load Record for M exists in loader,
+//>       * fullName is in M.[[Dependencies]],
+//>       * there is no Load Record for fullName in loads, and
+//>       * there is no LoaderRegistryEntry record for fullName in
+//>         loader.[[Modules]].
+//>
+//>     NOTE This can occur only if a module required by a Load in loads was
+//>     deleted from the loader's module registry using
+//>     Loader.prototype.delete.
+
 // **ExplicitExportedNames** - Return the list of names that are definitely
 // exported by a given module body, including everything that can be determined
 // "locally" (i.e. without looking at other module bodies). Exports due to
