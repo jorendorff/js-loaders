@@ -474,7 +474,7 @@ function Loader_eval(src, options) {
     src = $ToString(src);
     var loaderData = GetLoaderInternalData(this);
 
-    let address = UnpackAddressOption(options, undefined);
+    let address = UnpackOption(options, "address");
 
     // The loader works in three basic phases: load, link, and evaluate.
     // During the **load phase**, code is loaded and parsed, and import
@@ -536,14 +536,16 @@ function Loader_evalAsync(src,
     //     if (typeof errback !== "function")
     //         throw $TypeError("Loader.load: error callback must be a function");
     //
-    let address = UnpackAddressOption(options, errback);
-    if (address === undefined)
-        return;
 
-    let load = CreateLoad(null);
-    let run = MakeEvalCallback(load, callback, errback);
-    CreateLinkSet(this, load, run, errback);
-    OnFulfill(this, load, {}, null, "script", false, src, address);
+    try {
+        let address = UnpackOption(options, "address");
+        let load = CreateLoad(null);
+        let run = MakeEvalCallback(load, callback, errback);
+        CreateLinkSet(this, load, run, errback);
+        OnFulfill(this, load, {}, null, "script", false, src, address);
+    } catch (exn) {
+        AsyncCall(errback, exn);
+    }
 }
 
 //>
@@ -567,29 +569,31 @@ function Loader_load(address,
                      errback = exc => { throw exc; },
                      options = undefined)
 {
-    // Build a referer object.
-    let refererAddress = UnpackAddressOption(options, errback);
-    if (refererAddress === undefined)
-        return;
-    let referer = {name: null, address: refererAddress};
+    try {
+        // Build a referer object.
+        let refererAddress = UnpackOption(options, "address");
+        let referer = {name: null, address: refererAddress};
 
-    // Create an empty metadata object.  *Rationale:*  The `normalize` hook
-    // only makes sense for modules; `load()` loads scripts.  But we do
-    // want `load()` to use the `fetch` hook, which means we must come up
-    // with a metadata value of some kind (this is ordinarily the
-    // `normalize` hook's responsibility).
-    //
-    // `metadata` is created using the intrinsics of the enclosing loader
-    // class, not the Loader's intrinsics.  *Rationale:*  It is for the
-    // loader hooks to use.  It is never exposed to code loaded by this
-    // Loader.
-    //
-    let metadata = {};
+        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+        // only makes sense for modules; `load()` loads scripts.  But we do
+        // want `load()` to use the `fetch` hook, which means we must come up
+        // with a metadata value of some kind (this is ordinarily the
+        // `normalize` hook's responsibility).
+        //
+        // `metadata` is created using the intrinsics of the enclosing loader
+        // class, not the Loader's intrinsics.  *Rationale:*  It is for the
+        // loader hooks to use.  It is never exposed to code loaded by this
+        // Loader.
+        //
+        let metadata = {};
 
-    let load = CreateLoad(null);
-    let run = MakeEvalCallback(load, callback, errback);
-    CreateLinkSet(this, load, run, errback);
-    return CallFetch(this, load, address, referer, metadata, null, "script");
+        let load = CreateLoad(null);
+        let run = MakeEvalCallback(load, callback, errback);
+        CreateLinkSet(this, load, run, errback);
+        return CallFetch(this, load, address, referer, metadata, null, "script");
+    } catch (exn) {
+        AsyncCall(errback, exn);
+    }
 }
 //>
 //> The `length` property of the `load` method is **1**.
@@ -610,17 +614,16 @@ function Loader_import(moduleName,
 {
     // Unpack `options`.  Build the referer object that we will pass to
     // `startModuleLoad`.
-    let name = null;
-    if (options !== undefined && "module" in options) {
-        name = options.module;
-        if (typeof name !== "string") {
-            AsyncCall(errback, $TypeError("import: options.module must be a string"));
-            return;
-        }
-    }
-    let address = UnpackAddressOption(options, errback);
-    if (address === undefined)
+    let name, address;
+
+    try {
+        name = UnpackOption(options, "module");
+        address = UnpackOption(options, "address");
+    } catch (exn) {
+        AsyncCall(errback, exn);
         return;
+    }
+
     let referer = {name, address};
 
     // `StartModuleLoad` starts us along the pipeline.
@@ -1153,8 +1156,8 @@ function Loader_defineBuiltins(obj = GetLoaderInternalData(this).global) {
 //>
 
 
-// **`UnpackAddressOption`** - Used by several Loader methods to get
-// `options.address` and check that if present, it is a string.
+// **`UnpackOption`** - Used by several Loader methods to get options
+// off of an options object and check that if defined, they are strings.
 //
 // `eval()`, `evalAsync()`, and `load()` all accept an optional `options`
 // object. `options.address`, if present, is passed to each loader hook,
@@ -1167,30 +1170,24 @@ function Loader_defineBuiltins(obj = GetLoaderInternalData(this).global) {
 //
 // P5 SECURITY ISSUE: Make sure that is OK.
 //
-function UnpackAddressOption(options, errback) {
-    if (options !== undefined && "address" in options) {
-        // BUG: this property access can throw, and we don't catch it and
-        // forward to errback.
-        let address = options.address;
-        if (typeof address !== "string") {
-            let exc = $TypeError("options.address must be a string, if present");
+function UnpackOption(options, name) {
+    var value;
 
-            // `errback` is undefined if and only if the caller is synchronous
-            // `eval()`.  In that case, just throw.
-            if (errback === undefined)
-                throw exc;
+    if (options !== undefined)
+        value = options[name];
 
-            // Otherwise, report the error asynchronously.  The caller must
-            // check for `undefined`.
-            AsyncCall(errback, exc);
-            return undefined;
-        }
-        return address;
+    switch (typeof value) {
+      case "undefined":
+        return null;
+
+      case "string":
+        return value;
+
+      default:
+        throw $TypeError("options." + name + " must be a string, if defined");
     }
-
-    // The default address is null, per samth 2013 May 24.
-    return null;
 }
+
 
 // **`MakeEvalCallback`** - Create and return a callback, to be called
 // after linking is complete, that evaluates the script loaded by the
