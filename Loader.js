@@ -2480,7 +2480,8 @@ function IsObject(v) {
            v !== undefined &&
            typeof v !== "boolean" &&
            typeof v !== "number" &&
-           typeof v !== "string";
+           typeof v !== "string" &&
+           typeof v !== "symbol";
 }
 
 // Schedule fn to be called with the given arguments during the next turn of
