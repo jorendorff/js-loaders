@@ -393,7 +393,11 @@ function Loader_create() {
 
         // Various configurable options.
         global: undefined,
-        strict: false
+        strict: false,
+
+        // **`loaderData.runtimeDependencies`** stores the
+        // should-be-evaluated-before relation for modules.
+        runtimeDependencies: $WeakMapNew()
     };
 
     $WeakMapSet(loaderInternalDataMap, loader, internalData);
@@ -504,7 +508,7 @@ function Loader_eval(src, options) {
     // During the **evaluate phase**, we first evaluate module bodies
     // for any modules needed by `script` that haven't already run.
     // Then we evaluate `script` and return that value.
-    return EnsureEvaluated(script);
+    return EnsureEvaluated(this, script);
 }
 
 
@@ -540,7 +544,7 @@ function Loader_evalAsync(src,
     try {
         let address = UnpackOption(options, "address");
         let load = CreateLoad(null);
-        let run = MakeEvalCallback(load, callback, errback);
+        let run = MakeEvalCallback(this, load, callback, errback);
         CreateLinkSet(this, load, run, errback);
         OnFulfill(this, load, {}, null, "script", false, src, address);
     } catch (exn) {
@@ -588,7 +592,7 @@ function Loader_load(address,
         let metadata = {};
 
         let load = CreateLoad(null);
-        let run = MakeEvalCallback(load, callback, errback);
+        let run = MakeEvalCallback(this, load, callback, errback);
         CreateLinkSet(this, load, run, errback);
         return CallFetch(this, load, address, referer, metadata, null, "script");
     } catch (exn) {
@@ -612,6 +616,8 @@ function Loader_import(moduleName,
                        errback = exc => { throw exc; },
                        options = undefined)
 {
+    var loader = this;
+
     // Unpack `options`.  Build the referer object that we will pass to
     // `startModuleLoad`.
     let name, address;
@@ -629,7 +635,7 @@ function Loader_import(moduleName,
     // `StartModuleLoad` starts us along the pipeline.
     let load;
     try {
-        load = StartModuleLoad(this, referer, moduleName, false);
+        load = StartModuleLoad(loader, referer, moduleName, false);
     } catch (exc) {
         AsyncCall(errback, exc);
         return;
@@ -641,7 +647,7 @@ function Loader_import(moduleName,
     } else {
         // The module is now loading.  When it loads, it may have more
         // imports, requiring further loads, so put it in a LinkSet.
-        CreateLinkSet(this, load, success, errback);
+        CreateLinkSet(loader, load, success, errback);
     }
 
     function success() {
@@ -653,7 +659,7 @@ function Loader_import(moduleName,
                 throw $TypeError("import(): module \"" + load.fullName +
                                  "\" was deleted from the loader");
             }
-            EnsureEvaluated(m);
+            EnsureEvaluated(loader, m);
         } catch (exc) {
             return errback(exc);
         }
@@ -806,7 +812,7 @@ function Loader_get(name) {
     let m = $MapGet(loaderData.modules, name);
 
     if (m !== undefined)
-        EnsureEvaluated(m);
+        EnsureEvaluated(this, m);
     return m;
 }
 
@@ -1192,7 +1198,7 @@ function UnpackOption(options, name) {
 // **`MakeEvalCallback`** - Create and return a callback, to be called
 // after linking is complete, that evaluates the script loaded by the
 // given `load`.
-function MakeEvalCallback(load, callback, errback) {
+function MakeEvalCallback(loader, load, callback, errback) {
     return () => {
         // Tail calls would be equivalent to AsyncCall, except for
         // possibly some imponderable timing details.  This is meant as
@@ -1200,7 +1206,7 @@ function MakeEvalCallback(load, callback, errback) {
         // what the spec is expected to say.
         let result;
         try {
-            result = EnsureEvaluated(load.body);
+            result = EnsureEvaluated(loader, load.body);
         } catch (exc) {
             AsyncCall(errback, exc);
             return;
@@ -2357,18 +2363,21 @@ function EvaluateScriptOrModuleOnce(body) {
     }
 }
 
-//> #### EnsureEvaluated(start) Abstract Operation
+//> #### EnsureEvaluated(loader, start) Abstract Operation
 //>
 //> Walk the dependency graph of the script or module start, evaluating
 //> any script or module bodies that have not already been evaluated
 //> (including, finally, start itself).
+//>
+//> Modules are evaluated in depth-first, left-to-right, post order, stopping
+//> at cycles.
 //>
 //> start and its dependencies must already be linked.
 //>
 //> On success, start and all its dependencies, transitively, will have started
 //> to evaluate exactly once.
 //>
-function EnsureEvaluated(start) {
+function EnsureEvaluated(loader, start) {
     // *Why the graph walk doesn't stop at already-evaluated modules:*  It's a
     // matter of correctness.  Here is the test case:
     //
@@ -2402,20 +2411,25 @@ function EnsureEvaluated(start) {
 
     // Build a *schedule* giving the sequence in which modules and scripts
     // should be evaluated.
-    //
-    // **Evaluation order** - Modules are evaluated in depth-first,
-    // left-to-right, post order, stopping at cycles.
-    //
+
+    let dependencies = GetLoaderInternalData(loader).runtimeDependencies;
+
+    //> 1. Let seen be an empty List.
     let seen = $SetNew();
+
+    //> 2. Let schedule be an empty List.
     let schedule = $SetNew();
 
-    function walk(m) {
+    function BuildSchedule(m) {
         $SetAdd(seen, m);
-        let deps = $GetLinkedModules(m);
-        for (let i = 0; i < deps.length; i++) {
-            let dep = deps[i];
-            if (!$SetHas(seen, dep))
-                walk(dep);
+
+        let deps = $WeakMapGet(dependencies, m);
+        if (deps !== undefined) {
+            for (let i = 0; i < deps.length; i++) {
+                let dep = deps[i];
+                if (!$SetHas(seen, dep))
+                    BuildSchedule(dep);
+            }
         }
         $SetAdd(schedule, m);
 
@@ -2428,7 +2442,8 @@ function EnsureEvaluated(start) {
         }
     }
 
-    walk(start);
+    //> 3. Call BuildSchedule with arguments start, seen, schedule.
+    BuildSchedule(start);
 
     // Run the code.
     //
@@ -2450,11 +2465,14 @@ function EnsureEvaluated(start) {
     // `System.get()` can cause other module bodies to be evaluated.
     // That is, module body evaluation can nest.  However no individual
     // module's body will be evaluated more than once.
-    //
+
+    //> 4. Repeat, for each script or module C in schedule:
     let result;
     schedule = $SetElements(schedule);
-    for (let i = 0; i < schedule.length; i++)
+    for (let i = 0; i < schedule.length; i++) {
+        //>     1. Call EvaluateScriptOrModuleOnce with the argument C.
         result = EvaluateScriptOrModuleOnce(schedule[i]);
+    }
     return result;
 }
 
@@ -2477,7 +2495,8 @@ function IsObject(v) {
            v !== undefined &&
            typeof v !== "boolean" &&
            typeof v !== "number" &&
-           typeof v !== "string";
+           typeof v !== "string" &&
+           typeof v !== "symbol";
 }
 
 // Schedule fn to be called with the given arguments during the next turn of
