@@ -1539,7 +1539,8 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 // ### Encyclopedia of errors
 //
 // For reference, here are all the kinds of errors that can occur that are
-// related to on or more loads in progress. This list is meant to be exhaustive.
+// related to one or more loads in progress. This list is meant to be
+// exhaustive.
 //
 // Errors related to a `Load`:
 //
@@ -1562,21 +1563,11 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //
 // Errors related to a `LinkSet`:
 //
-//   - If a script or module A tries to import a binding from a module B that
-//     isn't among B's exports, that's a static link error. We throw a
-//     ReferenceError.
-//
-//   - Import cycles: If module A has `import {x} from "B"; export x;`, and
-//     vice versa, that's a static link error. We throw a SyntaxError. (There
-//     are several syntactic variants on this, where imports and exports form a
-//     cycle, such that the thing being imported/exported is never actually
-//     defined anywhere.)
-//
-//   - "export * from" cycles: If module A has `export * from "B"`, and vice
-//     versa, that's a static link error.  We throw a SyntaxError.
-//
 //   - During linking, we can find that a factory-made module is
 //     involved in an import cycle. This is an error.
+//
+//   - Linking a set of non-factory-made modules can fail in several ways.
+//     These are described under "Runtime Semantics: Link Errors".
 //
 //   - A factory function can throw or return an invalid value.
 //
@@ -1589,7 +1580,8 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //
 //   - The `normalize` hook throws or returns an invalid value when we call it
 //     for `loader.import()`.  This happens so early in the load process that
-//     there is no `Load` yet.  We can directly call the `errback` hook.
+//     there is no `Load` yet.  A call to the `errback` hook is explicitly
+//     scheduled.
 
 
 //> ### Dependency loading
