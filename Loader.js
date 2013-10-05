@@ -61,11 +61,6 @@
 //   Here, it&rsquo;s mainly used to ensure that user callbacks are called
 //   from an empty stack.
 //
-// * `$DefineBuiltins(obj)` builds a full copy of the ES builtins on `obj`,
-//   so for example you get a fresh new `obj.Array` constructor and methods
-//   like `obj.Array.prototype.push`. You even get `obj.Loader`, a copy of
-//   `Loader`.
-//
 // Now on to the core JS language implementation intrinsics.
 //
 // * `$Parse(loader, src, moduleName, address, strict)` parses a script or
@@ -101,10 +96,6 @@
 //
 // * `$Link(body, modules)` - OBSOLETE. This is used in a non-working
 //   implementation of linking, below.
-//
-// * `$Evaluate(body)` runs the body of a script or module. If `body` is a
-//   module, return undefined. If it's a script, return the value of the
-//   last-evaluated expression statement (just like `eval`).
 //
 // * `$GetLinkedModules(body)` - OBSOLETE. Returns an array of the modules
 //   linked to `body` in a previous `$Link` call.  (We could perhaps do without
@@ -177,6 +168,23 @@
 //
 // * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
 //   using $SetLoaderIteratorPrivate.
+//
+// The following intrinsics deal with realms.
+//
+// * `$RealmNew()` creates a new realm for evaluating module and script code. This
+//   can be polyfilled in the browser using techniques like
+//
+//       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
+//
+// * `$Evaluate(realm, global, body)` runs the body of a script or module in the
+//   context of a given realm and global object. If `body` is a  module, return
+//   undefined. If it's a script, return the value of the last-evaluated expression
+//   statement (just like `eval`).
+//
+// * `$DefineBuiltins(realm, obj)` builds a full copy of the ES builtins on `obj`
+//   for the given realm, so for example you get a fresh new `obj.Array`
+//   constructor and methods like `obj.Array.prototype.push`. You even get
+//   `obj.Loader`, a copy of `Loader`.
 //
 // The remaining primitives are not very interesting. These are capabilities
 // that JS provides via builtin methods. We use primitives rather than the
@@ -316,6 +324,17 @@ function Loader(options) {
     // Fallible operations.
     var global = options.global;  // P4 ISSUE: ToObject here?
     var strict = ToBoolean(options.strict);
+    var realm = options.realm;
+    if (realm === undefined) {
+        loaderData.realm = $RealmNew();
+    } else {
+        if (typeof realm !== "object" || realm === null)
+            throw $TypeError("realm must be a Loader object, if defined");
+        let realmLoaderData = $WeakMapGet(loaderInternalDataMap, realm);
+        if (realmLoaderData === undefined)
+            throw $TypeError("realm must be a Loader object, if defined");
+        loaderData.realm = realmLoaderData.realm;
+    }
 
     // Initialize infallibly.
     loaderData.global = global;
@@ -323,8 +342,13 @@ function Loader(options) {
     loaderData.module = $MapNew();
 
     var builtins = {};
-    $DefineBuiltins(builtins);
-    $ObjectDefineProperty(loader, "builtins", builtins);
+    $DefineBuiltins(loaderData.realm, builtins);
+    $ObjectDefineProperty(loader, "builtins", {
+        configurable: true,
+        enumerable: true,
+        value: builtins,
+        writable: true
+    });
 
     // P4 ISSUE: Detailed behavior of hooks.
     //
@@ -398,6 +422,7 @@ function Loader_create() {
         // Various configurable options.
         global: undefined,
         strict: false,
+        realm: undefined,
 
         // **`loaderData.runtimeDependencies`** stores the
         // should-be-evaluated-before relation for modules.
@@ -410,6 +435,10 @@ function Loader_create() {
 
 // Get the internal data for a given `Loader` object.
 function GetLoaderInternalData(value) {
+    // Loader methods could be placed on wrapper prototypes like String.prototype.
+    if (typeof value !== "object")
+        throw $TypeError("Loader method called on incompatible primitive");
+
     let internalData = $WeakMapGet(loaderInternalDataMap, value);
     if (internalData === undefined)
         throw $TypeError("Loader method called on incompatible object");
@@ -2413,15 +2442,15 @@ function LinkSetFailed(linkSet, exc) {
 //
 var evaluatedBody = $WeakMapNew();
 
-//> #### EvaluateScriptOrModuleOnce(body) Abstract Operation
+//> #### EvaluateScriptOrModuleOnce(realm, global, body) Abstract Operation
 //>
 //> Evaluate the given script or module body, but only if we
 //> have never tried to evaluate it before.
 //>
-function EvaluateScriptOrModuleOnce(body) {
+function EvaluateScriptOrModuleOnce(realm, global, body) {
     if (!$WeakMapHas(evaluatedBody, body)) {
         $WeakMapSet(evaluatedBody, body, true);
-        return $Evaluate(body);
+        return $Evaluate(realm, global, body);
     }
 }
 
@@ -2474,7 +2503,8 @@ function EnsureEvaluated(loader, start) {
     // Build a *schedule* giving the sequence in which modules and scripts
     // should be evaluated.
 
-    let dependencies = GetLoaderInternalData(loader).runtimeDependencies;
+    let loaderData = GetLoaderInternalData(loader);
+    let dependencies = loaderData.runtimeDependencies;
 
     //> 1. Let seen be an empty List.
     let seen = $SetNew();
@@ -2529,11 +2559,13 @@ function EnsureEvaluated(loader, start) {
     // module's body will be evaluated more than once.
 
     //> 4. Repeat, for each script or module C in schedule:
+    let realm = loaderData.realm;
+    let global = loaderData.global;
     let result;
     schedule = $SetElements(schedule);
     for (let i = 0; i < schedule.length; i++) {
         //>     1. Call EvaluateScriptOrModuleOnce with the argument C.
-        result = EvaluateScriptOrModuleOnce(schedule[i]);
+        result = EvaluateScriptOrModuleOnce(realm, global, schedule[i]);
     }
     return result;
 }
