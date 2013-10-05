@@ -2172,9 +2172,9 @@ function GetExportedNames(linkSet, load) {
 }
 
 
-//> #### ComputeLinkage(linkSet) Abstract Operation
+//> #### ComputeExports(linkSet) Abstract Operation
 //>
-function ComputeLinkage(linkSet) {
+function ComputeExports(linkSet) {
     let components = $SetElements(linkSet.loads);
     for (let i = 0; i < components.length; i++) {
         let load = components[i];
