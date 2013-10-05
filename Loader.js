@@ -1943,25 +1943,6 @@ function LinkSetOnLoad(linkSet, load) {
 //    errors in step 1.)
 // 
 // 4. For each import, bind it to the corresponding export.
-//
-// In a polyfill, we'll need to translate everything:
-//
-//     import {x} from "M";
-//     function showx() {
-//         alert(x);
-//     }
-//
-// ===>
-//
-//     var showx;
-//     (function (__MODULES) {
-//         showx = function () {
-//             alert(__MODULES.M.x);
-//         };
-//     })
-//
-// It may not possible to do this perfectly with direct eval.
-// It seems like a lot of work.
 
 
 //> #### Runtime Semantics: Link Errors
