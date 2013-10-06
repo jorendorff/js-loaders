@@ -140,14 +140,15 @@
 //       export * from "A";
 //         {importModule: "A", importName, ALL, localName: null, exportName: ALL}
 //       export {x1 as y1};
-//         {importModule: null, importName: null, localName: "x1", exportName: "y1"}
+//         {importModule: null, importName: null, localName: "x1", exportName: "y1", isExplicit: true}
 //       unless the binding x1 was declared as an import, like `import {z as x1} from "A"`,
 //       in which case:
-//         {importModule: "A", importName: "z", localName: null, exportName: "y1"}
+//         {importModule: "A", importName: "z", localName: null, exportName: "y1", isExplicit: true}
 //       export *;
-//         is expressed as multiple elements of the preceding two forms
+//         is expressed as multiple elements of the preceding two forms, but
+//         with isExplicit: false.
 //       export x = EXPR;
-//         {importModule: null, importName: null, localName: "x", exportName: "x"}
+//         {importModule: null, importName: null, localName: "x", exportName: "x", isExplicit: true}
 //       export default = EXPR;
 //         {importModule: null, importName: null, localName: "default", exportName: "default"}
 //
@@ -2032,10 +2033,17 @@ function LinkSetOnLoad(linkSet, load) {
 //>         // in module "A"
 //>         export * from "A";  // link error: 'export * from' cycle
 //>
-//>   * **`export * from` collisions.**
-//>     It is a link error if two `export * from` declarations in the same
+//>   * **`export *` collisions.**
+//>     It is a link error if two `export *` declarations in the same
 //>     module would export the same name. (TODO: fix vagueness.)
 //>
+//     ISSUE - Are multiple instances of `export *;` in the same module
+//     redundant or do they both take effect and therefore conflict?
+//
+//     ISSUE - Are multiple instances of `export * from "M";` in the same
+//     module, with the same string "M", redundant? What about with
+//     two different strings that resolve to the same full name?
+//
 //>   * **Deleted dependencies.**
 //>     It is a link error if there exists a module M and a string fullName
 //>     such that all of the following are true:
@@ -2098,6 +2106,15 @@ function ExportStarRequestNames(linkingInfo) {
     return names;
 }
 
+function GetExplicitExportEdge(linkingInfo, name) {
+    for (let i = 0; i < linkingInfo.length; i++) {
+        let edge = linkingInfo[i];
+        if (edge.exportName === name)
+            return edge;
+    }
+    return undefined;
+}
+
 // **GetPassThroughExports** - Return an Array that includes one edge for each
 // name passed through `load.body` by an `export ... from` declaration or by
 // an `import`-`export` pair.
@@ -2116,8 +2133,14 @@ function GetPassThroughExports(linkSet, linkingInfo) {
                 let sourceExports = TODO("get its export edges, recursing if needed");
                 for (let j = 0; j < sourceExports.length; j++) {
                     let edge = sourceExports[j];
-                    if (TODO("edge.exportName does not collide with an explicit exported name in linkingInfo"))
+                    let override = GetExplicitExportEdge(linkingInfo, edge.exportName);
+                    if (override === undefined) {
                         $ArrayPush(exports, edge);
+                    } else if (!override.isExplicit) {
+                        throw $SyntaxError(
+                            "name collision between 'export * from \"" +
+                            edge.importModule + "\"' and 'export *;' in the same module");
+                    }
                 }
             } else {
                 $ArrayPush(exports, edge);
