@@ -1976,7 +1976,7 @@ function LinkSetOnLoad(linkSet, load) {
 //      * imports that do not match exports
 //      * `export from` cycles
 //      * `export * from` cycles
-//      * `export * from` collisions
+//      * `export *` collisions
 //      * a module we were depending on was deleted from the Loader
 //    If there are any errors, throw.
 // 
