@@ -146,8 +146,10 @@
 //         {importModule: "A", importName: "z", localName: null, exportName: "y1"}
 //       export *;
 //         is expressed as multiple elements of the preceding two forms
+//       export x = EXPR;
+//         {importModule: null, importName: null, localName: "x", exportName: "x"}
 //       export default = EXPR;
-//         {importModule: null, importName: null, localName: null, exportName: "default"}
+//         {importModule: null, importName: null, localName: "default", exportName: "default"}
 //
 // The next two primitives operate only on modules.
 //
