@@ -2098,6 +2098,48 @@ function ExportStarRequestNames(linkingInfo) {
     return names;
 }
 
+// **GetPassThroughExports** - Return an Array that includes one edge for each
+// name passed through `load.body` by an `export ... from` declaration or by
+// an `import`-`export` pair.
+//
+// (Pairs such as `module M from "M"; export M;` do not count as pass-through
+// exports. In that case the local binding for M is an immutable lexical
+// variable, not an import binding.)
+//
+function GetPassThroughExports(linkSet, linkingInfo) {
+    let exports = [];
+    for (let i = 0; i < linkingInfo.length; i++) {
+        let edge = linkingInfo[i];
+        if (edge.importModule !== null && edge.exportName !== null) {
+            if (edge.importName === ALL) {
+                let source = TODO("look up the module requested by edge.importModule");
+                let sourceExports = TODO("get its export edges, recursing if needed");
+                for (let j = 0; j < sourceExports.length; j++) {
+                    let edge = sourceExports[j];
+                    if (TODO("edge.exportName does not collide with an explicit exported name in linkingInfo"))
+                        $ArrayPush(exports, edge);
+                }
+            } else {
+                $ArrayPush(exports, edge);
+            }
+        }
+    }
+    return exports;
+}
+
+// **GetComponentImports** - Return an Array that includes one edge for each
+// import declaration and each `module ... from` declaration in the given
+// script or module.
+function GetComponentImports(linkingInfo) {
+    let imports = [];
+    for (let i = 0; i < linkingInfo.length; i++) {
+        let edge = linkingInfo[i];
+        if (edge.importModule !== null && edge.localName !== null)
+            $ArrayPush(imports, edge);
+    }
+    return imports;
+}
+
 //> #### GetExportedNames(linkSet, load) Abstract Operation
 //>
 // (This operation is a combination of ComputeLinkage, ExportedNames, and
@@ -2191,32 +2233,6 @@ function GetExportedNames(linkSet, load) {
     return exports;
 }
 
-
-//> #### ComputeExports(linkSet) Abstract Operation
-//>
-function ComputeExports(linkSet) {
-    let components = $SetElements(linkSet.loads);
-    for (let i = 0; i < components.length; i++) {
-        let load = components[i];
-        $Assert(load.status === "loaded" || load.status === "linked");
-        GetExportedNames(load);
-    }
-}
-
-//> #### LinkComponents(linkSet) Abstract Operation
-//>
-function LinkComponents(linkSet) {
-    let loader = linkSet.loader;
-    let components = $SetElements(linkSet.loads);
-    for (let i = 0; i < components.length; i++) {
-        let load = components[i];
-        let edges = load.linkingInfo;
-        for (let j = 0; j < edges.length; j++) {
-            Link(loader, load, edges[j]);
-        }
-    }
-}
-
 //> #### FindModuleForLink(loader, fullName) Abstract Operation
 //>
 function FindModuleForLink(loader, fullName) {
@@ -2242,98 +2258,123 @@ function LookupExport(loader, module, externalName) {
     // importName: string, localName: null, exportName: externalName}`
     // indicating that the desired export is a re-export that needs to be
     // linked.
-    var status = $QueryModuleExport(module, externalName); // `export * from` must already be gone by now???
+    let status = $QueryModuleExport(module, externalName);
     if ("importModule" in status) {
         $Assert(status.exportName === externalName);
         let fullName = $MapGet(???.dependencies, status.importModule);
         let sourceModule = FindModuleForLink(loader, fullName);
-        return LinkReExport(module, externalName, sourceModule, status.exportName, module, status.importName, []);
+        return LinkPassThroughExport(module, externalName, sourceModule, status.exportName,
+                                     module, status.importName, []);
     }
     return status;
 }
 
-//> #### Link(loader, load, edge) Abstract Operation
-//>
-function Link(loader, load, edge) {
-    if (edge.importModule !== null) {
-        let fullName = $MapGet(load.dependencies, edge.importModule);
-        let sourceModule = FindModuleForLink(loader, fullName);
-        if (edge.localName !== null) {
-            $Assert(edge.exportName === null);
-            if (edge.localName === MODULE) {
-                $DefineConstant(load.body, edge.localName, sourceModule);
-            } else {
-                let exp = LookupExport(loader, sourceModule, edge.importName);
-                $LinkImport(load.body, edge.localName, exp.module, exp.internalName);
-            }
-        } else if (edge.exportName !== null) {
-            if (edge.exportName === ALL) {
-                let names = $ObjectGetOwnPropertyNames(sourceModule);
-                for (let i = 0; i < names.length; i++) {
-                    let name = names[i];
-                    LinkExport(load, name, sourceModule, name, []);
-                }
-            } else {
-                // This implementation does not do anything for exports of the form
-                // {importModule: null, importName: null, localName: "x", exportName: "y"}
-                // It assumes such local exports are handled by $Parse().
-                LinkExport(load, edge.exportName, sourceModule, edge.importName, []);
-            }
+function LinkPassThroughExport(loader, load, edge) {
+    let fullName = $MapGet(load.dependencies, edge.importModule);
+    let sourceModule = FindModuleForLink(loader, fullName);
+    let exportName = edge.exportName;
+    if (exportName === ALL) {
+        let names = $ObjectGetOwnPropertyNames(sourceModule);
+        for (let i = 0; i < names.length; i++) {
+            let name = names[i];
+            LinkExport(load, name, sourceModule, name, []);
         }
+    } else {
+        // This implementation does not do anything for exports of the form
+        // {importModule: null, importName: null, localName: "x", exportName: "y"}
+        // It assumes such local exports are handled by $Parse().
+        LinkExport(load, exportName, sourceModule, edge.importName, []);
     }
 }
 
-/*
-TODO:
+//> #### LinkImport(loader, load, edge) Abstract Operation
+//>
+function LinkImport(loader, load, edge) {
+    let component = TODO_GetComponent(load); // $ModuleBodyToModuleObject(load.body), if module
+    let fullName = $MapGet(load.dependencies, edge.importModule);
+    let sourceModule = FindModuleForLink(loader, fullName);
+    let name = edge.importName;
+    if (name === MODULE) {
+        $DefineConstant(component, edge.localName, sourceModule);
+    } else {
+        let exp = $QueryModuleExport(module, name);
+        if (exp === undefined) {
+            throw $ReferenceError("can't import name '" + name + "': "
+                                  "no matching export in module '" + fullName + "'");
+        }
+        $LinkImport(component, edge.localName, exp.module, exp.internalName);
+    }
+}
 
-LinkExport(M: Module, external: string, link: ExportLink, visited: List(ExportReference)) : ExportBinding
-
-    If link.[[Resolved]] = *true* then:
-      Let b = link.[[Binding]].
-    Else:
-      Let ref = link.[[Reference]].
-      If ref is in visited, throw a new SyntaxError.
-      Add ref to visited.
-      Let b = ResolveExport(ref, visited).
-      ReturnIfAbrupt(b).
-    Let exports = M.[[Exports]].
-    Add {[[External]]: external, [[Binding]]: b} to exports.
-    Return b.
-
-ResolveExport(ref: ExportReference, visited: List(ExportReference)) : ExportBinding
-
-    Let M = ref.[[Module]].
-    Let external = ref.[[External]].
-    Let exports = M.[[Exports]].
-    If exports has a record r such that r.external = external, the return r.[[Binding]].
-    Let edges = M.[[Linkage]].
-    If edges = *undefined* (M is fully linked) then throw a new ReferenceError.
-    Let e be the edge in edges such that e.[[LinkType]] = *export* and e.[[Name]] = external.
-    If no such edge exists throw a new ReferenceError.
-    Let b = LinkExport(M, export, e.[[Link]], visited).
-    Return b.
-*/
-
-
-//> #### LinkLinkSet(linkSet) Abstract Operation
+//> #### LinkComponents(linkSet) Abstract Operation
 //>
 //> Link all scripts and modules in linkSet to each other and to modules in the
 //> registry.  This is done in a synchronous walk of the graph.  On success,
 //> commit all the modules in linkSet to the loader's module registry.
 //>
-function LinkLinkSet(linkSet) {
-    let loaderData = GetLoaderInternalData(linkSet.loader);
-    let linkedNames = [];
-    let linkedModules = [];
-    let seen = $SetNew();
+function LinkComponents(linkSet) {
+    // Implementation note: This needs error handling. The spec does not,
+    // because error-checking is specified to happen in a separate, earlier
+    // pass over the components.
+    try {
+        // Compute the set of names exported by each component.
+        let loads = $SetElements(linkSet.loads);
+        for (let i = 0; i < loads.length; i++) {
+            let load = loads[i];
+            $Assert(load.status === "loaded" || load.status === "linked");
+            if (load.status === "loaded")
+                GetExportedNames(load);
+        }
 
-    // TODO
+        // Link each export. Implementation note: The primitive that creates
+        // the Module instance object from the Module body parse automatically
+        // creates Export Records in that Module object for all exports except
+        // pass-through exports, so this code only links pass-through exports.
+        let loader = linkSet.loader;
+        for (let i = 0; i < loads.length; i++) {
+            let load = loads[i];
+            if (load.status === "loaded" && load.fullName !== null) {
+                let edges = GetPassThroughExports(linkSet, load.linkingInfo);
+                for (let j = 0; j < edges.length; j++)
+                    LinkPassThroughExport(loader, load, edges[j]);
+            }
+        }
+
+        // Link each import.
+        for (let i = 0; i < loads.length; i++) {
+            let load = loads[i];
+            if (load.status === "loaded") {
+                let imports = GetComponentImports(load.linkingInfo);
+                for (let j = 0; j < loads.length; j++)
+                    LinkImport(loader, load, imports[j]);
+            }
+        }
+
+        for (let i = 0; i < loads.length; i++) {
+            let fullName = loads[i].fullName;
+            if ($MapHas(loaderData.modules, fullName)) {
+                throw $SyntaxError(
+                    "module '" + fullName + "' was loaded but is already in the Loader registry");
+            }
+        }
+    } catch (exc) {
+        for (let i = 0; i < loads.length; i++) {
+            let load = loads[i];
+            if (load.status === "loaded" && load.fullName !== null)
+                $UnlinkModule($ModuleBodyToModuleObject(load.body));
+        }
+        throw exc;
+    }
 
     // Move the fully linked modules from the `loads` table to the
     // `modules` table.
-    for (let i = 0; i < linkedNames.length; i++) {
-        $MapDelete(loaderData.loads, linkedNames[i]);
-        $MapSet(loaderData.modules, linkedNames[i], linkedModules[i]);
+    for (let i = 0; i < loads.length; i++) {
+        let load = loads[i];
+        let fullName = load.fullName;
+        if (fullName !== null) {
+            let m = $ModuleBodyToModuleObject(load.body);
+            $MapSet(loaderData.modules, fullName, m);
+        }
     }
 }
 
