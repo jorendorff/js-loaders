@@ -1844,26 +1844,40 @@ function LoadFailed(load, exc) {
 }
 
 
-//> ### Link sets
+//> ### LinkSet Records
 //>
-//> A *link set* represents a call to `loader.eval()`, `.evalAsync()`,
+//> A LinkSet Record represents a call to `loader.eval()`, `.evalAsync()`,
 //> `.load()`, or `.import()`.
 //>
+//> Each LinkSet Record has the following fields:
+//>
+//>   * linkSet.[[Loader]] - The Loader object that created this LinkSet.
+//>
+//>   * linkSet.[[Callback]] - A value that is called when all dependencies are
+//>     loaded and linked together.
+//>
+//>   * linkSet.[[ErrorCallback]] - A value that is called if an error occurs
+//>     during loading or linking.
+//>
+//>   * linkSet.[[Loads]] - A List of the Load Records that must finish loading
+//>     before the modules can be linked and evaluated.
+//>
+
 //> #### CreateLinkSet(loader, startingLoad, callback, errback) Abstract Operation
 //>
 function CreateLinkSet(loader, startingLoad, callback, errback) {
     var linkSet = {
         loader: loader,
-        startingLoad: startingLoad,
         callback: callback,
         errback: errback,
         loads: $SetNew(),
 
-        // Invariant: `this.loadingCount` is the number of `Load`s in
-        // `this.loads` whose `.status` is `"loading"`.
+        // Implementation note: `this.loadingCount` is not in the spec. This is
+        // the number of `Load`s in `this.loads` whose `.status` is
+        // `"loading"`. It is an optimization to avoid having to walk
+        // `this.loads` and compute this value every time it's needed.
         loadingCount: 0
     };
-
     AddLoadToLinkSet(linkSet, startingLoad);
     return linkSet;
 }
@@ -2214,10 +2228,22 @@ function FindModuleForLink(loader, fullName) {
     return $ModuleBodyToModuleObject(depLoad.body);
 }
 
-//> #### LookupExport(module, externalName) Abstract Operation
+//> #### LookupExport(loader, module, externalName) Abstract Operation
 //>
-function LookupExport(module, externalName) {
-    ???
+function LookupExport(loader, module, externalName) {
+    // This returns either `{module:, internalName:}`, indicating that the
+    // desired export doesn't need linking; or `{importModule: string,
+    // importName: string, localName: null, exportName: externalName}`
+    // indicating that the desired export is a re-export that needs to be
+    // linked.
+    var status = $QueryModuleExport(module, externalName); // `export * from` must already be gone by now???
+    if ("importModule" in status) {
+        $Assert(status.exportName === externalName);
+        let fullName = $MapGet(???.dependencies, status.importModule);
+        let sourceModule = FindModuleForLink(loader, fullName);
+        return LinkReExport(module, externalName, sourceModule, status.exportName, module, status.importName, []);
+    }
+    return status;
 }
 
 //> #### Link(loader, load, edge) Abstract Operation
@@ -2231,8 +2257,8 @@ function Link(loader, load, edge) {
             if (edge.localName === MODULE) {
                 $DefineConstant(load.body, edge.localName, sourceModule);
             } else {
-                let {module, internalName} = LookupExport(sourceModule, edge.importName);
-                $LinkImport(load.body, edge.localName, module, internalName);
+                let exp = LookupExport(loader, sourceModule, edge.importName);
+                $LinkImport(load.body, edge.localName, exp.module, exp.internalName);
             }
         } else if (edge.exportName !== null) {
             if (edge.exportName === ALL) {
@@ -2295,92 +2321,7 @@ function LinkLinkSet(linkSet) {
     let linkedModules = [];
     let seen = $SetNew();
 
-    // Depth-first walk of the import tree, stopping at already-linked
-    // modules.
-    function walk(load) {
-        // XXX TODO - assert something about load.status here
-        let body = load.body;
-        $SetAdd(seen, body);
-
-        // First, if load is a module, check for errors and add it to the list
-        // of modules to link.
-        if (load.fullName !== null) {
-            let fullName = load.fullName;
-            if ($MapHas(loaderData.modules, fullName)) {
-                throw $SyntaxError(
-                    "script declares module \"" + fullName + "\", " +
-                        "which is already loaded");
-            }
-            if (load === undefined) {
-                if ($MapHas(loaderData.loads, fullName)) {
-                    throw $SyntaxError(
-                        "script declares module \"" + fullName + "\", " +
-                            "which is already loading");
-                }
-            } else {
-                let current = $MapGet(loaderData.loads, fullName);
-
-                // These two cases can happen if a script unexpectedly
-                // declares modules not named by `resolve().extra`.
-                if (current === undefined) {
-                    // Make sure no other script in the same LinkSet
-                    // declares it too.
-                    $MapSet(loaderData.loads, fullName, linkSet);
-                } else if (current !== linkSet) {
-                    throw $SyntaxError(
-                        "script declares module \"" + fullName + "\", " +
-                            "which is already loading");
-                }
-            }
-
-            $ArrayPush(linkedNames, fullName);
-
-            let mod = $ModuleBodyToModuleObject(body);
-            $ArrayPush(linkedModules, mod);
-        }
-
-        // Second, find modules imported by this script.
-        //
-        // The load phase walks the whole graph, so all imported modules
-        // should be loaded, but it is an asynchronous process.
-        // Intervening calls to `loader.set()` or `loader.delete()` can
-        // cause things to be missing.
-        //
-        let deps = $MapValues(load.dependencies);
-        let mods = [];
-        for (let i = 0; i < deps.length; i++) {
-            let fullName = deps[i];
-            let mod = $MapGet(loaderData.modules, fullName);
-            if (mod === undefined) {
-                let depLoad = $MapGet(loaderData.loads, fullName);
-                if (depLoad === undefined || depLoad.status !== "loaded") {
-                    throw $SyntaxError(
-                        "module \"" + fullName + "\" was deleted from the loader");
-                }
-                mod = $ModuleBodyToModuleObject(depLoad.body);
-                if (mod === undefined) {
-                    throw $SyntaxError(
-                        "module \"" + fullName + "\" was deleted from the loader");
-                }
-                if (!$SetHas(seen, depLoad.body))
-                    walk(depLoad);
-            }
-            $ArrayPush(mods, mod);
-        }
-
-        // Finally, link the script or module.  This throws if the script or
-        // module in question tries to import bindings from a module that the
-        // module does not export.
-        $Link(body, mods);
-    }
-
-    // Link all the scripts and modules together.
-    //
-    // TODO: This could throw partway through.  When linking fails, we must
-    // rollback any linking we already did up to that point.  Linkage must
-    // either happen for all scripts and modules, or fail, atomically.
-    // Per dherman, 2013 May 15.
-    walk(linkSet.startingLoad);
+    // TODO
 
     // Move the fully linked modules from the `loads` table to the
     // `modules` table.
