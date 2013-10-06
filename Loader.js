@@ -1103,7 +1103,7 @@ function Loader_resolve(normalized, options) {
 //> When the fetch method is called, the following steps are taken:
 //>
 function Loader_fetch(address, fulfill, reject, options) {
-    //> TODO
+    //> 1. Throw a **TypeError** exception.
     AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
 }
 //>
