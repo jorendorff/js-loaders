@@ -2050,12 +2050,12 @@ function LinkSetOnLoad(linkSet, load) {
 //>     deleted from the loader's module registry using
 //>     Loader.prototype.delete.
 
-// **ExplicitExportedNames** - Return the list of names that are definitely
+// **ApparentExportedNames** - Return the list of names that are definitely
 // exported by a given module body, including everything that can be determined
 // "locally" (i.e. without looking at other module bodies). Exports due to
 // `export *;` are included, since they can be determined by looking at this
 // module body, but exports due to `export * from "other";` are not.
-function ExplicitExportedNames(linkingInfo) {
+function ApparentExportedNames(linkingInfo) {
     // In the spec, this would be a syntax-directed algorithm.
     //
     // In the implementation, this could be a primitive provided by the parser;
@@ -2123,14 +2123,13 @@ function GetExportedNames(linkSet, load) {
     load.exportedNames = 0;
 
     //> 4. Let body be the Module parse stored at load.[[Body]].
-    //> 5. Let exports be the ExplicitExportedNames of body.
+    //> 5. Let exports be the ApparentExportedNames of body.
     //
     // Implementation note: As implemented here, steps 5 and 6 each do a pass
-    // over load.linkingInfo.  But perhaps both those loops should actually be
-    // fused with parsing, and the data should be exposed as primitives by the
-    // parser.
+    // over load.linkingInfo.  But both those loops can be fused with parsing,
+    // and the data could be exposed as primitives by the parser.
     //
-    exports = ExplicitExportedNames(load.linkingInfo);
+    exports = ApparentExportedNames(load.linkingInfo);
 
     //> 6. Let names be the ExportStarRequestNames of body.
     let names = ExportStarRequestNames(load.linkingInfo);
