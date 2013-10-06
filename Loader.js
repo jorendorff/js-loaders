@@ -1972,15 +1972,16 @@ function LinkSetOnLoad(linkSet, load) {
 // The basic algorithm we want to describe in the spec is:
 // 
 // 1. Detect all errors:
-//      * `export * from` loops
-//      * `export from` loops
 //      * imports that do not match exports
+//      * `export from` cycles
+//      * `export * from` cycles
+//      * `export * from` collisions
 //      * a module we were depending on was deleted from the Loader
 //    If there are any errors, throw.
 // 
-// 2. For each module, resolve all `export * from` edges.
-//    This computes the complete set of exports for each new module.
-//    The resulting `export {name} from` edges must be stored.
+// 2. For each module, resolve all `export * from` edges.  This step also
+//    computes the complete set of exports for each new module.  The resulting
+//    `export {name} from` edges must be stored.
 //
 // 3. Link all exports. For each module in the link set, for each export,
 //    create an export binding and a property on the Module object.  (There's
@@ -2030,6 +2031,10 @@ function LinkSetOnLoad(linkSet, load) {
 //>
 //>         // in module "A"
 //>         export * from "A";  // link error: 'export * from' cycle
+//>
+//>   * **`export * from` collisions.**
+//>     It is a link error if two `export * from` declarations in the same
+//>     module would export the same name. (TODO: fix vagueness.)
 //>
 //>   * **Deleted dependencies.**
 //>     It is a link error if there exists a module M and a string fullName
