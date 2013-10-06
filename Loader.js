@@ -1965,10 +1965,10 @@ function LinkSetOnLoad(linkSet, load) {
 //> ### Linkage
 //>
 
-// Before we reach this stage, we already have dependencies for each new
-// module: that is, a mapping, for each module, of request names to full module
-// names. (The values of this mapping are the same thing as the evaluation-order
-// dependencies.)
+// Before we reach this stage, we already have dependencies for each newly
+// loaded module or script: that is, load.dependencies, a per-Load mapping of
+// request names to full module names. (The values of this mapping are the same
+// thing as the evaluation-order dependencies.)
 //
 // The basic algorithm we want to describe in the spec is:
 // 
@@ -1990,7 +1990,10 @@ function LinkSetOnLoad(linkSet, load) {
 //    errors in step 1.)
 // 
 // 4. For each import, bind it to the corresponding export.
-
+//
+// LinkComponents(linkSet) is the entry point to linkage; it implements the
+// above algorithm.
+//
 
 //> #### Runtime Semantics: Link Errors
 //>
