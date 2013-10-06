@@ -1634,7 +1634,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //>     if they depend on the same module.
 //>
 //>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a Module or
-//>     Script syntax tree. (???terminology)
+//>     Script parse. (???terminology)
 //>
 //>   * load.[[Dependencies]] - Once the Load reaches the `"loaded"` state, a
 //>     List of pairs. Each pair consists of two strings: a module name as it
