@@ -2193,7 +2193,7 @@ function GetExportedNames(linkSet, load) {
     //>    exception.
     let exports = load.exportedNames;
     if (exports === 0)
-        throw SyntaxError("'export * from' cycle detected");
+        throw $SyntaxError("'export * from' cycle detected");
 
     //> 2. If load.[[ExportedNames]] is not **undefined**, then return load.[[ExportedNames]].
     if (exports !== undefined)
