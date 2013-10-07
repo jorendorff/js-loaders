@@ -2404,7 +2404,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
     let loaderData = GetLoaderInternalData(loader);
     let upstreamModule = $MapGet(loaderData.modules, fullName);
     if (upstreamModule !== undefined)
-        return $GetModuleExport(upstreamModule, edge.importName);
+        return $GetModuleExport(upstreamModule, exportName);
 
     let upstreamLoad = $MapGet(loaderData.loads, fullName);
     if (upstreamLoad === undefined)
@@ -2412,13 +2412,13 @@ function ResolveExport(loader, fullName, exportName, visited) {
 
     if (upstreamLoad.status === "linked") {
         upstreamModule = $ModuleBodyToModuleObject(upstreamLoad.body);
-        return $GetModuleExport(upstreamModule, edge.importName);
+        return $GetModuleExport(upstreamModule, exportName);
     }
 
     if (upstreamLoad.status !== "loaded")
         throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
-    let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
+    let upstreamEdge = $MapGet(upstreamLoad.exports, exportName);
     if (upstreamEdge === undefined)
         return upstreamEdge;
 
