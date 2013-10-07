@@ -161,6 +161,25 @@
 // * `$ModuleObjectToModuleBody(mod)` returns a ModuleBody object `body`
 //   such that `$ModuleBodyToModuleObject(body) === mod`.
 //
+// * `$GetModuleExport(mod, name)` - If the module `mod` has an export binding
+//   for the given `name`, return an opaque object representing the slot it's
+//   bound to.  Otherwise return undefined.  The only operations on this object
+//   are $IsExportImplicit and $LinkPassThroughExport.
+//
+// * `$IsExportImplicit(export)` - Return true if `export` represents an
+//   "implicit" export, that is, syntactically created using `export *;` or
+//   `export * from "M";`. False otherwise.
+//
+// * `$GetModuleExports(mod)` - Return a new array containing the names of the
+//   export bindings already defined in the module `mod`.
+//
+// * `$LinkPassThroughExport(mod, name, origin)` - Create an export binding on
+//   the module `mod` with the given `name`, bound to `origin`.
+//
+// * `$UnlinkModule(mod)` - Unlink the given module. This removes all export
+//   bindings and import bindings from the module. The module may be re-linked
+//   later.
+//
 // Loader iterators require a little private state. These could be implemented
 // using a WeakMap, but intrinsics are more efficient.
 //
@@ -2053,6 +2072,10 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //
 //   * HasPassThroughExport(loader, <m_1, e_1>, <m_2, e_2>) -
 //     true if m_1 exports m_2[e_2] as e_1.
+//     This must find exports of the following forms:
+//         export {x} from "M";
+//         export * from "M";  // when M exports x
+//         export {x};  // in a module that contains an import declaration for x
 //
 //   * HasExportStarFrom(loader, load_1, load_2) - true if load_1.body contains
 //     an `export * from` declaration for load_2.
@@ -2342,8 +2365,8 @@ function FindModuleForLink(loader, fullName) {
 // type of edge is:
 // {importModule: string, importName: string, exportName: string}
 //
-// Implementation note: Returns a value created by $GetModuleExport. This value
-// is opaque as far as we're concerned.
+// Implementation note: Returns an opaque "export binding" value, created by
+// $GetModuleExport, that can be passed to $LinkPassThroughExport if needed.
 //
 function LinkExport(loader, load, edge, visited) {
     let mod = $ModuleBodyToModuleObject(load.body);
