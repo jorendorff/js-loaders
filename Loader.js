@@ -2403,33 +2403,34 @@ function ResolveExport(loader, fullName, exportName, visited) {
     //
     let loaderData = GetLoaderInternalData(loader);
     let upstreamModule = $MapGet(loaderData.modules, fullName);
-    if (upstreamModule !== undefined) {
+    if (upstreamModule !== undefined)
         return $GetModuleExport(upstreamModule, edge.importName);
-    } else {
-        let upstreamLoad = $MapGet(loaderData.loads, fullName);
-        if (upstreamLoad === undefined)
-            throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
-        if (upstreamLoad.status === "linked") {
-            upstreamModule = $ModuleBodyToModuleObject(upstreamLoad.body);
-            return $GetModuleExport(upstreamModule, edge.importName);
-        } else if (upstreamLoad.status === "loaded") {
-            let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
-            if (upstreamEdge === undefined)
-                return upstreamEdge;
+    let upstreamLoad = $MapGet(loaderData.loads, fullName);
+    if (upstreamLoad === undefined)
+        throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
-            for (let i = 0; i < visited.length; i++) {
-                if (visited[i] === edge)
-                    throw $SyntaxError("import cycle detected");
-            }
+    if (upstreamLoad.status === "linked") {
+        upstreamModule = $ModuleBodyToModuleObject(upstreamLoad.body);
+        return $GetModuleExport(upstreamModule, edge.importName);
+    }
 
-            $ArrayPush(visited, edge);
-            let origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
-            visited.length--;
-            return origin;
-        } else {
-            throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
+    if (upstreamLoad.status === "loaded") {
+        let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
+        if (upstreamEdge === undefined)
+            return upstreamEdge;
+
+        for (let i = 0; i < visited.length; i++) {
+            if (visited[i] === edge)
+                throw $SyntaxError("import cycle detected");
         }
+
+        $ArrayPush(visited, edge);
+        let origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
+        visited.length--;
+        return origin;
+    } else {
+        throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
     }
 }
 
