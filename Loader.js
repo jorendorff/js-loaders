@@ -187,13 +187,13 @@
 // * `$Apply(f, thisv, args)` ~= thisv.apply(f, args)
 // * `$Call(f, thisv, ...args)` ~= thisv.call(f, ...args)
 // * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
-// * `$ObjectGetOwnPropertyNames(obj)` ~= Object.getOwnPropertyNames(obj)
-// * `$IsArray(v)` ~= Array.isArray(v)
 // * `$ArrayPush(arr, v)` ~= arr.push(v)
 // * `$ArrayPop(arr)` ~= arr.pop()
 // * `$SetNew()` ~= new Set
+// * `$SetSize(set)` ~= set.size
 // * `$SetHas(set, v)` ~= set.has(v)
 // * `$SetAdd(set, v)` ~= set.add(v)
+// * `$SetDelete(set, v)` ~= set.delete(v)
 // * `$SetElements(set)` ~= [...set]
 // * `$MapNew()` ~= new Map
 // * `$MapHas(map, key)` ~= map.has(key)
@@ -206,6 +206,7 @@
 // * `$MapValuesIterator(map)` ~= map.values()
 // * `$MapIteratorNext(map)` ~= mapiter.next()
 // * `$WeakMapNew()` ~= new WeakMap
+// * `$WeakMapHas(map, key)` ~= map.has(key)
 // * `$WeakMapGet(map, key)` ~= map.get(key)
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
 // * `$TypeError(msg)` ~= new TypeError(msg)
@@ -2585,10 +2586,10 @@ function EnsureEvaluated(loader, start) {
         $SetAdd(schedule, m);
 
         if ($IsModule(m)) {
-            // The `$SetRemove` call here means that if we already plan to
+            // The `$SetDelete` call here means that if we already plan to
             // evaluate this script, move it to be evaluated after `m`.
             let script = $ModuleObjectToModuleBody(m);
-            $SetRemove(schedule, script);
+            $SetDelete(schedule, script);
             $SetAdd(schedule, script);
         }
     }
