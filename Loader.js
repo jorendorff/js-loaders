@@ -2415,23 +2415,22 @@ function ResolveExport(loader, fullName, exportName, visited) {
         return $GetModuleExport(upstreamModule, edge.importName);
     }
 
-    if (upstreamLoad.status === "loaded") {
-        let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
-        if (upstreamEdge === undefined)
-            return upstreamEdge;
-
-        for (let i = 0; i < visited.length; i++) {
-            if (visited[i] === edge)
-                throw $SyntaxError("import cycle detected");
-        }
-
-        $ArrayPush(visited, edge);
-        let origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
-        visited.length--;
-        return origin;
-    } else {
+    if (upstreamLoad.status !== "loaded")
         throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
+
+    let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
+    if (upstreamEdge === undefined)
+        return upstreamEdge;
+
+    for (let i = 0; i < visited.length; i++) {
+        if (visited[i] === edge)
+            throw $SyntaxError("import cycle detected");
     }
+
+    $ArrayPush(visited, edge);
+    let origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
+    visited.length--;
+    return origin;
 }
 
 //> #### LinkImport(loader, load, edge) Abstract Operation
