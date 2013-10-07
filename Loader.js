@@ -140,7 +140,9 @@
 //       export default = EXPR;
 //         {importModule: null, importName: null, localName: "default", exportName: "default"}
 //
-// The next two primitives operate only on modules.
+// The following primitives operate on modules.
+//
+// * `$IsModule(v)` returns true if `v` is a `Module` object.
 //
 // * `$ModuleBodyToModuleObject(body)` returns a `Module` object for
 //   the given ModuleBody `body`.
