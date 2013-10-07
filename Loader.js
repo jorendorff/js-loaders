@@ -2396,28 +2396,28 @@ function ResolveExport(loader, fullName, exportName, visited) {
     // If fullName refers to an already-linked Module, return that
     // module's export binding for exportName.
     let loaderData = GetLoaderInternalData(loader);
-    let upstreamModule = $MapGet(loaderData.modules, fullName);
-    if (upstreamModule !== undefined)
-        return $GetModuleExport(upstreamModule, exportName);
+    let mod = $MapGet(loaderData.modules, fullName);
+    if (mod !== undefined)
+        return $GetModuleExport(mod, exportName);
 
-    let upstreamLoad = $MapGet(loaderData.loads, fullName);
-    if (upstreamLoad === undefined)
+    let load = $MapGet(loaderData.loads, fullName);
+    if (load === undefined)
         throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
-    if (upstreamLoad.status === "linked") {
-        upstreamModule = $ModuleBodyToModuleObject(upstreamLoad.body);
-        return $GetModuleExport(upstreamModule, exportName);
+    if (load.status === "linked") {
+        mod = $ModuleBodyToModuleObject(load.body);
+        return $GetModuleExport(mod, exportName);
     }
 
     // Otherwise, if it refers to a load with .status === "loaded", call
     // LinkExport recursively to resolve the upstream export first.  If not,
     // it's an error.
-    if (upstreamLoad.status !== "loaded")
+    if (load.status !== "loaded")
         throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
-    let upstreamEdge = $MapGet(upstreamLoad.exports, exportName);
-    if (upstreamEdge === undefined)
-        return upstreamEdge;
+    let edge = $MapGet(load.exports, exportName);
+    if (edge === undefined)
+        return edge;
 
     for (let i = 0; i < visited.length; i++) {
         if (visited[i] === edge)
@@ -2425,7 +2425,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
     }
 
     $ArrayPush(visited, edge);
-    let origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
+    let origin = LinkExport(loader, load, edge, visited);
     visited.length--;
     return origin;
 }
