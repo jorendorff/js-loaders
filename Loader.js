@@ -89,6 +89,14 @@
 //   The effect of `$LinkImport` is that in `component`'s scope, `name` becomes
 //   an alias for the binding indicated by `export`.
 //
+// * `$GetComponentDependencies(component)` returns either undefined or an
+//   array of Module objects, the modules whose bodies are to be evaluated
+//   before the given component's body.  A return value of undefined means the
+//   same thing as returning an empty array. See EnsureEvaluated().
+//
+// * `$DropComponentDependencies(component)` causes subsequent calls to
+//   `$GetComponentDependencies(component)` to return undefined.
+//
 // * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
 //
 // * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
@@ -232,9 +240,8 @@
 //     other properties.
 //
 //   * has a [[Dependencies]] internal data property, a List of Modules or
-//     null.  This is populated at link time by the loader (?) and used by
-//     EnsureEvaluated.
-
+//     undefined.  This is populated at link time by the loader (TODO) and used
+//     by EnsureEvaluated.
 
 
 // ## The Loader class
@@ -874,7 +881,7 @@ function Loader_set(name, module) {
 
     // Entries in the module registry must actually be `Module`s.
     // *Rationale:* We use `Module`-specific intrinsics like
-    // `$GetLinkedModules` and `$Evaluate` on them.  per samth,
+    // `$GetComponentDependencies` and `$Evaluate` on them.  per samth,
     // 2013 April 22.
     if (!$IsModule(module))
         throw $TypeError("Module object required");
@@ -2572,7 +2579,6 @@ function EnsureEvaluated(loader, start) {
     // should be evaluated.
 
     let loaderData = GetLoaderInternalData(loader);
-    let dependencies = loaderData.runtimeDependencies;
 
     //> 1. Let seen be an empty List.
     let seen = $SetNew();
@@ -2580,10 +2586,10 @@ function EnsureEvaluated(loader, start) {
     //> 2. Let schedule be an empty List.
     let schedule = $SetNew();
 
-    function BuildSchedule(m) {
-        $SetAdd(seen, m);
+    function BuildSchedule(c) {
+        $SetAdd(seen, c);
 
-        let deps = $WeakMapGet(dependencies, m);
+        let deps = $GetComponentDependencies(c);
         if (deps !== undefined) {
             for (let i = 0; i < deps.length; i++) {
                 let dep = deps[i];
@@ -2635,6 +2641,14 @@ function EnsureEvaluated(loader, start) {
         //>     1. Call EvaluateScriptOrModuleOnce with the argument C.
         result = EvaluateScriptOrModuleOnce(realm, global, schedule[i]);
     }
+
+    // All evaluation succeeded. As an optimization for future EnsureEvaluated
+    // calls, drop this portion of the dependency graph.  (This loop cannot be
+    // fused with the evaluation loop above; the meaning would change on error
+    // for certain dependency graphs containing cycles.)
+    for (let i = 0; i < schedule.length; i++)
+        $DropComponentDependencies(schedule[i]);
+
     return result;
 }
 
