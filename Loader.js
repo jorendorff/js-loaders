@@ -750,7 +750,7 @@ function Loader_define(names, moduleBodies, callback, errback) {
         if (linkSet === undefined)
             AsyncCall(errback, exc);
         else
-            LinkSetFailed(linkSet, exc);
+            FinishLinkSet(linkSet, false, exc);
     }
 
     for (let i = 0; i < names.length; i++) {
@@ -1848,7 +1848,7 @@ function LoadFailed(load, exc) {
     load.exception = exc;
     let sets = $SetElements(load.linkSets);
     for (let i = 0; i < sets.length; i++)
-        LinkSetFailed(sets[i], exc);
+        FinishLinkSet(sets[i], false, exc);
     $Assert($SetSize(load.linkSets) === 0);
 }
 
@@ -1901,7 +1901,7 @@ function LinkSetAddLoadByName(linkSet, fullName) {
     if (!$MapHas(loaderData.modules, fullName)) {
         // We add `depLoad` even if it is done loading, because the
         // association keeps the `Load` alive (`Load`s are
-        // reference-counted; see `LinkSetFailed`).
+        // reference-counted; see `FinishLinkSet`).
         let depLoad = $MapGet(loaderData.loads, fullName);
         AddLoadToLinkSet(linkSet, depLoad);
     }
@@ -1913,7 +1913,7 @@ function AddLoadToLinkSet(linkSet, load) {
     // This case can happen in `import`, for example if a `resolve` or
     // `fetch` hook throws.
     if (load.status === "failed")
-        return LinkSetFailed(linkSet, load.exception);
+        return FinishLinkSet(linkSet, false, load.exception);
 
     if (!$SetHas(linkSet.loads, load)) {
         $SetAdd(linkSet.loads, load);
@@ -1944,20 +1944,20 @@ function LinkSetOnLoad(linkSet, load) {
         try {
             LinkComponents(linkSet);
         } catch (exc) {
-            LinkSetFailed(linkSet, exc);
+            FinishLinkSet(linkSet, false, exc);
             return;
         }
 
-        AsyncCall(linkSet.callback);
+        FinishLinkSet(linkSet, true, undefined);
     }
 }
 
-//> #### LinkSetFailed(linkSet, exc) Abstract Operation
+//> #### FinishLinkSet(linkSet, succeeded, exc) Abstract Operation
 //>
-//> Mark linkSet as having failed.  Detach it from all loads and
-//> schedule the error callback.
+//> Detach the given LinkSet Record from all Load Records and schedule either
+//> the success callback or the error callback.
 //>
-function LinkSetFailed(linkSet, exc) {
+function LinkSetFailed(linkSet, succeeded, exc) {
     let loads = $SetElements(linkSet.loads);
     let loaderData = GetLoaderInternalData(linkSet.loader);
     for (let i = 0; i < loads.length; i++) {
@@ -1975,9 +1975,17 @@ function LinkSetFailed(linkSet, exc) {
                 if (currentLoad === load)
                     $MapDelete(loaderData.loads, fullName);
             }
+        } else {
+            // Otherwise, on success, mark linked modules as "linked".
+            if (succeeded && load.status === "loaded")
+                load.status = "linked";
         }
     }
-    AsyncCall(linkSet.errback, exc);
+
+    if (succeeded)
+        AsyncCall(linkSet.callback);
+    else
+        AsyncCall(linkSet.errback, exc);
 }
 
 // **Timing and grouping of dependencies** - Consider
