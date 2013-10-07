@@ -89,13 +89,13 @@
 //   The effect of `$LinkImport` is that in `component`'s scope, `name` becomes
 //   an alias for the binding indicated by `export`.
 //
-// * `$GetComponentDependencies(component)` returns either undefined or an
-//   array of Module objects, the modules whose bodies are to be evaluated
-//   before the given component's body.  A return value of undefined means the
-//   same thing as returning an empty array. See EnsureEvaluated().
+// * `$GetComponentDependencies(component)` returns component.[[Dependencies]].
+//   This is either undefined or an array of Module objects, the modules whose
+//   bodies are to be evaluated before the given component's body.  A return
+//   value of undefined means the same thing as returning an empty array to the
+//   sole caller, EnsureEvaluated().
 //
-// * `$DropComponentDependencies(component)` causes subsequent calls to
-//   `$GetComponentDependencies(component)` to return undefined.
+// * `$SetComponentDependencies(component, deps)` sets component.[[Dependencies]].
 //
 // * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
 //
@@ -2647,7 +2647,7 @@ function EnsureEvaluated(loader, start) {
     // fused with the evaluation loop above; the meaning would change on error
     // for certain dependency graphs containing cycles.)
     for (let i = 0; i < schedule.length; i++)
-        $DropComponentDependencies(schedule[i]);
+        $SetComponentDependencies(schedule[i], undefined);
 
     return result;
 }
