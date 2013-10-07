@@ -158,8 +158,8 @@
 //   Modules declared in scripts must be linked and evaluated before they
 //   are exposed to user code.
 //
-// * `$ModuleObjectToModuleBody(module)` returns a ModuleBody object `body`
-//   such that `$ModuleBodyToModuleObject(body) === module`.
+// * `$ModuleObjectToModuleBody(mod)` returns a ModuleBody object `body`
+//   such that `$ModuleBodyToModuleObject(body) === mod`.
 //
 // Loader iterators require a little private state. These could be implemented
 // using a WeakMap, but intrinsics are more efficient.
