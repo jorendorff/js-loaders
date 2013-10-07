@@ -2415,19 +2415,21 @@ function ResolveExport(loader, fullName, exportName, visited) {
     if (load.status !== "loaded")
         throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
+    // If mod's body does not contain an explicit or implicit export declaration
+    // for exportName, return undefined.
     let edge = $MapGet(load.exports, exportName);
     if (edge === undefined)
-        return edge;
+        return undefined;
 
+    // Call LinkExport recursively to link the upstream export.
     for (let i = 0; i < visited.length; i++) {
         if (visited[i] === edge)
             throw $SyntaxError("import cycle detected");
     }
-
     $ArrayPush(visited, edge);
-    let origin = LinkExport(loader, load, edge, visited);
+    let exp = LinkExport(loader, load, edge, visited);
     visited.length--;
-    return origin;
+    return exp;
 }
 
 //> #### LinkImport(loader, load, edge) Abstract Operation
