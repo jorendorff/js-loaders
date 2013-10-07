@@ -2415,8 +2415,14 @@ function ResolveExport(loader, fullName, exportName, visited) {
     if (load.status !== "loaded")
         throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
-    // If mod's body does not contain an explicit or implicit export declaration
-    // for exportName, return undefined.
+    mod = $ModuleBodyToModuleObject(load.body);
+    let exp = $GetModuleExport(mod, exportName);
+    if (exp !== undefined)
+        return exp;
+
+    // The module `mod` does not have a locally apparent export for
+    // `exportName`.  If it does not have an `export * from` for that name
+    // either, return undefined.
     let edge = $MapGet(load.exports, exportName);
     if (edge === undefined)
         return undefined;
@@ -2427,7 +2433,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
             throw $SyntaxError("import cycle detected");
     }
     $ArrayPush(visited, edge);
-    let exp = LinkExport(loader, load, edge, visited);
+    exp = LinkExport(loader, load, edge, visited);
     visited.length--;
     return exp;
 }
