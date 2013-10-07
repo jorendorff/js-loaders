@@ -210,6 +210,7 @@
 // * `$MapDelete(map, key)` ~= map.delete(key)
 // * `$MapValues(map)` ~= [...map.values()]
 // * `$MapEntriesIterator(map)` ~= map.entries()
+// * `$MapKeys(map)` ~= [...map.keys()]
 // * `$MapKeysIterator(map)` ~= map.keys()
 // * `$MapValuesIterator(map)` ~= map.values()
 // * `$MapIteratorNext(map)` ~= mapiter.next()
@@ -2189,9 +2190,13 @@ function GetComponentImports(linkingInfo) {
 // (This operation is a combination of ComputeLinkage, ExportedNames, and
 // ModuleInstanceExportedNames in the draft spec language.)
 //
-// Implementation note: Instead of the list *visited*, we use a special value
-// `load.exports === 0` to indicate that the set of exports is being computed
-// right now, and detect `export * from` cycles.
+// Returns a Map with string keys and values of type
+// `{importModule: string, importName: string, exportName: string}`
+// where the key === value.exportName.
+//
+// Implementation note:  The spec detects `export * from` cycles early.  This
+// implementation instead uses a special value `load.exports === 0` to indicate
+// that the set of exports is being computed right now, and detect cycles.
 //
 function GetExports(linkSet, load) {
     $Assert(load.status === "loaded");
@@ -2240,7 +2245,7 @@ function GetExports(linkSet, load) {
         if (depMod !== undefined) {
             //>     3. If depMod is not **undefined**,
             //>         1. Let starExports be depMod.[[Exports]].
-            starExports = $GetModuleExports(depMod);
+            starExports = $GetModuleExportNames(depMod);
         } else {
             //>     4. Else,
             //>         1. Let depLoad be GetLoadFromLoader(linkSet.[[Loader]], fullName).
@@ -2263,25 +2268,23 @@ function GetExports(linkSet, load) {
             // GetExports() only bothers to return exports that are not
             // pre-linked by the parser. But in this case we really do need
             // *all* the exports; so we combine the output from GetExports()
-            // and $GetModuleExports() into a single Map.
-            starExports = $GetModuleExports(depLoad.module);
+            // and $GetModuleExportNames() into a single array.
+            starExports = $GetModuleExportNames(depLoad.module);
             if (depLoad.status === "loaded") {
-                let moreExports = $MapValues(GetExports(linkSet, depLoad));
-                for (let j = 0; j < moreExports.length; j++) {
-                    let exp = moreExports[j];
-                    $MapSet(starExports, exp.exportName, exp);
-                }
+                let moreExports = $MapKeys(GetExports(linkSet, depLoad));
+                for (let j = 0; j < moreExports.length; j++)
+                    $ArrayPush(starExports, moreExports[j]);
             }
         }
 
-        //>     5. Repeat for each edge in starExports,
+        //>     5. Repeat for each name in starExports,
         for (let j = 0; j < starExports.length; j++) {
-            let edge = starExports[j];
+            let name = starExports[j];
 
             // Implementation note: The spec detects this kind of error
             // earlier.  We detect it at the last minute.
-            let existingExport = $GetModuleExport(mod, edge.exportName);
-            if ($MapHas(exports, edge.exportName) ||
+            let existingExport = $GetModuleExport(mod, name);
+            if ($MapHas(exports, name) ||
                 (existingExport !== undefined && $IsExportImplicit(existingExport)))
             {
                 throw $SyntaxError(
@@ -2291,10 +2294,14 @@ function GetExports(linkSet, load) {
             }
 
             //>         1. If there is not already an edge in exports with the
-            //>            same [[Name]] as edge,
-            //>             1. Append edge to the end of the List exports.
-            if (existingExport === undefined)
-                $MapSet(exports, edge.exportName, edge);
+            //>            [[Name]] name,
+            //>             1. Append the new export record {[[ImportModule]]: requestName,
+            //>                [[ImportName]]: name, [[ExportName]]: name} to the end of
+            //>                the List exports.
+            if (existingExport === undefined) {
+                $MapSet(exports, name,
+                        {importModule: requestName, importName: name, exportName: name});
+            }
         }
     }
 
