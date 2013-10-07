@@ -74,32 +74,20 @@
 //
 //   Note that this does not run any of the code in `src`.
 //
-// The next six primitives operate on both scripts and modules.
+// The following primitives operate on both scripts and modules.
 //
-// * `$DefineConstant(body, name, value)` defines a constant binding in the
-//   toplevel declarative environment of `body`, with the given `name` and `value`.
-//   This is only used to implement `module a from "A";` declarations, so
-//   `value` is always a Module object.
+// * `$DefineConstant(component, name, value)` defines a constant binding in
+//   the toplevel declarative environment of `component`, with the given `name`
+//   and `value`.  This is only used to implement `module a from "A";`
+//   declarations, so `value` is always a Module object.
 //
-// * `$LinkImport(body, name, sourceModule, sourceName)` defines an import
-//   binding. `body` is a Module or Script object.
+// * `$LinkImport(component, name, export)` defines an import binding.
+//   `component` is a Module or Script object. `name` is a string, the name of
+//   the local binding being bound.  `export` is a value returned by
+//   $GetModuleExport(), representing the location of the slot to be bound.
 //
-//   `sourceModule` is the module in which the desired binding is actually
-//   declared (not just as a re-export but as a slot). None of the arguments
-//   are export names; both `name` and `sourceName` are binding names.
-//
-//   The result of `$LinkImport` is that in `body`'s scope, `name` becomes an
-//   alias for the binding in `sourceModule`'s scope with the name
-//   `sourceName`.
-//
-//   `name` and `sourceName` are strings. `sourceName` may be `"default"`.
-//
-// * `$Link(body, modules)` - OBSOLETE. This is used in a non-working
-//   implementation of linking, below.
-//
-// * `$GetLinkedModules(body)` - OBSOLETE. Returns an array of the modules
-//   linked to `body` in a previous `$Link` call.  (We could perhaps do without
-//   this by caching this information in a WeakMap.)
+//   The effect of `$LinkImport` is that in `component`'s scope, `name` becomes
+//   an alias for the binding indicated by `export`.
 //
 // * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
 //
@@ -2401,12 +2389,12 @@ function LinkImport(loader, load, edge) {
     if (name === MODULE) {
         $DefineConstant(component, edge.localName, sourceModule);
     } else {
-        let exp = $QueryModuleExport(module, name);
+        let exp = $GetModuleExport(module, name);
         if (exp === undefined) {
             throw $ReferenceError("can't import name '" + name + "': " +
                                   "no matching export in module '" + fullName + "'");
         }
-        $LinkImport(component, edge.localName, exp.module, exp.internalName);
+        $LinkImport(component, edge.localName, exp);
     }
 }
 
