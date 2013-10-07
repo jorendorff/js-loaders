@@ -2378,19 +2378,25 @@ function LinkExport(loader, load, edge, visited) {
     if (existingExport !== undefined)
         return existingExport;
 
-    // Resolve this export.
+    let request = edge.importModule;
+    let fullName = $MapGet(load.dependencies, request);
+    let origin = ResolveExport(loader, fullName, edge.importName, visited);
+    $LinkPassThroughExport(mod, edge.exportName, origin);
+}
+
+//> #### ResolveExport(loader, fullName, exportName) Abstract Operation
+//>
+function ResolveExport(loader, fullName, exportName, visited) {
     let origin;
 
-    // If it refers to an export of an already-linked Module,
+    // If this export refers to an export of an already-linked Module,
     // set origin to that module's export.
     //
-    // If it refers to a load with .status === "loaded",
-    // call LinkExport to resolve the upstream export first.
+    // If it refers to a load with .status === "loaded", call LinkExport
+    // recursively to resolve the upstream export first.
     //
     // Otherwise, it's an error.
     //
-    let request = edge.importModule;
-    let fullName = $MapGet(load.dependencies, request);
     let loaderData = GetLoaderInternalData(loader);
     let upstreamModule = $MapGet(loaderData.modules, fullName);
     if (upstreamModule !== undefined) {
@@ -2423,7 +2429,6 @@ function LinkExport(loader, load, edge, visited) {
             throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
         }
     }
-    $LinkPassThroughExport(mod, edge.exportName, origin);
     return origin;
 }
 
