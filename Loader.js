@@ -1964,7 +1964,7 @@ function LinkSetOnLoad(linkSet, load) {
 //> Detach the given LinkSet Record from all Load Records and schedule either
 //> the success callback or the error callback.
 //>
-function LinkSetFailed(linkSet, succeeded, exc) {
+function FinishLinkSet(linkSet, succeeded, exc) {
     let loads = $SetElements(linkSet.loads);
     let loaderData = GetLoaderInternalData(linkSet.loader);
     for (let i = 0; i < loads.length; i++) {
