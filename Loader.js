@@ -2381,7 +2381,13 @@ function LinkExport(loader, load, edge, visited) {
     let request = edge.importModule;
     let fullName = $MapGet(load.dependencies, request);
     let origin = ResolveExport(loader, fullName, edge.importName, visited);
+    if (origin === undefined) {
+        throw $ReferenceError(
+            "can't export " + edge.importName + " from '" + request + "': " +
+            "no matching export in module '" + fullName + "'");
+    }
     $LinkPassThroughExport(mod, edge.exportName, origin);
+    return origin;
 }
 
 //> #### ResolveExport(loader, fullName, exportName) Abstract Operation
@@ -2411,11 +2417,8 @@ function ResolveExport(loader, fullName, exportName, visited) {
             origin = $GetModuleExport(upstreamModule, edge.importName);
         } else if (upstreamLoad.status === "loaded") {
             let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
-            if (upstreamEdge === undefined) {
-                throw $ReferenceError(
-                    "can't export " + edge.importName + " from '" + request + "': " +
-                    "no matching export in module '" + fullName + "'");
-            }
+            if (upstreamEdge === undefined)
+                return upstreamEdge;
 
             for (let i = 0; i < visited.length; i++) {
                 if (visited[i] === edge)
