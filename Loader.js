@@ -2393,10 +2393,8 @@ function LinkExport(loader, load, edge, visited) {
 //> #### ResolveExport(loader, fullName, exportName) Abstract Operation
 //>
 function ResolveExport(loader, fullName, exportName, visited) {
-    let origin;
-
     // If this export refers to an export of an already-linked Module,
-    // set origin to that module's export.
+    // return that module's export.
     //
     // If it refers to a load with .status === "loaded", call LinkExport
     // recursively to resolve the upstream export first.
@@ -2406,7 +2404,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
     let loaderData = GetLoaderInternalData(loader);
     let upstreamModule = $MapGet(loaderData.modules, fullName);
     if (upstreamModule !== undefined) {
-        origin = $GetModuleExport(upstreamModule, edge.importName);
+        return $GetModuleExport(upstreamModule, edge.importName);
     } else {
         let upstreamLoad = $MapGet(loaderData.loads, fullName);
         if (upstreamLoad === undefined)
@@ -2414,7 +2412,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
 
         if (upstreamLoad.status === "linked") {
             upstreamModule = $ModuleBodyToModuleObject(upstreamLoad.body);
-            origin = $GetModuleExport(upstreamModule, edge.importName);
+            return $GetModuleExport(upstreamModule, edge.importName);
         } else if (upstreamLoad.status === "loaded") {
             let upstreamEdge = $MapGet(upstreamLoad.exports, edge.importName);
             if (upstreamEdge === undefined)
@@ -2426,13 +2424,13 @@ function ResolveExport(loader, fullName, exportName, visited) {
             }
 
             $ArrayPush(visited, edge);
-            origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
+            let origin = LinkExport(loader, upstreamLoad, upstreamEdge, visited);
             visited.length--;
+            return origin;
         } else {
             throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
         }
     }
-    return origin;
 }
 
 //> #### LinkImport(loader, load, edge) Abstract Operation
