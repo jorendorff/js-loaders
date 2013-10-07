@@ -2449,7 +2449,7 @@ function LinkComponents(linkSet) {
 
         // Link each export. Implementation note: The primitive that creates
         // the Module instance object from the Module body parse automatically
-        // creates Export Records in that Module object for all exports except
+        // creates export bindings in that Module object for all exports except
         // pass-through exports, so this code only links pass-through exports.
         let loader = linkSet.loader;
         for (let i = 0; i < loads.length; i++) {
