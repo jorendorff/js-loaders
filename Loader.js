@@ -1961,6 +1961,34 @@ function LinkSetOnLoad(linkSet, load) {
     }
 }
 
+//> #### LinkSetFailed(linkSet, exc) Abstract Operation
+//>
+//> Mark linkSet as having failed.  Detach it from all loads and
+//> schedule the error callback.
+//>
+function LinkSetFailed(linkSet, exc) {
+    let loads = $SetElements(linkSet.loads);
+    let loaderData = GetLoaderInternalData(linkSet.loader);
+    for (let i = 0; i < loads.length; i++) {
+        let load = loads[i];
+
+        // Detach load from linkSet.
+        $Assert($SetHas(load.linkSets, linkSet));
+        $SetDelete(load.linkSets, linkSet);
+
+        // If load is not needed by any surviving LinkSet, drop it.
+        if ($SetSize(load.linkSets) === 0) {
+            let fullName = load.fullName;
+            if (fullName !== null) {
+                let currentLoad = $MapGet(loaderData.loads, fullName);
+                if (currentLoad === load)
+                    $MapDelete(loaderData.loads, fullName);
+            }
+        }
+    }
+    AsyncCall(linkSet.errback, exc);
+}
+
 // **Timing and grouping of dependencies** - Consider
 //
 //     loader.evalAsync('module x from "x"; module y from "y";', {}, f);
@@ -2457,34 +2485,6 @@ function LinkComponents(linkSet) {
             $MapSet(loaderData.modules, fullName, m);
         }
     }
-}
-
-//> #### LinkSetFailed(linkSet, exc) Abstract Operation
-//>
-//> Mark linkSet as having failed.  Detach it from all loads and
-//> schedule the error callback.
-//>
-function LinkSetFailed(linkSet, exc) {
-    let loads = $SetElements(linkSet.loads);
-    let loaderData = GetLoaderInternalData(linkSet.loader);
-    for (let i = 0; i < loads.length; i++) {
-        let load = loads[i];
-
-        // Detach load from linkSet.
-        $Assert($SetHas(load.linkSets, linkSet));
-        $SetDelete(load.linkSets, linkSet);
-
-        // If load is not needed by any surviving LinkSet, drop it.
-        if ($SetSize(load.linkSets) === 0) {
-            let fullName = load.fullName;
-            if (fullName !== null) {
-                let currentLoad = $MapGet(loaderData.loads, fullName);
-                if (currentLoad === load)
-                    $MapDelete(loaderData.loads, fullName);
-            }
-        }
-    }
-    AsyncCall(linkSet.errback, exc);
 }
 
 
