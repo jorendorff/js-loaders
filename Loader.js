@@ -210,7 +210,6 @@
 // that JS provides via builtin methods. We use primitives rather than the
 // builtin methods because user code can delete or replace the methods.
 //
-// * `$ToString(v)` === ES ToString algorithm ~= ("" + v)
 // * `$Apply(f, thisv, args)` ~= thisv.apply(f, args)
 // * `$Call(f, thisv, ...args)` ~= thisv.call(f, ...args)
 // * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
@@ -529,7 +528,7 @@ function Loader_strict() {
 // module that is not already loaded, a `SyntaxError` is thrown.
 //
 function Loader_eval(src, options) {
-    src = $ToString(src);
+    src = ToString(src);
     var loaderData = GetLoaderInternalData(this);
 
     let address = UnpackOption(options, "address");
@@ -581,7 +580,7 @@ function Loader_evalAsync(src,
                           callback = value => {},
                           errback = exc => { throw exc; })
 {
-    src = $ToString(src);
+    src = ToString(src);
     var loaderData = GetLoaderInternalData(this);
 
     // P4 ISSUE: Check callability of callbacks here (and everywhere
@@ -1349,7 +1348,7 @@ function StartModuleLoad(loader, referer, name, sync) {
 
             normalized = result.normalized;  // can throw
 
-            // Do not use `$ToString` here, per samth, 2013 April 22.
+            // Do not use `ToString` here, per samth, 2013 April 22.
             if (typeof normalized !== "string") {
                 throw $TypeError(
                     "Object returned by loader.normalize hook must have " +
@@ -2699,6 +2698,11 @@ function EnsureEvaluated(loader, start) {
 // ES6 ToBoolean abstract operation.
 function ToBoolean(v) {
     return !!v;
+}
+
+// ES6 ToString abstract operation.
+function ToString(v) {
+    return "" + v;
 }
 
 // Return true if Type(v) is Object.
