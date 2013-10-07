@@ -312,7 +312,7 @@
 //
 let loaderInternalDataMap = $WeakMapNew();
 
-function Loader(options) {
+function Loader(options={}) {
     // Bug:  This calls Loader_create directly.  The spec will instead make
     // `new Loader(options)` call `Loader[@@create]()` implicitly and pass the
     // resulting uninitialized Loader object as the `this` value to this
@@ -666,7 +666,7 @@ function Loader_import(moduleName,
         return;
     }
 
-    let referer = {name, address};
+    let referer = {name: name, address: address};
 
     // `StartModuleLoad` starts us along the pipeline.
     let load;
@@ -1288,7 +1288,7 @@ function StartModuleLoad(loader, referer, name, sync) {
         // but `eval()` creates a new referer object for each call to the
         // `normalize()` hook, since they are not abstractly all part of a
         // single load.)
-        let result = loader.normalize(request, {referer});
+        let result = loader.normalize(request, {referer: referer});
 
         // Interpret the `result`.
         //
@@ -1379,7 +1379,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     let address;
     try {
         // Call the `resolve` hook.
-        address = loader.resolve(normalized, {referer, metadata});
+        address = loader.resolve(normalized, {referer: referer, metadata: metadata});
     } catch (exc) {
         // `load` is responsible for firing error callbacks and removing
         // itself from `loaderData.loads`.
@@ -1395,7 +1395,7 @@ function StartModuleLoad(loader, referer, name, sync) {
 
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
 function CallFetch(loader, load, address, referer, metadata, normalized, type) {
-    let options = {referer, metadata, normalized, type};
+    let options = {referer: referer, metadata: metadata, normalized: normalized, type: type};
     let errback = exc => LoadFailed(load, exc);
 
     // *Rationale for `fetchCompleted`:* The fetch hook is user code.
@@ -1481,14 +1481,24 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
         }
 
         // Call the `translate` hook.
-        src = loader.translate(src, {metadata, normalized, type, actualAddress});
+        src = loader.translate(src, {
+            metadata: metadata,
+            normalized: normalized,
+            type: type,
+            actualAddress: actualAddress
+        });
         if (typeof src !== "string")
             throw $TypeError("translate hook must return a string");
 
         // Call the `link` hook, if we are loading a module.
         let linkResult =
             type === "module"
-            ? loader.link(src, {metadata, normalized, type, actualAddress})
+            ? loader.link(src, {
+                metadata: metadata,
+                normalized: normalized,
+                type: type,
+                actualAddress: actualAddress
+              })
             : undefined;
 
         // Interpret `linkResult`.  See comment on the `link()` method.
