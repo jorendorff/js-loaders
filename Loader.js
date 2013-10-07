@@ -2137,34 +2137,6 @@ function ExportStarRequestNames(linkingInfo) {
     return names;
 }
 
-function GetExplicitExportEdge(linkingInfo, name) {
-    for (let i = 0; i < linkingInfo.length; i++) {
-        let edge = linkingInfo[i];
-        if (edge.exportName === name)
-            return edge;
-    }
-    return undefined;
-}
-
-// **GetPassThroughExports** - Return an Array that includes one edge for each
-// name passed through `load.body` by an `export ... from` declaration or by
-// an `import`-`export` pair.
-//
-// (Pairs such as `module M from "M"; export M;` do not count as pass-through
-// exports. In that case the local binding for M is an immutable lexical
-// variable, not an import binding.)
-//
-function GetPassThroughExports(linkSet, linkingInfo) {
-    let exports = [];
-    for (let i = 0; i < linkingInfo.length; i++) {
-        let edge = linkingInfo[i];
-        if (edge.importModule !== null && edge.exportName !== null) {
-            $ArrayPush(exports, edge);
-        }
-    }
-    return exports;
-}
-
 // **GetComponentImports** - Return an Array that includes one edge for each
 // import declaration and each `module ... from` declaration in the given
 // script or module.
