@@ -161,22 +161,22 @@
 // * `$ModuleObjectToModuleBody(mod)` returns a ModuleBody object `body`
 //   such that `$ModuleBodyToModuleObject(body) === mod`.
 //
-// * `$GetModuleExport(mod, name)` - If the module `mod` has an export binding
-//   for the given `name`, return an opaque object representing the slot it's
-//   bound to.  Otherwise return undefined.  The only operations on this object
-//   are $IsExportImplicit and $LinkPassThroughExport.
+// * `$GetModuleExport(mod, name)` returns information about an export binding.
+//   If the module `mod` has an export binding for the given `name`, return an
+//   opaque object representing the slot it's bound to.  The only operations on
+//   this object are $IsExportImplicit and $LinkPassThroughExport. Otherwise
+//   return undefined.
 //
-// * `$IsExportImplicit(export)` - Return true if `export` represents an
-//   "implicit" export, that is, syntactically created using `export *;` or
-//   `export * from "M";`. False otherwise.
+// * `$IsExportImplicit(export)` returns true if `export` arises from a
+//   declaration of the form `export *;` and false otherwise.
 //
-// * `$GetModuleExports(mod)` - Return a new array containing the names of the
+// * `$GetModuleExports(mod)` returns a new array containing the names of the
 //   export bindings already defined in the module `mod`.
 //
-// * `$LinkPassThroughExport(mod, name, origin)` - Create an export binding on
+// * `$LinkPassThroughExport(mod, name, origin)` creates an export binding on
 //   the module `mod` with the given `name`, bound to `origin`.
 //
-// * `$UnlinkModule(mod)` - Unlink the given module. This removes all export
+// * `$UnlinkModule(mod)` unlinks the given module. This removes all export
 //   bindings and import bindings from the module. The module may be re-linked
 //   later.
 //
