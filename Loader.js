@@ -1951,7 +1951,7 @@ function LinkSetOnLoad(linkSet, load) {
         // If all dependencies have loaded, link the modules and fire the
         // success callback.
         try {
-            linkSet.link();
+            LinkComponents(linkSet);
         } catch (exc) {
             LinkSetFailed(linkSet, exc);
             return;
