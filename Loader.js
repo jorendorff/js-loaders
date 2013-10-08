@@ -373,23 +373,14 @@ function Loader(options={}) {
         writable: true
     });
 
-    // P4 ISSUE: Detailed behavior of hooks.
+    // Hooks provided via `options` are just ordinary properties of the new
+    // Loader object.
     //
-    // As implemented here, hooks are just ordinary properties of the
-    // Loader object.  Default implementations are just ordinary methods
-    // of the Loader class. Loader subclasses can add methods with the
-    // appropriate names, and use `super()` to invoke the base-class
-    // behavior, and stuff will "just work".
-    //
-    // It's not clear that's the right design.  What's specified in the
-    // document right now is different: hooks are stored in internal
-    // properties, and the loader exposes getters for each hook.  Firing
-    // a hook takes it from the internal property.  In no circumstance
-    // does `super` work.
-    //
-    // But when I discussed this with dherman yesterday, I think I made some
-    // headway toward convincing him that what's implemented here is the right
-    // design. --jto, 29 August 2013.
+    // *Rationale*: The Loader class contains default implementations of each
+    // hook. This way the hooks can be called unconditionally, and either the
+    // user-provided hook or the default is called. Furthermore, Loader
+    // subclasses can add methods with the appropriate names and use `super()`
+    // to invoke the base-class behavior.
     //
     function takeHook(name) {
         var hook = options[name];
