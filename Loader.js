@@ -331,9 +331,10 @@ let loaderInternalDataMap = $WeakMapNew();
 
 function Loader(options={}) {
     // Bug:  This calls Loader_create directly.  The spec will instead make
-    // `new Loader(options)` call `Loader[@@create]()` implicitly and pass the
-    // resulting uninitialized Loader object as the `this` value to this
-    // function.  We'll change that when symbols and @@create are implemented.
+    // `new Loader(options)` equivalent to
+    // `Loader.[[Call]](Loader[@@create](), List [options])`.
+    // In other words, Loader_create will be called *before* Loader.
+    // We'll change that when symbols and @@create are implemented.
     var loader = callFunction(Loader_create, Loader);
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
     if (loaderData === undefined)
