@@ -1187,8 +1187,6 @@ function Loader_link(src, options) {
 // `Error().fileName`, `Error().stack`, and developer tools; but such use
 // is outside the scope of the language standard.)
 //
-// P5 SECURITY ISSUE: Make sure that is OK.
-//
 function UnpackOption(options, name) {
     var value;
 
