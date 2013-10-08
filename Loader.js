@@ -343,7 +343,9 @@ function Loader(options={}) {
         throw $TypeError("Loader object cannot be intitialized more than once");
 
     // Fallible operations.
-    var global = options.global;  // P4 ISSUE: ToObject here?
+    var global = options.global;
+    if (global !== undefined && !IsObject(global))
+        throw $TypeError("options.global must be an object or undefined");
     var strict = ToBoolean(options.strict);
     var realm = options.realm;
     if (realm === undefined) {
