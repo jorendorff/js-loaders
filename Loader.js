@@ -577,17 +577,6 @@ function Loader_evalAsync(src,
     src = ToString(src);
     var loaderData = GetLoaderInternalData(this);
 
-    // P4 ISSUE: Check callability of callbacks here (and everywhere
-    // success/failure callbacks are provided)?  It would be a mercy,
-    // since the TypeError if they are not functions happens much later
-    // and with an empty stack.  But Futures don't do it.  Assuming no.
-    //
-    //     if (typeof callback !== "function")
-    //         throw $TypeError("Loader.load: callback must be a function");
-    //     if (typeof errback !== "function")
-    //         throw $TypeError("Loader.load: error callback must be a function");
-    //
-
     try {
         let address = UnpackOption(options, "address");
         let load = CreateLoad(null);
