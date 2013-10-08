@@ -741,10 +741,6 @@ function Loader_define(names, moduleBodies, callback, errback) {
                 throw $TypeError("define(): argument 1 must be an iterable of strings");
             if ($SetHas(nameSet, name))
                 throw $TypeError("define(): argument 1 contains a duplicate entry '" + name + "'");
-            if ($MapHas(loaderData.modules, name))
-                throw $TypeError("define(): module already loaded: '" + name + "'");
-            if ($MapHas(loaderData.loads, name))
-                throw $TypeError("define(): module already loading: '" + name + "'");
             $SetAdd(nameSet, name);
         }
         names = $SetElements(nameSet);
@@ -788,10 +784,6 @@ function Loader_define(names, moduleBodies, callback, errback) {
     }
 
     function success() {
-        // ISSUE: need to cope with Loader.prototype.set()/delete() having been
-        // called in the mean time so that Loader_get returns some
-        // other module, or null. Probably need to catch errors here and
-        // route them to errback.
         let arr = [];
         try {
             for (let i = 0; i < names.length; i++)
@@ -1630,9 +1622,6 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
 //
 //   - A factory function can throw or return an invalid value.
 //
-//   - After linking, we add all modules to the registry.  This fails if
-//     there's already an entry for any of the module names.
-//
 //   - Evaluation of a module body or a script can throw.
 //
 // Other:
@@ -2469,16 +2458,6 @@ function LinkComponents(linkSet) {
     // because error-checking is specified to happen in a separate, earlier
     // pass over the components.
     try {
-        // Check that we will be able to commit the fully linked modules to the
-        // registry.
-        for (let i = 0; i < loads.length; i++) {
-            let fullName = loads[i].fullName;
-            if ($MapHas(loaderData.modules, fullName)) {
-                throw $SyntaxError(
-                    "module '" + fullName + "' was loaded but is already in the Loader registry");
-            }
-        }
-
         // Find which names are exported by each new module.
         for (let i = 0; i < loads.length; i++) {
             let load = loads[i];
