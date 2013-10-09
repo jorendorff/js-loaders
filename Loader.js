@@ -610,10 +610,6 @@ function Loader_load(address,
                      options = undefined)
 {
     try {
-        // Build a referer object.
-        let refererAddress = UnpackOption(options, "address");
-        let referer = {name: null, address: refererAddress};
-
         // Create an empty metadata object.  *Rationale:*  The `normalize` hook
         // only makes sense for modules; `load()` loads scripts.  But we do
         // want `load()` to use the `fetch` hook, which means we must come up
@@ -630,7 +626,7 @@ function Loader_load(address,
         let load = CreateLoad(null);
         let run = MakeEvalCallback(this, load, callback, errback);
         CreateLinkSet(this, load, run, errback);
-        return CallFetch(this, load, address, referer, metadata, null, "script");
+        return CallFetch(this, load, address, metadata, null, "script");
     } catch (exn) {
         AsyncCall(errback, exn);
     }
@@ -655,7 +651,7 @@ function Loader_import(moduleName,
     var loader = this;
 
     // Unpack `options`.  Build the referer object that we will pass to
-    // `startModuleLoad`.
+    // StartModuleLoad.
     let name, address;
 
     try {
@@ -1178,10 +1174,10 @@ function Loader_link(src, options) {
 // **`UnpackOption`** - Used by several Loader methods to get options
 // off of an options object and check that if defined, they are strings.
 //
-// `eval()`, `evalAsync()`, and `load()` all accept an optional `options`
-// object. `options.address`, if present, is passed to each loader hook,
-// for each module loaded, as `options.referer.address`.  (The default
-// loader hooks ignore it, though.)
+// `eval()` and `evalAsync()` accept an optional `options` object.
+// `options.address`, if present, is passed to the `translate` and `link` hooks
+// as `options.actualAddress`, and to the `normalize` hook for each dependency,
+// as `options.referer.address`.  The default loader hooks ignore it, though.
 //
 // (`options.address` may also be stored in the script and used for
 // `Error().fileName`, `Error().stack`, and developer tools; but such use
@@ -1271,13 +1267,6 @@ function StartModuleLoad(loader, referer, name, sync) {
     //
     let normalized, metadata;
     {
-        // P4 ISSUE: Here `referer` is passed to the `normalize` hook and
-        // later it is passed to the `resolve` hook, and so on.  Should we
-        // create a new object each time?  (I think it's OK to pass the
-        // same referer object to successive hooks within a single load;
-        // but `eval()` creates a new referer object for each call to the
-        // `normalize()` hook, since they are not abstractly all part of a
-        // single load.)
         let result = loader.normalize(request, {referer: referer});
 
         // Interpret the `result`.
@@ -1369,7 +1358,7 @@ function StartModuleLoad(loader, referer, name, sync) {
     let address;
     try {
         // Call the `resolve` hook.
-        address = loader.resolve(normalized, {referer: referer, metadata: metadata});
+        address = loader.resolve(normalized, {metadata: metadata});
     } catch (exc) {
         // `load` is responsible for firing error callbacks and removing
         // itself from `loaderData.loads`.
@@ -1378,14 +1367,14 @@ function StartModuleLoad(loader, referer, name, sync) {
     }
 
     // Start the fetch.
-    CallFetch(loader, load, address, referer, metadata, normalized, "module");
+    CallFetch(loader, load, address, metadata, normalized, "module");
 
     return load;
 }
 
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
-function CallFetch(loader, load, address, referer, metadata, normalized, type) {
-    let options = {referer: referer, metadata: metadata, normalized: normalized, type: type};
+function CallFetch(loader, load, address, metadata, normalized, type) {
+    let options = {metadata: metadata, normalized: normalized, type: type};
     let errback = exc => LoadFailed(load, exc);
 
     // *Rationale for `fetchCompleted`:* The fetch hook is user code.
