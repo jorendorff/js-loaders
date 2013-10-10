@@ -716,8 +716,7 @@ function Loader_define(names, moduleBodies, callback, errback) {
     try {
         let nameSet = $SetNew();
         for (let name of names) {
-            if (typeof name !== "string")
-                throw $TypeError("define(): argument 1 must be an iterable of strings");
+            name = ToString(name);
             if ($SetHas(nameSet, name))
                 throw $TypeError("define(): argument 1 contains a duplicate entry '" + name + "'");
             $SetAdd(nameSet, name);
@@ -828,13 +827,7 @@ function Loader_define(names, moduleBodies, callback, errback) {
 //
 function Loader_get(name) {
     let loaderData = GetLoaderInternalData(this);
-
-    // Throw a TypeError if `name` is not a string.
-    if (typeof name !== "string")
-        throw $TypeError("module name must be a string");
-
-    let m = $MapGet(loaderData.modules, name);
-
+    let m = $MapGet(loaderData.modules, ToString(name));
     if (m !== undefined)
         EnsureEvaluated(this, m);
     return m;
@@ -851,11 +844,7 @@ function Loader_get(name) {
 //
 function Loader_has(name) {
     let loaderData = GetLoaderInternalData(this);
-
-    if (typeof name !== "string")
-        throw $TypeError("module name must be a string");
-
-    return $MapHas(loaderData.modules, name);
+    return $MapHas(loaderData.modules, ToString(name));
 }
 
 
@@ -866,8 +855,7 @@ function Loader_has(name) {
 function Loader_set(name, module) {
     let loaderData = GetLoaderInternalData(this);
 
-    if (typeof name !== "string")
-        throw $TypeError("module name must be a string");
+    name = ToString(name);
 
     // Entries in the module registry must actually be `Module`s.
     // *Rationale:* We use `Module`-specific intrinsics like
@@ -939,7 +927,7 @@ function Loader_delete(name) {
     // entry exists in `loaderData.loads`).  This is analogous to `.set()`.
     // per (reading between the lines) discussions with dherman, 2013 April
     // 17, and samth, 2013 April 22.
-    $MapDelete(loaderData.modules, name);
+    $MapDelete(loaderData.modules, ToString(name));
 
     return this;
 }
@@ -1172,7 +1160,7 @@ function Loader_link(src, options) {
 
 
 // **`UnpackOption`** - Used by several Loader methods to get options
-// off of an options object and check that if defined, they are strings.
+// off of an options object and, if defined, coerce them to strings.
 //
 // `eval()` and `evalAsync()` accept an optional `options` object.
 // `options.address`, if present, is passed to the `translate` and `link` hooks
@@ -1184,21 +1172,12 @@ function Loader_link(src, options) {
 // is outside the scope of the language standard.)
 //
 function UnpackOption(options, name) {
-    var value;
-
-    if (options !== undefined)
-        value = options[name];
-
-    switch (typeof value) {
-      case "undefined":
+    if (options === undefined)
         return null;
-
-      case "string":
-        return value;
-
-      default:
-        throw $TypeError("options." + name + " must be a string, if defined");
-    }
+    let value = options[name];
+    if (value === undefined)
+        return null;
+    return ToString(value);
 }
 
 
@@ -1398,17 +1377,6 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
         if ($SetSize(load.linkSets) === 0)
             return;
 
-        if (typeof src !== "string") {
-            let msg = "fulfill callback: first argument must be a string";
-            AsyncCall(errback, $TypeError(msg));
-            return;
-        }
-        if (typeof actualAddress !== "string") {
-            let msg = "fulfill callback: third argument must be a string";
-            AsyncCall(errback, $TypeError(msg));
-            return;
-        }
-
         // Even though `fulfill()` will *typically* be called
         // asynchronously from an empty or nearly empty stack, the `fetch`
         // hook may call it from a nonempty stack, even synchronously.
@@ -1442,7 +1410,6 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
 function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAddress) {
     // TODO - simplify since type is always "module" if normalized is non-null
     // and "script" otherwise.
-    $Assert(typeof src === "string");
 
     var loaderData = GetLoaderInternalData(loader);
 
@@ -1451,14 +1418,6 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
         return;
 
     try {
-        // Check arguments to `fulfill` callback.
-        // ISSUE - What are the type requirements on addresses, exactly?  We
-        // already did this in CallFetch, but not from other call sites.
-        if (typeof actualAddress !== "string") {
-            throw $TypeError("fetch hook fulfill callback: " +
-                             "second argument must be a string");
-        }
-
         // Call the `translate` hook.
         src = loader.translate(src, {
             metadata: metadata,
@@ -1466,8 +1425,6 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
             type: type,
             actualAddress: actualAddress
         });
-        if (typeof src !== "string")
-            throw $TypeError("translate hook must return a string");
 
         // Call the `link` hook, if we are loading a module.
         let linkResult =
