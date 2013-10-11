@@ -1361,18 +1361,21 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
     // misuse; the system must be robust against these hooks being called
     // multiple times.
     //
-    // Futures treat extra `resolve()` calls after the first as no-ops; we
-    // throw instead, per meeting 2013 April 26.
-    //
-    // P5 ISSUE: what kind of error to throw when that happens (assuming
-    // TypeError).
+    // Futures treat extra `resolve()` calls after the first as no-ops.
+    // At the moment this implementation throws TypeError instead, but the API
+    // will transition to Futures.
     //
     let fetchCompleted = false;
 
-    function fulfill(src, actualAddress) {
+    // TODO: This API needs to accept an object with fields, to work with
+    // Promises.
+    function fulfill(fetchResult) {
         if (fetchCompleted)
             throw $TypeError("fetch() fulfill callback: fetch already completed");
         fetchCompleted = true;
+
+        let src = fetchResult.src;
+        let address = fetchResult.address;
 
         if ($SetSize(load.linkSets) === 0)
             return;
@@ -1383,7 +1386,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
         // Therefore use `AsyncCall` here, at the cost of an extra event
         // loop turn.
         AsyncCall(() =>
-                  OnFulfill(loader, load, metadata, normalized, type, false, src, actualAddress));
+                  OnFulfill(loader, load, metadata, normalized, type, false, src, address));
     }
 
     function reject(exc) {
@@ -1407,7 +1410,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
 }
 
 // **`onFulfill`** - This is called once a fetch succeeds.
-function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAddress) {
+function OnFulfill(loader, load, metadata, normalized, type, sync, src, address) {
     // TODO - simplify since type is always "module" if normalized is non-null
     // and "script" otherwise.
 
@@ -1423,7 +1426,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
             metadata: metadata,
             normalized: normalized,
             type: type,
-            actualAddress: actualAddress
+            address: address
         });
 
         // Call the `link` hook, if we are loading a module.
@@ -1433,14 +1436,14 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, actualAd
                 metadata: metadata,
                 normalized: normalized,
                 type: type,
-                actualAddress: actualAddress
+                address: address
               })
             : undefined;
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
-            let body = $Parse(loader, src, normalized, actualAddress, loaderData.strict);
-            FinishLoad(load, loader, actualAddress, body, sync);
+            let body = $Parse(loader, src, normalized, address, loaderData.strict);
+            FinishLoad(load, loader, address, body, sync);
         } else if (!IsObject(linkResult)) {
             throw $TypeError("link hook must return an object or undefined");
         } else if ($IsModule(linkResult)) {
@@ -1695,7 +1698,7 @@ function CreateLoad(fullName) {
     };
 }
 
-//> #### FinishLoad(load, loader, actualAddress, body, sync) Abstract Operation
+//> #### FinishLoad(load, loader, address, body, sync) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `link` hook), and
 // after the script or module's syntax has been checked. FinishLoad does two
@@ -1710,7 +1713,7 @@ function CreateLoad(fullName) {
 // On success, this transitions the `Load` from `"loading"` status to
 // `"loaded"`.
 //
-function FinishLoad(load, loader, actualAddress, body, sync) {
+function FinishLoad(load, loader, address, body, sync) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
@@ -1741,7 +1744,7 @@ function FinishLoad(load, loader, actualAddress, body, sync) {
     for (let i = 0; i < linkingInfo.length; i++) {
         let request = linkingInfo[i].importModule;
         if (!$MapHas(names, request)) {
-            let referer = {name: refererName, address: actualAddress};
+            let referer = {name: refererName, address: address};
             let depLoad;
             try {
                 depLoad = StartModuleLoad(loader, referer, request, sync);
