@@ -148,6 +148,11 @@
 //       export default = EXPR;
 //         {importModule: null, importName: null, localName: "default", exportName: "default"}
 //
+//   Multiple instances of `export *;` or `export * from "M";` are
+//   permitted, but all except the first are ignored.  They do not affect
+//   the output of $GetLinkingInfo. (That is, you don't get extra objects
+//   for each superfluous declaration.)
+//
 // The following primitives operate on modules.
 //
 // * `$IsModule(v)` returns true if `v` is a `Module` object.
@@ -2039,13 +2044,6 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //>     It is a link error if two `export *` declarations in the same
 //>     module would export the same name. (TODO: fix vagueness.)
 //>
-//     ISSUE - Are multiple instances of `export *;` in the same module
-//     redundant or do they both take effect and therefore conflict?
-//
-//     ISSUE - Are multiple instances of `export * from "M";` in the same
-//     module, with the same string "M", redundant? What about with
-//     two different strings that resolve to the same full name?
-//
 //>   * **Deleted dependencies.**
 //>     It is a link error if there exists a module M and a string fullName
 //>     such that all of the following are true:
