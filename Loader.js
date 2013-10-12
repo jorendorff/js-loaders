@@ -1494,10 +1494,10 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, address)
 //
 //  2. Detach each `LinkSet` in F from all `Load`s it required.
 //
-//  3. Let M = the set of all in-flight loads (in `loader.loads`) that are no
+//  3. Let M = the set of all in-flight loads (in loader.[[Loads]]) that are no
 //     longer needed by any LinkSet.
 //
-//  4. Remove all loads in M from `loader.loads`.  If any are in `"loading"`
+//  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
 //     state, make the `fulfill` and `reject` callbacks into no-ops.
 //
 //     P4 ISSUE: It would be nice to cancel those fetches, if possible.
