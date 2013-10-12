@@ -1069,13 +1069,10 @@ function Loader_resolve(normalized, options) {
 //>
 //> *Default behavior:*  Pass a `TypeError` to the reject callback.
 //>
-//> *Synchronous calls to fulfill and reject:*  The `fetch` hook may
-//> call the fulfill or reject callback synchronously rather than
-//> waiting for the next event loop turn.  fulfill schedules the pipeline
-//> to resume asynchronously.  Per meeting, 2013 April 26.  *Rationale:* It
-//> would be strange for a synchronous fulfill callback to synchronously
-//> call `translate`/`link` hooks, and then `normalize`/`resolve`/`fetch`
-//> hooks for dependencies, before the first `fetch` hook has returned.
+//> *Synchronous calls to fulfill and reject:* The `fetch` hook may call
+//> the fulfill or reject callback directly (for example, if source is
+//> already available).  fulfill schedules the pipeline to resume
+//> asynchronously.  *Rationale:* This is how Futures behave.
 //>
 //> When the fetch method is called, the following steps are taken:
 //>
