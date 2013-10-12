@@ -220,6 +220,7 @@
 // * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
 // * `$ArrayPush(arr, v)` ~= arr.push(v)
 // * `$ArrayPop(arr)` ~= arr.pop()
+// * `$ArraySort(arr, cmp)` ~= arr.sort(cmp)
 // * `$SetNew()` ~= new Set
 // * `$SetSize(set)` ~= set.size
 // * `$SetHas(set, v)` ~= set.has(v)
@@ -445,7 +446,9 @@ function Loader_create() {
 
         // **`loaderData.runtimeDependencies`** stores the
         // should-be-evaluated-before relation for modules.
-        runtimeDependencies: $WeakMapNew()
+        runtimeDependencies: $WeakMapNew(),
+
+        nextLinkSetTimestamp: 0
     };
 
     $WeakMapSet(loaderInternalDataMap, loader, internalData);
@@ -1505,11 +1508,7 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, address)
 //  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
 //     state, make the `fulfill` and `reject` callbacks into no-ops.
 //
-//  5. Call the `errback` for each `LinkSet` in F.
-//
-//     P5 ISSUE: Ordering.  We can spec the order to be the order of the
-//     `import()/load()/evalAsync()` calls, wouldn't be hard; or explicitly
-//     make it unspecified.
+//  5. Call the `errback` for each `LinkSet` in F (in timestamp order).
 //
 // After that, we drop the failed `LinkSet`s and they become garbage.
 //
@@ -1719,19 +1718,9 @@ function FinishLoad(load, loader, address, body, sync) {
 
     let refererName = load.fullName;
     let fullNames = [];
-    let sets = load.linkSets;
+    let sets = $SetElements(load.linkSets);
 
     let linkingInfo = $GetLinkingInfo(body);
-
-    // P4 ISSUE: Evaluation order when multiple LinkSets become linkable
-    // at once.
-    //
-    // Proposed: When a fetch fulfill callback fires and completes the
-    // dependency graph of multiple link sets at once, they are
-    // linked and evaluated in the order of the original
-    // load()/evalAsync() calls.
-    //
-    // samth is unsure but thinks probably so.
 
     // Find all dependencies by walking the list of import-declarations.  For
     // each new dependency, create a new Load and add it to the same link set.
@@ -1765,6 +1754,10 @@ function FinishLoad(load, loader, address, body, sync) {
     load.linkingInfo = linkingInfo;
     load.dependencies = dependencies;
     if (!sync) {
+        // For determinism, finish linkable LinkSets in timestamp order.
+        // (NOTE: If it turns out that Futures fire in deterministic
+        // order, then there's no point sorting this array here.)
+        $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
         for (let i = 0; i < sets.length; i++)
             LinkSetOnLoad(sets[i], load);
     }
@@ -1791,9 +1784,15 @@ function LoadFailed(load, exc) {
     $Assert(load.status === "loading");
     load.status = "failed";
     load.exception = exc;
+
+    // For determinism, flunk the attached LinkSets in timestamp order.
+    // (NOTE: If it turns out that Futures fire in deterministic
+    // order, then there's no point sorting this array here.)
     let sets = $SetElements(load.linkSets);
+    $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < sets.length; i++)
         FinishLinkSet(sets[i], false, exc);
+
     $Assert($SetSize(load.linkSets) === 0);
 }
 
@@ -1820,11 +1819,13 @@ function LoadFailed(load, exc) {
 //> #### CreateLinkSet(loader, startingLoad, callback, errback) Abstract Operation
 //>
 function CreateLinkSet(loader, startingLoad, callback, errback) {
+    var loaderData = GetLoaderInternalData(linkSet.loader);
     var linkSet = {
         loader: loader,
         callback: callback,
         errback: errback,
         loads: $SetNew(),
+        timestamp: loaderData.nextLinkSetTimestamp++,
 
         // Implementation note: `this.loadingCount` is not in the spec. This is
         // the number of `Load`s in `this.loads` whose `.status` is
