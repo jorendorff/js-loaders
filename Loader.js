@@ -1500,8 +1500,6 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, address)
 //  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
 //     state, make the `fulfill` and `reject` callbacks into no-ops.
 //
-//     P4 ISSUE: It would be nice to cancel those fetches, if possible.
-//
 //  5. Call the `errback` for each `LinkSet` in F.
 //
 //     P5 ISSUE: Ordering.  We can spec the order to be the order of the
