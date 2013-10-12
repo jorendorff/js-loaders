@@ -1983,7 +1983,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //
 //   * HasExport(m, name) - true if name is among m's exports
 //
-//   * HasPassThroughExport(loader, <m_1, e_1>, <m_2, e_2>) -
+//   * HasPassThroughExport(loader, [m_1, e_1], [m_2, e_2]) -
 //     true if m_1 exports m_2[e_2] as e_1.
 //     This must find exports of the following forms:
 //         export {x} from "M";
@@ -2001,15 +2001,15 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //> The following are link errors.
 //>
 //>   * **`import` failures.**
-//>     It is a link error if there exists a triple <m_1, m_2, name>
+//>     It is a link error if there exists a triple [m_1, m_2, name]
 //>     such that HasImport(loader, m_1, m_2, name) is true
 //>     and HasExport(m_2, name) is false.
 //>
 //>   * **`export from` cycles.**
 //>     It is a link error if there exists a nonempty sequence of pairs
-//>     (<m_0, e_0>, <m_1, e_1>, ..., <m_{N-1}, e_{N-1}>) such that
+//>     ([m_0, e_0], [m_1, e_1], ..., [m_{N-1}, e_{N-1}]) such that
 //>     for all natural numbers i from 0 to N-1,
-//>     HasPassThroughExport(loader, <m_i, e_i>, <m_j, e_j>) is true,
+//>     HasPassThroughExport(loader, [m_i, e_i], [m_j, e_j]) is true,
 //>     where j = (i + 1) modulo N.
 //>
 //>     NOTE This occurs if one or more modules mutually import a name from one
