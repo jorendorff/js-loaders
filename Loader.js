@@ -161,8 +161,9 @@
 //   Modules declared in scripts must be linked and evaluated before they
 //   are exposed to user code.
 //
-// * `$ModuleObjectToModuleBody(mod)` returns a ModuleBody object `body`
-//   such that `$ModuleBodyToModuleObject(body) === mod`.
+// * `$GetModuleBody(mod)` returns `mod.[[Body]]`. This is the parse of
+//   the module source code, if the Module object `mod` was compiled from
+//   JS source, and undefined otherwise.
 //
 // * `$GetModuleExport(mod, name)` returns information about an export binding.
 //   If the module `mod` has an export binding for the given `name`, return an
@@ -2399,16 +2400,51 @@ function LinkComponents(linkSet) {
 //
 var evaluatedBody = $WeakMapNew();
 
-//> #### EvaluateScriptOrModuleOnce(realm, global, body) Abstract Operation
+//> #### EvaluateScriptOrModuleOnce(realm, global, c) Abstract Operation
 //>
-//> Evaluate the given script or module body, but only if we
+//> Evaluate the given script or module c, but only if we
 //> have never tried to evaluate it before.
 //>
-function EvaluateScriptOrModuleOnce(realm, global, body) {
+function EvaluateScriptOrModuleOnce(realm, global, c) {
+    let body = $IsModule(c) ? $GetModuleBody(c) : c;
     if (!$WeakMapHas(evaluatedBody, body)) {
         $WeakMapSet(evaluatedBody, body, true);
         return $Evaluate(realm, global, body);
     }
+}
+
+
+//> #### BuildSchedule(c, seen, schedule) Abstract Operation
+//>
+//> The abstract operation BuildSchedule performs a depth-first walk of the
+//> dependency tree of the component c, adding each module to the List
+//> schedule. It performs the following steps:
+//>
+function BuildSchedule(c, seen, schedule) {
+    //> 1. Append c as the last element of seen.
+    $SetAdd(seen, c);
+
+    //> 2. Let deps be c.[[Dependencies]].
+    //
+    // (In this implementation, deps is undefined if the module and all its
+    // dependencies have been evaluated; or if the module was created via the
+    // `Module()` constructor rather than from a script.)
+    let deps = $GetComponentDependencies(c);
+    if (deps !== undefined) {
+        //> 3. Repeat for each dep that is an element of deps, in order
+        for (let i = 0; i < deps.length; i++) {
+            let dep = deps[i];
+
+            //>         1. If dep is not an element of seen, then
+            //>             1. Call BuildSchedule with the arguments dep, seen,
+            //>                and schedule.
+            if (!$SetHas(seen, dep))
+                BuildSchedule(dep, seen, schedule);
+        }
+    }
+
+    //> 4. Append c as the last element of schedule.
+    $SetAdd(schedule, c);
 }
 
 //> #### EnsureEvaluated(loader, start) Abstract Operation
@@ -2468,30 +2504,8 @@ function EnsureEvaluated(loader, start) {
     //> 2. Let schedule be an empty List.
     let schedule = $SetNew();
 
-    function BuildSchedule(c) {
-        $SetAdd(seen, c);
-
-        let deps = $GetComponentDependencies(c);
-        if (deps !== undefined) {
-            for (let i = 0; i < deps.length; i++) {
-                let dep = deps[i];
-                if (!$SetHas(seen, dep))
-                    BuildSchedule(dep);
-            }
-        }
-        $SetAdd(schedule, m);
-
-        if ($IsModule(m)) {
-            // The `$SetDelete` call here means that if we already plan to
-            // evaluate this script, move it to be evaluated after `m`.
-            let script = $ModuleObjectToModuleBody(m);
-            $SetDelete(schedule, script);
-            $SetAdd(schedule, script);
-        }
-    }
-
     //> 3. Call BuildSchedule with arguments start, seen, schedule.
-    BuildSchedule(start);
+    BuildSchedule(start, seen, schedule);
 
     // Run the code.
     //
