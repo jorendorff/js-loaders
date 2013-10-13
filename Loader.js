@@ -25,6 +25,8 @@
 //   * the public `Loader` class;
 //   * the methods for loading and running code:
 //     `eval`, `evalAsync`, `load`, and `import`;
+//   * a method for compiling modules and putting them into the loader:
+//     `define`;
 //   * the methods for directly accessing the module map:
 //     `get`, `has`, `set`, and `delete`;
 //   * the loader hooks and the loading pipeline that calls them;
@@ -37,12 +39,8 @@
 //
 // Some parts are not implemented at all yet:
 //
-//   * an API for compiling modules and putting them into the loader;
 //   * making the loader hooks all asynchronous;
-//   * support for custom link hooks that create dynamic-linked ("factory-made")
-//     modules;
-//   * intrinsics;
-//   * probably various other odds and ends.
+//   * backward-compatibility support for AMD-style modules ("factory-made modules").
 //
 //
 // ## Primitives
@@ -61,7 +59,7 @@
 //   Here, it&rsquo;s mainly used to ensure that user callbacks are called
 //   from an empty stack.
 //
-// Now on to the core JS language implementation intrinsics.
+// Now on to the core JS language implementation primitives.
 //
 // * `$Parse(loader, src, moduleName, address, strict)` parses a script or
 //   module body. If `moduleName` is null, then `src` is parsed as an ES6
@@ -70,7 +68,7 @@
 //   or `ReferenceError`.  On success, it returns either a Script object or a
 //   ModuleBody object.  This is the only way objects of these types are
 //   created.  (Script and ModuleBody objects are never exposed to user code;
-//   they are for use with the following intrinsics only.)
+//   they are for use with the following primitives only.)
 //
 //   Note that this does not run any of the code in `src`.
 //
@@ -185,8 +183,8 @@
 //   bindings and import bindings from the module. The module may be re-linked
 //   later.
 //
-// Loader iterators require a little private state. These could be implemented
-// using a WeakMap, but intrinsics are more efficient.
+// Loader iterators require a little private state. (These can be implemented
+// using a WeakMap, but primitive functions would be more efficient.)
 //
 // * `$SetLoaderIteratorPrivate(iter, value)` stores `value` in an internal
 //   data property of `iter`.
@@ -194,7 +192,7 @@
 // * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
 //   using $SetLoaderIteratorPrivate.
 //
-// The following intrinsics deal with realms.
+// The following primitives deal with realms.
 //
 // * `$RealmNew()` creates a new realm for evaluating module and script code. This
 //   can be polyfilled in the browser using techniques like
