@@ -2585,8 +2585,3 @@ function IsObject(v) {
 function AsyncCall(fn, ...args) {
     $QueueTask(() => fn(...args));
 }
-
-
-//> ### The System Object
-//>
-var System = new Loader;
