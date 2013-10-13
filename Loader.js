@@ -1370,8 +1370,6 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
     //
     let fetchCompleted = false;
 
-    // TODO: This API needs to accept an object with fields, to work with
-    // Promises.
     function fulfill(fetchResult) {
         if (fetchCompleted)
             throw $TypeError("fetch() fulfill callback: fetch already completed");
