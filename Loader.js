@@ -616,11 +616,11 @@ function Loader_load(address,
                      options = undefined)
 {
     try {
-        // Create an empty metadata object.  *Rationale:*  The `normalize` hook
+        // Create an empty metadata object.  *Rationale:* The `normalize` hook
         // only makes sense for modules; `load()` loads scripts.  But we do
         // want `load()` to use the `fetch` hook, which means we must come up
-        // with a metadata value of some kind (this is ordinarily the
-        // `normalize` hook's responsibility).
+        // with a metadata value of some kind (this is ordinarily
+        // StartModuleLoad's responsibility).
         //
         // `metadata` is created using the intrinsics of the enclosing loader
         // class, not the Loader's intrinsics.  *Rationale:*  It is for the
@@ -977,9 +977,9 @@ function Loader_values() {
 //> #### Loader.prototype.normalize ( name, options )
 //>
 //> This hook receives the module name as passed to `import()` or as written in
-//> the import-declaration. It returns a full module name which is used for the
-//> rest of the import process.  (In particular, modules are stored in the
-//> registry under their full module name.)
+//> the import-declaration. It returns a string, the full module name, which is
+//> used for the rest of the import process.  (In particular, modules are
+//> stored in the registry under their full module name.)
 //>
 //> *When this hook is called:*  For all imports, including imports in
 //> scripts.  It is not called for the main script body evaluated by a call
@@ -988,18 +988,6 @@ function Loader_values() {
 //> After calling this hook, if the full module name is in the registry,
 //> loading stops. Otherwise loading continues, calling the `resolve`
 //> hook.
-//>
-//> The `normalize` hook may also create a custom "metadata" value that will
-//> be passed automatically to the other hooks in the pipeline.
-//>
-//> Returns either:
-//>
-//>   - a string, the full module name.  The loader will create a new empty
-//>     Object to serve as the metadata object for the rest of the load. Or:
-//>
-//>   - an object that has a `.normalized` property that is a string, the
-//>     full module name, and an optional `.metadata` property that the
-//>     loader will pass to the other hooks.
 //>
 //> *Default behavior:*  Return the module name unchanged.
 //>
@@ -1207,24 +1195,24 @@ function MakeEvalCallback(loader, load, callback, errback) {
 
 // ## The loader pipeline
 
-// **`startModuleLoad`** - The common implementation of the `import()`
+// **`StartModuleLoad`** - The common implementation of the `import()`
 // method and the processing of `import` declarations in ES code.
 //
 // There are several possible outcomes:
 //
 // 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
 //     callable, or it throws an exception, or it returns an invalid value.
-//     In these cases, `startModuleLoad` throws.
+//     In these cases, `StartModuleLoad` throws.
 //
 // 2.  The `normalize` hook returns the name of a module that is already in
-//     the registry.  `startModuleLoad` returns a pair, the normalized name
+//     the registry.  `StartModuleLoad` returns a pair, the normalized name
 //     and a fake Load object.
 //
 // 3.  This is a synchronous import (for `eval()`) and the module is not
-//     yet loaded.  `startModuleLoad` throws.
+//     yet loaded.  `StartModuleLoad` throws.
 //
 // 4.  In all other cases, either a new `Load` is started or we can join
-//     one already in flight.  `startModuleLoad` returns a pair, the
+//     one already in flight.  `StartModuleLoad` returns a pair, the
 //     normalized name and the `Load` object.
 //
 // `referer` provides information about the context of the `import()` call
@@ -1247,61 +1235,9 @@ function StartModuleLoad(loader, referer, name, sync) {
     //
     // Errors that happen during this step propagate to the caller.
     //
-    let normalized, metadata;
-    {
-        let result = loader.normalize(request, {referer: referer});
-
-        // Interpret the `result`.
-        //
-        // It must be a string or an object with a `.normalized` property
-        // whose value is a string.  Otherwise a `TypeError` is thrown.
-        // per samth, 2013 April 22, as amended by issue #13.
-        //
-        if (typeof result === "string") {
-            normalized = result;
-            metadata = {};
-        } else if (!IsObject(result)) {
-            // The result is `null`, a boolean, a number, or (if symbols
-            // somehow get defined as primitives) a symbol. Throw.
-            //
-            // *Rationale:*  Both a string and an object are possibly valid
-            // return values.  We could use `ToString` or `ToObject` to
-            // coerce this value.  But neither is the slightest bit
-            // compelling or useful.  So throw instead.
-            //
-            throw $TypeError(
-                "Loader.normalize hook must return undefined, " +
-                    "a string, or an object");
-        } else {
-            // Several hooks, including the `normalize` hook, may return
-            // multiple values, by returning an object where several
-            // properties are significant.  In all these cases, the object
-            // is just a temporary record.  The loader immediately gets the
-            // data it wants out of the returned object and then discards
-            // it.
-            //
-            // In this case, we care about two properties on the returned
-            // object, `.normalized` and `.metadata`, but only
-            // `.normalized` is required.
-            //
-            if (!("normalized" in result)) {
-                throw $TypeError(
-                    "Result of loader.normalize hook must be undefined, a string, or " +
-                        "an object with a .normalized property");
-            }
-
-            normalized = result.normalized;  // can throw
-
-            // Do not use `ToString` here, per samth, 2013 April 22.
-            if (typeof normalized !== "string") {
-                throw $TypeError(
-                    "Object returned by loader.normalize hook must have " +
-                        "a string .normalized property");
-            }
-
-            metadata = result.metadata;  // can throw
-        }
-    }
+    let metadata = {};
+    let normalized = loader.normalize(request, {referer: referer, metadata: metadata});
+    normalized = ToString(normalized);
 
     // If the module has already been linked, we are done.
     let existingModule = $MapGet(loaderData.modules, normalized);
