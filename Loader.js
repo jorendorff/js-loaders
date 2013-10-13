@@ -1,4 +1,4 @@
-// # loaders.js - ES6 module loaders illustrated
+// # Loader.js - ES6 module loaders illustrated
 //
 // This is a sample implementation of the ES6 module loader.
 //
