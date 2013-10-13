@@ -263,8 +263,8 @@
 //     other properties.
 //
 //   * has a [[Dependencies]] internal data property, a List of Modules or
-//     undefined.  This is populated at link time by the loader (TODO) and used
-//     by EnsureEvaluated.
+//     undefined.  This is populated at link time by the loader and used by
+//     EnsureEvaluated.
 
 
 // ## The Loader class
