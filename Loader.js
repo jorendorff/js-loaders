@@ -1412,9 +1412,6 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
 
 // **`onFulfill`** - This is called once a fetch succeeds.
 function OnFulfill(loader, load, metadata, normalized, type, sync, src, address) {
-    // TODO - simplify since type is always "module" if normalized is non-null
-    // and "script" otherwise.
-
     var loaderData = GetLoaderInternalData(loader);
 
     // If all link sets that required this load have failed, do nothing.
@@ -1426,20 +1423,19 @@ function OnFulfill(loader, load, metadata, normalized, type, sync, src, address)
         src = loader.translate(src, {
             metadata: metadata,
             normalized: normalized,
-            type: type,
+            type: normalized === null ? "script" : "module",
             address: address
         });
 
         // Call the `link` hook, if we are loading a module.
         let linkResult =
-            type === "module"
-            ? loader.link(src, {
+            normalized === null
+            ? undefined
+            : loader.link(src, {
                 metadata: metadata,
                 normalized: normalized,
-                type: type,
                 address: address
-              })
-            : undefined;
+              });
 
         // Interpret `linkResult`.  See comment on the `link()` method.
         if (linkResult === undefined) {
