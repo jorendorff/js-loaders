@@ -552,7 +552,7 @@ function Loader_eval(src, options) {
     // this doesn't throw, then we have everything we need and load phase
     // is done.
     //
-    OnFulfill(this, load, {}, null, "script", true, src, address);
+    OnFulfill(this, load, {}, null, true, src, address);
 
     // The **link phase** links each imported name to the corresponding
     // module or export.
@@ -588,7 +588,7 @@ function Loader_evalAsync(src,
         let load = CreateLoad(null);
         let run = MakeEvalCallback(this, load, callback, errback);
         CreateLinkSet(this, load, run, errback);
-        OnFulfill(this, load, {}, null, "script", false, src, address);
+        OnFulfill(this, load, {}, null, false, src, address);
     } catch (exn) {
         AsyncCall(errback, exn);
     }
@@ -764,7 +764,7 @@ function Loader_define(names, moduleBodies, callback, errback) {
         // cause the LinkSet to fail, which may or may not have cause all the
         // other loads to fail. Need to try to observe this happening.
         if (loads[i].status === "loading")
-            OnFulfill(this, loads[i], {}, names[i], "module", false, moduleBodies[i], null);
+            OnFulfill(this, loads[i], {}, names[i], false, moduleBodies[i], null);
     }
 
     function success() {
@@ -1387,7 +1387,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
         // Therefore use `AsyncCall` here, at the cost of an extra event
         // loop turn.
         AsyncCall(() =>
-                  OnFulfill(loader, load, metadata, normalized, type, false, src, address));
+                  OnFulfill(loader, load, metadata, normalized, false, src, address));
     }
 
     function reject(exc) {
@@ -1411,7 +1411,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
 }
 
 // **`onFulfill`** - This is called once a fetch succeeds.
-function OnFulfill(loader, load, metadata, normalized, type, sync, src, address) {
+function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
     var loaderData = GetLoaderInternalData(loader);
 
     // If all link sets that required this load have failed, do nothing.
