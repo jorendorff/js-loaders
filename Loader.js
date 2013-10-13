@@ -2424,6 +2424,17 @@ function LinkComponents(linkSet) {
         throw exc;
     }
 
+    // Set each linked component's list of dependencies, used by
+    // EnsureEvaluated.
+    for (let i = 0; i < loads.length; i++) {
+        let load = loads[i];
+        let deps = [];
+        var depNames = $MapValues(load.dependencies);
+        for (let j = 0; j < depNames.length; j++)
+            $ArrayPush(deps, FindModuleForLink(depNames[j]));
+        $SetComponentDependencies(TODO_GetComponent(load), deps);
+    }
+
     // Move the fully linked modules from the `loads` table to the
     // `modules` table.
     for (let i = 0; i < loads.length; i++) {
