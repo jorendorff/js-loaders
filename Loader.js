@@ -351,6 +351,8 @@ function Module(obj) {
     return mod;
 }
 
+Module.prototype = null;
+
 
 // ## The Loader class
 //
