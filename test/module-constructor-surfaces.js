@@ -11,3 +11,5 @@ assertDeepEq(desc, {
     value: Module,
     writable: true
 });
+
+assertEq(Object.prototype.toString.call(new Module({})), "[object Object]");
