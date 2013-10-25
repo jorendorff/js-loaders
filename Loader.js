@@ -868,15 +868,7 @@ def(Loader.prototype, {
         }
 
         function success() {
-            let arr = [];
-            try {
-                for (let i = 0; i < names.length; i++)
-                    $ArrayPush(arr, callFunction(Loader_get, this, names[i]));
-            } catch (exc) {
-                AsyncCall(errback, exc);
-                return;
-            }
-            return callback(arr);
+            return callback(undefined);
         }
     },
     //>
