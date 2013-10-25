@@ -50,7 +50,6 @@
 // we'll be doing here.
 (function (global) {
 "use strict";
-    
 
 var std_Function_call = Function.prototype.call,
     std_Function_bind = Function.prototype.bind,
@@ -393,8 +392,7 @@ Module.prototype = null;
 //   * `resolve(fullName, options)` - Given a full module name, determine
 //     the address to load and whether we're loading a script or a module.
 //
-//   * `fetch(address, fulfill, reject, options)` - Load a module from the
-//     given address.
+//   * `fetch(address, options)` - Load a module from the given address.
 //
 //   * `translate(src, options)` - Optionally translate a script or module from
 //     some other language to JS.
@@ -1132,7 +1130,7 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.fetch ( address, fulfill, reject, options )
+    //> #### Loader.prototype.fetch ( address, options )
     //>
     //> Asynchronously fetch the requested source from the given address
     //> (produced by the `resolve` hook).
@@ -1140,19 +1138,23 @@ def(Loader.prototype, {
     //> This is the hook that must be overloaded in order to make the `import`
     //> keyword work.
     //>
-    //> The fetch hook should load the requested address and call the fulfill
-    //> callback, passing two arguments: the fetched source, as a string; and the
-    //> actual address where it was found (after all redirects), also as a string.
+    //> The fetch hook should return a promise for a fetch-result object. It
+    //> should then load the requested address asynchronously.  On success, the
+    //> Promise must resolve to an object of the form {src: string, address:
+    //> string}.  The .src property is the fetched source, as a string; the
+    //> .address property is the actual address where it was found (after all
+    //> redirects), also as a string.
     //>
     //> options.type is the string `"module"` when fetching a standalone
     //> module, and `"script"` when fetching a script.
     //>
-    //> *When this hook is called:* For all modules and scripts whose source
-    //> is not directly provided by the caller.  It is not called for the
-    //> script bodies evaluated by `loader.eval()` and `.evalAsync()`, since
-    //> those do not need to be fetched.  `loader.evalAsync()` can trigger
-    //> this hook, for modules imported by the script.  `loader.eval()` is
-    //> synchronous and thus never triggers the `fetch` hook.
+    //> *When this hook is called:* For all modules and scripts whose source is
+    //> not directly provided by the caller.  It is not called for the script
+    //> bodies evaluated by `loader.eval()` and `.evalAsync()`, or for the
+    //> module bodies defined with `loader.define()`, since those do not need
+    //> to be fetched.  `loader.evalAsync()` can trigger this hook, for modules
+    //> imported by the script.  `loader.eval()` is synchronous and thus never
+    //> triggers the `fetch` hook.
     //>
     //> (`loader.load()` does not call `normalize`, `resolve`, or `link`, since
     //> we're loading a script, not a module; but it does call the `fetch` and
@@ -1167,7 +1169,7 @@ def(Loader.prototype, {
     //>
     //> When the fetch method is called, the following steps are taken:
     //>
-    fetch: function fetch(address, fulfill, reject, options) {
+    fetch: function fetch(address, options) {
         //> 1. Throw a **TypeError** exception.
         AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
     },
@@ -1432,7 +1434,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
     }
 
     try {
-        loader.fetch(address, fulfill, reject, options);
+        loader.fetch(address, options).then(fulfill, reject);
     } catch (exc) {
         // Some care is taken here to prevent even a badly-behaved fetch
         // hook from causing errback() to be called twice.
