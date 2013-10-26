@@ -1986,26 +1986,34 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 // thing as the evaluation-order dependencies.)
 //
 // The basic algorithm we want to describe in the spec is:
+//
+// 0. Create a Module object for each module being linked.
 // 
-// 1. Detect all errors:
-//      * imports that do not match exports
-//      * `export from` cycles
-//      * `export * from` cycles
-//      * `export *` collisions
-//      * a module we were depending on was deleted from the Loader
-//    If there are any errors, throw.
-// 
-// 2. For each module, resolve all `export * from` edges.  This step also
+// 1. For each module, resolve all `export * from` edges.  This step also
 //    computes the complete set of exports for each new module.  The resulting
-//    `export {name} from` edges must be stored.
-//
-// 3. Link all exports. For each module in the link set, for each export,
-//    create an export binding and a property on the Module object.  (There's
-//    some recursion in this step, but we already detected all possible
-//    errors in step 1.)
+//    synthetic `export {name} from` edges must be stored somewhere.
 // 
-// 4. For each import, bind it to the corresponding export.
+// 2. Link all exports. For each module in the link set, for each export,
+//    create an export binding and a property on the Module object. 
+// 
+// 3. For each import, bind it to the corresponding export.
 //
+// 4. If any error occurred during steps 1-3, discard all the Module objects
+//    created in step 0 and linkage fails. Otherwise, linkage succeeds; commit
+//    the new, fully linked modules to the loader's module registry.
+//
+// Implementations have a lot of leeway; they can fuse steps 0 to 3 into a
+// single pass over the link set.
+//
+// Errors can be detected in step 1 (`export * from` cycles, `export *`
+// collisions), step 2 (`export from` cycles), or step 3 (imports that do not
+// match exports, a module we were depending on was deleted from the Loader).
+// If any errors occur, the spec will insert some error token into a Module
+// somewhere (details TBD), and then step 4 will reject the LinkSet with an
+// exception. If a LinkSet has multiple errors, it is up to the implementation
+// which exception is thrown.
+
+
 // LinkComponents(linkSet) is the entry point to linkage; it implements the
 // above algorithm.
 
