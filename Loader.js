@@ -1332,13 +1332,12 @@ function MakeEvalCallback(loader, load, callback, errback) {
 function StartModuleLoad(loader, referer, name, sync) {
     var loaderData = GetLoaderInternalData(loader);
 
-    // Call the `normalize` hook to get a normalized module name and
-    // metadata.  See the comment on `normalize()`.
+    // Call the `normalize` hook to get a normalized module name.  See the
+    // comment on `normalize()`.
     //
     // Errors that happen during this step propagate to the caller.
     //
-    let metadata = {};
-    let normalized = loader.normalize(request, {referer: referer, metadata: metadata});
+    let normalized = loader.normalize(request, {referer: referer});
     normalized = ToString(normalized);
 
     // If the module has already been linked, we are done.
@@ -1374,6 +1373,8 @@ function StartModuleLoad(loader, referer, name, sync) {
     // link sets.  Errors must be reported using `LoadFailed(load, exc)`.
     load = CreateLoad(normalized);
     $MapSet(loaderData.loads, normalized, load);
+
+    let metadata = {};
 
     let address;
     try {
