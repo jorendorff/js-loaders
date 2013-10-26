@@ -699,7 +699,7 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.import ( moduleName, callback, errback, options )
+    //> #### Loader.prototype.import ( moduleName, options )
     //>
 
     // **`import`** - Asynchronously load, link, and evaluate a module and any
@@ -707,59 +707,49 @@ def(Loader.prototype, {
     // success callback.
     //
     import: function import_(moduleName,
-                             callback = module => {},
-                             errback = exc => { throw exc; },
                              options = undefined)
     {
         var loader = this;
 
-        // Unpack `options`.  Build the referer object that we will pass to
-        // StartModuleLoad.
-        let name, address;
+        return new Promise(function (resolver) {
+            // Unpack `options`.  Build the referer object that we will pass to
+            // StartModuleLoad. (Implementation note: if a Promise's init
+            // function throws, the new Promise is automatically
+            // rejected. UnpackOption and StartModuleLoad can throw.)
 
-        try {
-            name = UnpackOption(options, "module");
-            address = UnpackOption(options, "address");
-        } catch (exn) {
-            AsyncCall(errback, exn);
-            return;
-        }
+            let name = UnpackOption(options, "module");
+            let address = UnpackOption(options, "address");
+            let referer = {name: name, address: address};
 
-        let referer = {name: name, address: address};
+            // `StartModuleLoad` starts us along the pipeline.
+            let load = StartModuleLoad(loader, referer, moduleName, false);
 
-        // `StartModuleLoad` starts us along the pipeline.
-        let load;
-        try {
-            load = StartModuleLoad(loader, referer, moduleName, false);
-        } catch (exc) {
-            AsyncCall(errback, exc);
-            return;
-        }
-
-        if (load.status === "linked") {
-            // We already had this module in the registry.
-            AsyncCall(success);
-        } else {
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            CreateLinkSet(loader, load, success, errback);
-        }
-
-        function success() {
-            let m = load.status === "linked"
-                ? load.module
-                : $ModuleBodyToModuleObject(load.body);
-            try {
-                if (m === undefined) {
-                    throw $TypeError("import(): module \"" + load.fullName +
-                                     "\" was deleted from the loader");
-                }
-                EnsureEvaluated(loader, m);
-            } catch (exc) {
-                return errback(exc);
+            if (load.status === "linked") {
+                // We already had this module in the registry.
+                resolver.resolve(load.module);
+            } else {
+                // The module is now loading.  When it loads, it may have more
+                // imports, requiring further loads, so put it in a LinkSet.
+                CreateLinkSet(loader, load, success, exc => resolver.reject(exc));
             }
-            return callback(m);
-        }
+
+            function success() {
+                let m = load.status === "linked"
+                    ? load.module
+                    : $ModuleBodyToModuleObject(load.body);
+                try {
+                    if (m === undefined) {
+                        throw $TypeError("import(): module \"" + load.fullName +
+                                         "\" was deleted from the loader");
+                    }
+                    EnsureEvaluated(loader, m);
+                } catch (exc) {
+                    resolver.reject(exc);
+                    return;
+                }
+                resolver.resolve(m);
+            }
+        });
     },
     //>
     //> The `length` property of the `import` method is **1**.
