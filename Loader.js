@@ -397,8 +397,10 @@ Module.prototype = null;
 //   * `translate(src, options)` - Optionally translate a script or module from
 //     some other language to JS.
 //
-//   * `link(src, options)` - Determine dependencies of a module; optionally
-//     convert an AMD/npm/other module to an ES Module object.
+//   * `instantiate(src, options)` - Optionally convert an AMD/npm/other module
+//     to an ES Module object.
+
+
 
 //> ### The Loader Constructor
 
@@ -485,7 +487,7 @@ function Loader(options={}) {
     takeHook("resolve");
     takeHook("fetch");
     takeHook("translate");
-    takeHook("link");
+    takeHook("instantiate");
     return loader;
 }
 
@@ -1159,9 +1161,9 @@ def(Loader.prototype, {
     //> imported by the script.  `loader.eval()` is synchronous and thus never
     //> triggers the `fetch` hook.
     //>
-    //> (`loader.load()` does not call `normalize`, `resolve`, or `link`, since
-    //> we're loading a script, not a module; but it does call the `fetch` and
-    //> `translate` hooks, per samth, 2013 April 22.)
+    //> (`loader.load()` does not call `normalize`, `resolve`, or
+    //> `instantiate`, since we're loading a script, not a module; but it does
+    //> call the `fetch` and `translate` hooks, per samth, 2013 April 22.)
     //>
     //> *Default behavior:*  Pass a `TypeError` to the reject callback.
     //>
@@ -1197,12 +1199,12 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.link ( src, options )
+    //> #### Loader.prototype.instantiate ( src, options )
     //>
-    //> Allow a loader to optionally override the default linking behavior.  There
-    //> are three options.
+    //> Allow a loader to optionally provide interoperability with other module
+    //> systems.  There are three options.
     //>
-    //>  1. The link hook may return `undefined`. The loader then uses the
+    //>  1. The instantiate hook may return `undefined`. The loader then uses the
     //>     default linking behavior.  It parses src as a script or module
     //>     body, looks at its imports, loads all dependencies asynchronously,
     //>     and finally links them as a unit and adds them to the registry.
@@ -1221,19 +1223,16 @@ def(Loader.prototype, {
     //>
     //>         {
     //>             imports: <array of strings (module names)>,
-    //>             ?exports: <array of strings (property names)>,
     //>             execute: <function (Module, Module, ...) -> Module>
     //>         }
     //>
-    //>     The array of exports is optional.  If the hook does not specify
-    //>     exports, the module is dynamically linked.  In this case, it is
-    //>     executed during the linking process.  First all of its
-    //>     dependencies are executed and linked, and then passed to the
+    //>     The module is executed during the linking process.  First all of
+    //>     its dependencies are executed and linked, and then passed to the
     //>     relevant execute function.  Then the resulting module is linked
     //>     with the downstream dependencies.  This requires incremental
-    //>     linking when such modules are present, but it ensures that
-    //>     modules implemented with standard source-level module
-    //>     declarations can still be statically validated.
+    //>     linking when such modules are present, but it ensures that modules
+    //>     implemented with standard source-level module declarations can
+    //>     still be statically validated.
     //>
     //>     (This feature is provided in order to support using `import` to
     //>     import pre-ES6 modules such as AMD modules. See
@@ -1244,9 +1243,9 @@ def(Loader.prototype, {
     //>
     //> *Default behavior:*  Return undefined.
     //>
-    //> When the link method is called, the following steps are taken:
+    //> When the instantiate method is called, the following steps are taken:
     //>
-    link: function link(src, options) {
+    instantiate: function instantiate(src, options) {
         //> 1. Return **undefined**.
     }
     //>
@@ -1256,9 +1255,10 @@ def(Loader.prototype, {
 // off of an options object and, if defined, coerce them to strings.
 //
 // `eval()` and `evalAsync()` accept an optional `options` object.
-// `options.address`, if present, is passed to the `translate` and `link` hooks
-// as `options.actualAddress`, and to the `normalize` hook for each dependency,
-// as `options.referer.address`.  The default loader hooks ignore it, though.
+// `options.address`, if present, is passed to the `translate` and
+// `instantiate` hooks as `options.actualAddress`, and to the `normalize` hook
+// for each dependency, as `options.referer.address`.  The default loader hooks
+// ignore it, though.
 //
 // (`options.address` may also be stored in the script and used for
 // `Error().fileName`, `Error().stack`, and developer tools; but such use
@@ -1466,40 +1466,40 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
             address: address
         });
 
-        // Call the `link` hook, if we are loading a module.
-        let linkResult =
+        // Call the `instantiate` hook, if we are loading a module.
+        let instantiateResult =
             normalized === null
             ? undefined
-            : loader.link(src, {
+            : loader.instantiate(src, {
                 metadata: metadata,
                 normalized: normalized,
                 address: address
               });
 
-        // Interpret `linkResult`.  See comment on the `link()` method.
-        if (linkResult === undefined) {
+        // Interpret `instantiateResult`.  See comment on the `instantiate()`
+        // method.
+        if (instantiateResult === undefined) {
             let body = $Parse(loader, src, normalized, address, loaderData.strict);
             FinishLoad(load, loader, address, body, sync);
-        } else if (!IsObject(linkResult)) {
-            throw $TypeError("link hook must return an object or undefined");
-        } else if ($IsModule(linkResult)) {
+        } else if (!IsObject(instantiateResult)) {
+            throw $TypeError("instantiate hook must return an object or undefined");
+        } else if ($IsModule(instantiateResult)) {
             if ($MapHas(loaderData.modules, normalized)) {
                 throw $TypeError("fetched module \"" + normalized + "\" " +
                                  "but a module with that name is already " +
                                  "in the registry");
             }
-            let mod = linkResult;
+            let mod = instantiateResult;
             $MapSet(loaderData.modules, normalized, mod);
             OnEndRun(load, mod);
         } else {
             let mod = null;
-            let imports = linkResult.imports;
+            let imports = instantiateResult.imports;
 
             // P4 issue: "iterable" vs. "array"
             if (imports !== undefined)
                 imports = [...imports];
-            let exports = [...linkResult.exports];
-            let execute = linkResult.execute;
+            let execute = instantiateResult.execute;
 
             throw TODO;
         }
@@ -1561,9 +1561,9 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
 //     non-callable.  The hook can throw.  The hook can return an invalid
 //     return value.
 //
-//   - The `normalize`, `resolve`, and `link` hooks may return objects that are
-//     then destructured.  These objects could throw from a getter or proxy
-//     trap during destructuring.
+//   - The `normalize`, `resolve`, and `instantiate` hooks may return objects
+//     that are then destructured.  These objects could throw from a getter or
+//     proxy trap during destructuring.
 //
 //   - The fetch hook can report an error via the `reject()` callback.
 //
@@ -1630,7 +1630,7 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
 //      `export * from`.  All other exports are stored in the module object
 //      itself.
 //
-//>   * load.[[Module]] - If the `.link()` hook returned a Module object,
+//>   * load.[[Module]] - If the `.instantiate()` hook returned a Module object,
 //>     this is that Module. Otherwise, **null**.
 //>
 // The spec text currently uses only .[[Module]] and makes .[[ExportedNames]]
@@ -1656,8 +1656,8 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
 //         .linkSets is a Set of LinkSets
 //
 //     The load leaves this state when (a) the source is successfully parsed;
-//     (b) an error causes the load to fail; or (c) the `link` loader hook
-//     returns a Module object.
+//     (b) an error causes the load to fail; or (c) the `instantiate` loader
+//     hook returns a Module object.
 //
 // 2.  Loaded:  Source is available and has been translated and parsed.
 //     Dependencies have been identified.  But the module hasn't been
@@ -1695,10 +1695,10 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
 //         .status === "linked"
 //         .module is a Module object
 //
-//     (TODO: this is not true in the case of the `link` loader hook returning
-//     a Module object; may want a separate status for that) Loads that enter
-//     this state are removed from the `loader.loads` table and from all
-//     LinkSets; they become garbage.
+//     (TODO: this is not true in the case of the `instantiate` loader hook
+//     returning a Module object; may want a separate status for that) Loads
+//     that enter this state are removed from the `loader.loads` table and from
+//     all LinkSets; they become garbage.
 //
 // 4.  Failed:  The load failed.  The load never leaves this state.
 //
@@ -1730,15 +1730,15 @@ function CreateLoad(fullName) {
 
 //> #### FinishLoad(load, loader, address, body, sync) Abstract Operation
 //>
-// The loader calls this after the last loader hook (the `link` hook), and
-// after the script or module's syntax has been checked. FinishLoad does two
-// things:
+// The loader calls this after the last loader hook (the `instantiate` hook),
+// and after the script or module's syntax has been checked. FinishLoad does
+// two things:
 //
 //   1. Process imports. This may trigger additional loads (though if
 //      `sync` is true, it definitely won't: we'll throw instead).
 //
 //   2. Call LinkSetOnLoad on any listening LinkSets (see that abstract
-//      operation for the conclusion of the load/link/run process).
+//      operation for the conclusion of the load/link/evaluate process).
 //
 // On success, this transitions the `Load` from `"loading"` status to
 // `"loaded"`.
@@ -1796,7 +1796,7 @@ function FinishLoad(load, loader, address, body, sync) {
 
 //> #### OnEndRun(load, mod) Abstract Operation
 //>
-// Called when the `link` hook returns a Module object.
+// Called when the `instantiate` hook returns a Module object.
 function OnEndRun(load, mod) {
     $Assert(load.status === "loading");
     load.status = "linked";
