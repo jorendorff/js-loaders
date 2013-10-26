@@ -2035,27 +2035,22 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //     an `export * from` declaration for load_2.
 
 
-//> #### Runtime Semantics: Link Errors
+//> #### Note: Link-time errors (informative)
 //>
-//> With arguments loader and loads.
-//>
-//> The following are link errors.
+//> The following are link-time errors. If any of these exist in the LinkSet
+//> when linking starts, then linking will fail, with no side effects except
+//> that the LinkSet will be rejected. (All the side effects of linkage are
+//> applied to new Module objects that are simply discarded on failure.)
 //>
 //>   * **`import` failures.**
-//>     It is a link-time ReferenceError if there exists a triple [m_1, m_2,
-//>     name] such that HasImport(loader, m_1, m_2, name) is true and
-//>     HasExport(m_2, name) is false.
+//>     It is a link-time ReferenceError if an import declaration tries to
+//>     import a name from a module but the module doesn't export that name.
 //>
 //>   * **`export from` cycles.**
-//>     It is a link error if there exists a nonempty sequence of pairs
-//>     ([m_0, e_0], [m_1, e_1], ..., [m_{N-1}, e_{N-1}]) such that
-//>     for all natural numbers i from 0 to N-1,
-//>     HasPassThroughExport(loader, [m_i, e_i], [m_j, e_j]) is true,
-//>     where j = (i + 1) modulo N.
-//>
-//>     NOTE This occurs if one or more modules mutually import a name from one
-//>     another in a cycle, such that all of the exports are pass-through
-//>     exports, and none refers to an actual binding. For example:
+//>     It is a link-time SyntaxError if one or more modules mutually import a
+//>     name from one another in a cycle, such that all of the exports are
+//>     pass-through exports, and none of them refer to an actual binding. For
+//>     example:
 //>
 //>         // in module "A"
 //>         export {v} from "B";
@@ -2064,21 +2059,25 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //>         export {v} from "A";  // link error: no binding declared anywhere for v
 //>
 //>   * **`export * from` cycles.**
-//>     It is a link error if there exists a nonempty sequence of Load records
-//>     (r_0, r_1, ..., r_{N-1}) in loads such that 
-//>     for all natural numbers i from 0 to N-1,
-//>     HasExportStarFrom(loader, r_i, r_j) is true,
-//>     where j = (i + 1) modulo N.
-//>
-//>     NOTE This occurs if one or more modules mutually `export * from` one
-//>     another in a cycle. For example:
+//>     It is a link-time SyntaxError if one or more modules mutually
+//>     `export * from` one another in a cycle. For example:
 //>
 //>         // in module "A"
 //>         export * from "A";  // link error: 'export * from' cycle
 //>
 //>   * **`export *` collisions.**
-//>     It is a link error if two `export *` declarations in the same
-//>     module would export the same name. (TODO: fix vagueness.)
+//>     It is a link-time SyntaxError if two `export *` declarations in the
+//>     same module would export the same name. For example:
+//>
+//>         // in module "A"
+//>         export var x;
+//>
+//>         // in module "B"
+//>         export var x;
+//>
+//>         // in module "C"
+//>         export * from "A";  // link error: both of these modules
+//>         export * from "B";  // export something named 'x'
 //>
 //>   * **Deleted dependencies.**
 //>     It is a link error if there exists a module M and a string fullName
@@ -2090,7 +2089,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //>       * there is no LoaderRegistryEntry record for fullName in
 //>         loader.[[Modules]].
 //>
-//>     NOTE This can occur only if a module required by a Load in loads was
+//>     This can occur only if a module required by a Load in loads was
 //>     deleted from the loader's module registry using
 //>     Loader.prototype.delete.
 
