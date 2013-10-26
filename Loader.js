@@ -92,13 +92,16 @@ function $QueueTask(fn) {
 //   and `value`.  This is only used to implement `module a from "A";`
 //   declarations, so `value` is always a Module object.
 //
-// * `$LinkImport(component, name, export)` defines an import binding.
+// * `$CreateImportBinding(component, name, export)` defines an import binding.
 //   `component` is a Module or Script object. `name` is a string, the name of
 //   the local binding being bound.  `export` is a value returned by
 //   $GetModuleExport(), representing the location of the slot to be bound.
 //
-//   The effect of `$LinkImport` is that in `component`'s scope, `name` becomes
-//   an alias for the binding indicated by `export`.
+//   The effect of `$CreateImportBinding` is that in `component`'s scope,
+//   `name` becomes an alias for the binding indicated by `export`.
+//
+//   `name` must in fact be a name declared by an import declaration in
+//   `component`, and it must not already have been bound.
 //
 // * `$GetComponentDependencies(component)` returns component.[[Dependencies]].
 //   This is either undefined or an array of Module objects, the modules whose
@@ -2389,7 +2392,7 @@ function LinkImport(loader, load, edge) {
             throw $ReferenceError("can't import name '" + name + "': " +
                                   "no matching export in module '" + fullName + "'");
         }
-        $LinkImport(component, edge.localName, exp);
+        $CreateImportBinding(component, edge.localName, exp);
     }
 }
 
