@@ -669,36 +669,32 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.evalAsync ( src, options, callback, errback )
+    //> #### Loader.prototype.module ( src, options )
     //>
-
-    // **`evalAsync`** - Asynchronously run the script src, first loading any
-    // imported modules that aren't already loaded.
+    // **`module`** - Execute a top-level, anonymous module, without adding it
+    // to the loader's module registry.
     //
-    // This is the same as `load` but without fetching the initial script.
-    // On success, the result of evaluating the program is passed to
-    // callback.
+    // This is the dynamic equivalent of an asynchronous, anonymous `<module>`
+    // in HTML.
     //
-    evalAsync: function evalAsync(src,
-                                  options,
-                                  callback = value => {},
-                                  errback = exc => { throw exc; })
-    {
+    // Returns a future for the Module object.
+    //
+    module: function module_(src, options) {
         src = ToString(src);
-        var loaderData = GetLoaderInternalData(this);
+        var loader = this;
+        var loaderData = GetLoaderInternalData(loader);
 
-        try {
+        return new Promise(function (resolver) {
             let address = UnpackOption(options, "address");
             let load = CreateLoad(null);
-            let run = MakeEvalCallback(this, load, callback, errback);
-            CreateLinkSet(this, load, run, errback);
+            CreateLinkSet(this, load,
+                          m => resolver.resolve(m),
+                          exc => resolver.reject(exc));
             OnFulfill(this, load, {}, null, false, src, address);
-        } catch (exn) {
-            AsyncCall(errback, exn);
-        }
+        });
     },
     //>
-    //> The `length` property of the `evalAsync` method is **2**.
+    //> The `length` property of the `module` method is **2**.
     //>
 
 
