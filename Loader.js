@@ -687,10 +687,10 @@ def(Loader.prototype, {
         return new Promise(function (resolver) {
             let address = UnpackOption(options, "address");
             let load = CreateLoad(null);
-            CreateLinkSet(this, load,
+            CreateLinkSet(loader, load,
                           m => resolver.resolve(m),
                           exc => resolver.reject(exc));
-            OnFulfill(this, load, {}, null, false, src, address);
+            OnFulfill(loader, load, {}, null, false, src, address);
         });
     },
     //>
