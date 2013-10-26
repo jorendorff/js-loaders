@@ -698,49 +698,6 @@ def(Loader.prototype, {
     //> The `length` property of the `evalAsync` method is **2**.
     //>
 
-    //> #### Loader.prototype.load ( address, callback, errback, options )
-    //>
-
-    // **`load`** - Asynchronously load and run a script.  If the script
-    // contains import declarations, this can cause modules to be loaded,
-    // linked, and evaluated.
-    //
-    // On success, pass the result of evaluating the script to the success
-    // callback.
-    //
-    // This is the same as `asyncEval`, but first fetching the script.
-    //
-    load: function load(address,
-                        callback = value => {},
-                        errback = exc => { throw exc; },
-                        options = undefined)
-    {
-        try {
-            // Create an empty metadata object.  *Rationale:* The `normalize` hook
-            // only makes sense for modules; `load()` loads scripts.  But we do
-            // want `load()` to use the `fetch` hook, which means we must come up
-            // with a metadata value of some kind (this is ordinarily
-            // StartModuleLoad's responsibility).
-            //
-            // `metadata` is created using the intrinsics of the enclosing loader
-            // class, not the Loader's intrinsics.  *Rationale:*  It is for the
-            // loader hooks to use.  It is never exposed to code loaded by this
-            // Loader.
-            //
-            let metadata = {};
-
-            let load = CreateLoad(null);
-            let run = MakeEvalCallback(this, load, callback, errback);
-            CreateLinkSet(this, load, run, errback);
-            return CallFetch(this, load, address, metadata, null, "script");
-        } catch (exn) {
-            AsyncCall(errback, exn);
-        }
-    },
-    //>
-    //> The `length` property of the `load` method is **1**.
-    //>
-
 
     //> #### Loader.prototype.import ( moduleName, callback, errback, options )
     //>
@@ -818,6 +775,11 @@ def(Loader.prototype, {
         let loader = this;
         let loaderData = GetLoaderInternalData(this);
 
+        if (typeof names === "string" && typeof moduleBodies === "string") {
+            names = [names];
+            moduleBodies = [moduleBodies];
+        }
+
         return new Promise(function (resolver) {
             let linkSet = undefined;
             let loads = [];
@@ -875,6 +837,47 @@ def(Loader.prototype, {
         });
     },
     //>
+
+    //> #### Loader.prototype.load ( names )
+    //>
+    load: function load(names) {
+        let loader = this;
+        let loaderData = GetLoaderInternalData(this);
+
+        if (typeof names === "string")
+            names = [names];
+
+        // loader.load([]) succeeds immediately.
+        if (names.length === 0)
+            return Promise.resolve(undefined);
+
+        return new Promise(function (resolver) {
+            let name, address;
+            try {
+                name = UnpackOption(options, "module");
+                address = UnpackOption(options, "address");
+            } catch (exn) {
+                resolver.resolve(exn);
+                return;
+            }
+
+            let referer = {name: name, address: address};
+
+            // Make a LinkSet.
+            let linkSet;
+            for (let i = 0; i < names.length; i++) {
+                let moduleName = names[i];
+                let load = StartModuleLoad(loader, referer, moduleName, false);
+                if (linkSet === undefined) {
+                    linkSet = CreateLinkSet(loader, load,
+                                            _ => resolver.resolve(undefined),
+                                            exc => resolver.reject(exc));
+                } else {
+                    AddLoadToLinkSet(linkSet, load);
+                }
+            }
+        });
+    },
 
 
     // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
