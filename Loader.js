@@ -1976,19 +1976,6 @@ def(Loader.prototype, {
     },
     //>
 
-    //> #### Loader.prototype.strict
-    //>
-    //> `Loader.prototype.strict` is an accessor property whose set accessor
-    //> function is undefined. Its get accessor function performs the following
-    //> steps:
-    //>
-    get strict() {
-        //> 1. Let L be this Loader.
-        //> 2. Return L.[[Strict]].
-        return GetLoaderInternalData(this).strict;
-    },
-    //>
-
 
     // ### Loading and running code
     //
