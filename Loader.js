@@ -308,6 +308,45 @@ var $TypeError = TypeError;
 // * `$SyntaxError(msg)` ~= new SyntaxError(msg)
 var $SyntaxError = SyntaxError;
 
+
+// ## Utility functions
+
+// ES6 ToBoolean abstract operation.
+function ToBoolean(v) {
+    return !!v;
+}
+
+// ES6 ToString abstract operation.
+function ToString(v) {
+    return "" + v;
+}
+
+// Return true if Type(v) is Object.
+//
+// Perhaps surprisingly, process of elimination is the only correct way to
+// implement this.  See [ES5 11.4.3, "The `typeof`
+// Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
+//
+function IsObject(v) {
+    return v !== null &&
+           v !== undefined &&
+           typeof v !== "boolean" &&
+           typeof v !== "number" &&
+           typeof v !== "string" &&
+           typeof v !== "symbol";
+}
+
+// Schedule fn to be called with the given arguments during the next turn of
+// the event loop.
+//
+// (This is used to schedule calls to success and failure callbacks, since
+// the spec requires that those always be called from an empty stack.)
+//
+function AsyncCall(fn, ...args) {
+    $QueueTask(() => fn(...args));
+}
+
+
 // ## Module objects
 //
 // A Module object:
@@ -2485,44 +2524,6 @@ function EnsureEvaluatedHelper(mod, loader) {
     seen = $SetElements(seen);
     for (let i = 0; i < seen.length; i++)
         $SetDependencies(seen[i], undefined);
-}
-
-
-// ## Utility functions
-
-// ES6 ToBoolean abstract operation.
-function ToBoolean(v) {
-    return !!v;
-}
-
-// ES6 ToString abstract operation.
-function ToString(v) {
-    return "" + v;
-}
-
-// Return true if Type(v) is Object.
-//
-// Perhaps surprisingly, process of elimination is the only correct way to
-// implement this.  See [ES5 11.4.3, "The `typeof`
-// Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
-//
-function IsObject(v) {
-    return v !== null &&
-           v !== undefined &&
-           typeof v !== "boolean" &&
-           typeof v !== "number" &&
-           typeof v !== "string" &&
-           typeof v !== "symbol";
-}
-
-// Schedule fn to be called with the given arguments during the next turn of
-// the event loop.
-//
-// (This is used to schedule calls to success and failure callbacks, since
-// the spec requires that those always be called from an empty stack.)
-//
-function AsyncCall(fn, ...args) {
-    $QueueTask(() => fn(...args));
 }
 
 })(this);
