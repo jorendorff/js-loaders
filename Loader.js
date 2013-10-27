@@ -1199,7 +1199,7 @@ def(Loader.prototype, {
     //>
 });
 
-//> ## Module loading
+//> ## Module Loading
 //>
 
 // **`UnpackOption`** - Used by several Loader methods to get options
@@ -1882,7 +1882,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
 
 
-//> ## Module linking
+//> ## Module Linking
 //>
 
 // Before we reach this stage, we already have dependencies for each newly
@@ -2388,7 +2388,7 @@ function LinkModules(linkSet) {
 
 
 
-//> ## Module evaluation
+//> ## Module Evaluation
 //>
 //> Module bodies are evaluated on demand, as late as possible.  The
 //> loader uses the function `EnsureEvaluated`, defined below, to run
