@@ -1166,8 +1166,7 @@ def(Loader.prototype, {
     //> When the fetch method is called, the following steps are taken:
     //>
     fetch: function fetch(address, options) {
-        //> 1. Throw a **TypeError** exception.
-        AsyncCall(() => reject($TypeError("Loader.prototype.fetch was called")));
+        return Promise.reject($TypeError("Loader.prototype.fetch was called"));
     },
     //>
 
