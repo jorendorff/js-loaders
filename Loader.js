@@ -24,7 +24,7 @@
 //
 //   * the public `Loader` class;
 //   * the methods for loading and running code:
-//     `eval`, `evalAsync`, `load`, and `import`;
+//     `evalAsync`, `load`, and `import`;
 //   * a method for compiling modules and putting them into the loader:
 //     `define`;
 //   * the methods for directly accessing the module map:
@@ -614,59 +614,12 @@ def(Loader.prototype, {
 
     // ### Loading and running code
     //
-    // The high-level interface of `Loader` consists of four methods for
+    // The high-level interface of `Loader` consists of a few methods for
     // loading and running code.
     //
     // These are implemented in terms of slightly lower-level building blocks.
-    // Each of the four methods creates a `LinkSet` object, which is in charge
+    // Each of these methods creates a `LinkSet` object, which is in charge
     // of linking, and at least one `Load`.
-
-
-    //> #### Loader.prototype.eval ( src, [ options ] )
-    //>
-
-    // **`eval`** - Evaluate the script src.
-    //
-    // src may import modules, but if it directly or indirectly imports a
-    // module that is not already loaded, a `SyntaxError` is thrown.
-    //
-    eval: function eval_(src, options) {
-        src = ToString(src);
-        var loaderData = GetLoaderInternalData(this);
-
-        let address = UnpackOption(options, "address");
-
-        // The loader works in three basic phases: load, link, and evaluate.
-        // During the **load phase**, code is loaded and parsed, and import
-        // dependencies are traversed.
-
-        // The `Load` object here is *pro forma*; `eval` is synchronous and
-        // thus cannot fetch code.
-        let load = CreateLoad(null);
-        let linkSet = CreateLinkSet(this, load);
-
-        // Finish loading `src`.  This is the part where, in an *asynchronous*
-        // load, we would trigger further loads for any imported modules that
-        // are not yet loaded.
-        //
-        // Instead, here we pass `true` to `onFulfill` to indicate that we're
-        // doing a synchronous load.  This makes it throw rather than trigger
-        // any new loads or add any still-loading modules to the link set.  If
-        // this doesn't throw, then we have everything we need and load phase
-        // is done.
-        //
-        OnFulfill(this, load, {}, null, true, src, address);
-
-        // The **link phase** links each imported name to the corresponding
-        // module or export.
-        LinkLinkSet(linkSet);
-
-        // During the **evaluate phase**, we first evaluate module bodies
-        // for any modules needed by `script` that haven't already run.
-        // Then we evaluate `script` and return that value.
-        return EnsureEvaluated(this, script);
-    },
-    //>
 
 
     //> #### Loader.prototype.module ( src, options )
@@ -690,7 +643,7 @@ def(Loader.prototype, {
             let linkSet = CreateLinkSet(loader, load);
             linkSet.done.then(_ => resolver.resolve(load.module),
                               exc => resolver.reject(exc));
-            OnFulfill(loader, load, {}, null, false, src, address);
+            OnFulfill(loader, load, {}, null, src, address);
         });
     },
     //>
@@ -721,7 +674,7 @@ def(Loader.prototype, {
             let referer = {name: name, address: address};
 
             // `StartModuleLoad` starts us along the pipeline.
-            let load = StartModuleLoad(loader, referer, moduleName, false);
+            let load = StartModuleLoad(loader, referer, moduleName);
 
             if (load.status === "linked") {
                 // We already had this module in the registry.
@@ -820,7 +773,7 @@ def(Loader.prototype, {
                 // cause the LinkSet to fail, which may or may not cause all the
                 // other loads to fail. Need to try to observe this happening.
                 if (loads[i].status === "loading")
-                    OnFulfill(loader, loads[i], {}, names[i], false, moduleBodies[i], null);
+                    OnFulfill(loader, loads[i], {}, names[i], moduleBodies[i], null);
             }
         });
     },
@@ -855,7 +808,7 @@ def(Loader.prototype, {
             let linkSet;
             for (let i = 0; i < names.length; i++) {
                 let moduleName = names[i];
-                let load = StartModuleLoad(loader, referer, moduleName, false);
+                let load = StartModuleLoad(loader, referer, moduleName);
                 if (linkSet === undefined) {
                     linkSet = CreateLinkSet(loader, load).done.then(
                         _ => resolver.resolve(undefined),
@@ -1300,12 +1253,8 @@ function MakeEvalCallback(loader, load, callback, errback) {
 //     the registry.  `StartModuleLoad` returns a pair, the normalized name
 //     and a fake Load object.
 //
-// 3.  This is a synchronous import (for `eval()`) and the module is not
-//     yet loaded.  `StartModuleLoad` throws.
-//
-// 4.  In all other cases, either a new `Load` is started or we can join
-//     one already in flight.  `StartModuleLoad` returns a pair, the
-//     normalized name and the `Load` object.
+// 3.  In all other cases, either a new `Load` is started or we can join one
+//     already in flight.  `StartModuleLoad` returns the `Load` object.
 //
 // `referer` provides information about the context of the `import()` call
 // or import-declaration.  This information is passed to all the loader
@@ -1319,7 +1268,7 @@ function MakeEvalCallback(loader, load, callback, errback) {
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function StartModuleLoad(loader, referer, name, sync) {
+function StartModuleLoad(loader, referer, name) {
     var loaderData = GetLoaderInternalData(loader);
 
     // Call the `normalize` hook to get a normalized module name.  See the
@@ -1339,16 +1288,6 @@ function StartModuleLoad(loader, referer, name, sync) {
     let load = $MapGet(loaderData.loads, normalized);
     if (load !== undefined && load.status === "loaded")
         return load;
-
-    // If we can't wait for the module to load, we are done.
-    if (sync) {
-        // Throw a `SyntaxError`. *Rationale:* `SyntaxError` is already
-        // used for a few conditions that can be detected statically
-        // (before a script begins to run) but are not really syntax
-        // errors per se.  Reusing it seems better than inventing a new
-        // Error subclass.
-        throw $SyntaxError("eval: module not loaded: \"" + normalized + "\"");
-    }
 
     // If the module is already loading, we are done.
     if (load !== undefined) {
@@ -1416,7 +1355,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
         // Therefore use `AsyncCall` here, at the cost of an extra event
         // loop turn.
         AsyncCall(() =>
-                  OnFulfill(loader, load, metadata, normalized, false, src, address));
+                  OnFulfill(loader, load, metadata, normalized, src, address));
     }
 
     function reject(exc) {
@@ -1439,8 +1378,8 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
     }
 }
 
-// **`onFulfill`** - This is called once a fetch succeeds.
-function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
+// **`OnFulfill`** - This is called once a fetch succeeds.
+function OnFulfill(loader, load, metadata, normalized, src, address) {
     var loaderData = GetLoaderInternalData(loader);
 
     // If all link sets that required this load have failed, do nothing.
@@ -1470,7 +1409,7 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
         // method.
         if (instantiateResult === undefined) {
             let body = $Parse(loader, src, normalized, address, loaderData.strict);
-            FinishLoad(load, loader, address, body, sync);
+            FinishLoad(load, loader, address, body);
         } else if (!IsObject(instantiateResult)) {
             throw $TypeError("instantiate hook must return an object or undefined");
         } else if ($IsModule(instantiateResult)) {
@@ -1494,8 +1433,6 @@ function OnFulfill(loader, load, metadata, normalized, sync, src, address) {
             throw TODO;
         }
     } catch (exc) {
-        if (sync)
-            throw exc;
         LoadFailed(load, exc);
     }
 }
@@ -1718,14 +1655,13 @@ function CreateLoad(fullName) {
     };
 }
 
-//> #### FinishLoad(load, loader, address, body, sync) Abstract Operation
+//> #### FinishLoad(load, loader, address, body) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `instantiate` hook),
 // and after the script or module's syntax has been checked. FinishLoad does
 // two things:
 //
-//   1. Process imports. This may trigger additional loads (though if
-//      `sync` is true, it definitely won't: we'll throw instead).
+//   1. Process imports. This may trigger additional loads.
 //
 //   2. Call LinkSetOnLoad on any listening LinkSets (see that abstract
 //      operation for the conclusion of the load/link/evaluate process).
@@ -1733,7 +1669,7 @@ function CreateLoad(fullName) {
 // On success, this transitions the `Load` from `"loading"` status to
 // `"loaded"`.
 //
-function FinishLoad(load, loader, address, body, sync) {
+function FinishLoad(load, loader, address, body) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
@@ -1757,7 +1693,7 @@ function FinishLoad(load, loader, address, body, sync) {
             let referer = {name: refererName, address: address};
             let depLoad;
             try {
-                depLoad = StartModuleLoad(loader, referer, request, sync);
+                depLoad = StartModuleLoad(loader, referer, request);
             } catch (exc) {
                 return load.fail(exc);
             }
