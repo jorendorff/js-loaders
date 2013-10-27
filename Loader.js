@@ -74,47 +74,45 @@ function $QueueTask(fn) {
 
 // Now on to the core JS language implementation primitives.
 //
-// * `$Parse(loader, src, moduleName, address, strict)` parses a script or
-//   module body. If `moduleName` is null, then `src` is parsed as an ES6
-//   Script; otherwise `moduleName` is a string, and `src` is parsed as a
-//   ModuleBody.  `$Parse` detects ES "early errors" and throws `SyntaxError`
-//   or `ReferenceError`.  On success, it returns either a Script object or a
+// * `$ParseModule(loader, src, moduleName, address)` parses the string `src`
+//   as an ES6 Module.  `$ParseModule` detects ES "early errors" and throws
+//   `SyntaxError` or `ReferenceError`.  On success, it returns either a
 //   ModuleBody object.  This is the only way objects of these types are
-//   created.  (Script and ModuleBody objects are never exposed to user code;
-//   they are for use with the following primitives only.)
+//   created.  (ModuleBody objects are never exposed to user code; they are for
+//   use with the following primitives only.)
 //
 //   Note that this does not run any of the code in `src`.
 //
-// The following primitives operate on both scripts and modules.
+// The following primitives operate on Module objects.
 //
-// * `$DefineConstant(component, name, value)` defines a constant binding in
-//   the toplevel declarative environment of `component`, with the given `name`
+// * `$DefineConstant(module, name, value)` defines a constant binding in
+//   the toplevel declarative environment of `module`, with the given `name`
 //   and `value`.  This is only used to implement `module a from "A";`
 //   declarations, so `value` is always a Module object.
 //
-// * `$CreateImportBinding(component, name, export)` defines an import binding.
-//   `component` is a Module or Script object. `name` is a string, the name of
-//   the local binding being bound.  `export` is a value returned by
+// * `$CreateImportBinding(module, name, export)` defines an import binding.
+//   `module` is the importing module. `name` is a string, the name of the
+//   local binding being bound.  `export` is a value returned by
 //   $GetModuleExport(), representing the location of the slot to be bound.
 //
-//   The effect of `$CreateImportBinding` is that in `component`'s scope,
+//   The effect of `$CreateImportBinding` is that in `module`'s scope,
 //   `name` becomes an alias for the binding indicated by `export`.
 //
 //   `name` must in fact be a name declared by an import declaration in
-//   `component`, and it must not already have been bound.
+//   `module`, and it must not already have been bound.
 //
-// * `$GetComponentDependencies(component)` returns component.[[Dependencies]].
-//   This is either undefined or an array of Module objects, the modules whose
-//   bodies are to be evaluated before the given component's body.  A return
-//   value of undefined means the same thing as returning an empty array to the
-//   sole caller, EnsureEvaluated().
+// * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
+//   either undefined or an array of Module objects, the modules whose bodies
+//   are to be evaluated before the given module's body.  A return value of
+//   undefined means the same thing as returning an empty array to the sole
+//   caller, EnsureEvaluated().
 //
-// * `$SetComponentDependencies(component, deps)` sets component.[[Dependencies]].
+// * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
 //
 // * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
 //
 // * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
-//   import/export/module declarations in the given Script or Module.
+//   import/export/module declarations in the given Module body.
 //
 //   The objects all look like this:
 //
@@ -220,10 +218,8 @@ var $CreateModule = () => Object.create(null);
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
 //
-// * `$Evaluate(realm, global, body)` runs the body of a script or module in the
-//   context of a given realm and global object. If `body` is a  module, return
-//   undefined. If it's a script, return the value of the last-evaluated expression
-//   statement (just like `eval`).
+// * `$Evaluate(realm, global, body)` runs the body of a module in the context
+//   of a given realm and global object. Returns undefined.
 //
 // * `$DefineBuiltins(realm, obj)` builds a full copy of the ES builtins on `obj`
 //   for the given realm, so for example you get a fresh new `obj.Array`
@@ -393,12 +389,12 @@ Module.prototype = null;
 //     determine the full module name.
 //
 //   * `resolve(fullName, options)` - Given a full module name, determine
-//     the address to load and whether we're loading a script or a module.
+//     the address to load.
 //
 //   * `fetch(address, options)` - Load a module from the given address.
 //
-//   * `translate(src, options)` - Optionally translate a script or module from
-//     some other language to JS.
+//   * `translate(src, options)` - Optionally translate a module from some
+//     other language to JS.
 //
 //   * `instantiate(src, options)` - Optionally convert an AMD/npm/other module
 //     to an ES Module object.
@@ -878,7 +874,7 @@ def(Loader.prototype, {
 
         // Entries in the module registry must actually be `Module`s.
         // *Rationale:* We use `Module`-specific intrinsics like
-        // `$GetComponentDependencies` and `$Evaluate` on them.  per samth,
+        // `$GetDependencies` and `$Evaluate` on them.  per samth,
         // 2013 April 22.
         if (!$IsModule(module))
             throw $TypeError("Module object required");
@@ -1114,10 +1110,10 @@ def(Loader.prototype, {
     //> Allow a loader to optionally provide interoperability with other module
     //> systems.  There are three options.
     //>
-    //>  1. The instantiate hook may return `undefined`. The loader then uses the
-    //>     default linking behavior.  It parses src as a script or module
-    //>     body, looks at its imports, loads all dependencies asynchronously,
-    //>     and finally links them as a unit and adds them to the registry.
+    //>  1. The instantiate hook may return `undefined`. The loader then uses
+    //>     the default linking behavior.  It parses src as a module body,
+    //>     looks at its imports, loads all dependencies asynchronously, and
+    //>     finally links them as a unit and adds them to the registry.
     //>
     //>     The module bodies will then be evaluated on demand; see
     //>     `EnsureEvaluated`.
@@ -1353,7 +1349,7 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
         // Interpret `instantiateResult`.  See comment on the `instantiate()`
         // method.
         if (instantiateResult === undefined) {
-            let body = $Parse(loader, src, normalized, address, loaderData.strict);
+            let body = $ParseModule(loader, src, normalized, address);
             FinishLoad(load, loader, address, body);
         } else if (!IsObject(instantiateResult)) {
             throw $TypeError("instantiate hook must return an object or undefined");
@@ -1427,11 +1423,10 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
 //
 // Errors related to a `Load`:
 //
-//   - For each load, whether we're loading a script or a module, we call one
-//     or more of the loader hooks.  Getting the hook from the Loader object
-//     can trigger a getter that throws.  The value of the hook property can be
-//     non-callable.  The hook can throw.  The hook can return an invalid
-//     return value.
+//   - For each load, we call one or more of the loader hooks.  Getting the
+//     hook from the Loader object can trigger a getter that throws.  The value
+//     of the hook property can be non-callable.  The hook can throw.  The hook
+//     can return an invalid return value.
 //
 //   - The `normalize`, `resolve`, and `instantiate` hooks may return objects
 //     that are then destructured.  These objects could throw from a getter or
@@ -1539,7 +1534,7 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
 //     to load.
 //
 //         .status === "loaded"
-//         .body is a Script or ModuleBody, or null
+//         .body is a ModuleBody, or null
 //         .linkingInfo is an Array of objects representing all
 //             import, export, and module declarations in .body;
 //             see $GetLinkingInfo() for details
@@ -1596,8 +1591,7 @@ function CreateLoad(fullName) {
 //> #### FinishLoad(load, loader, address, body) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `instantiate` hook),
-// and after the script or module's syntax has been checked. FinishLoad does
-// two things:
+// and after the module has been parsed. FinishLoad does two things:
 //
 //   1. Process imports. This may trigger additional loads.
 //
@@ -1785,7 +1779,7 @@ function LinkSetOnLoad(linkSet, load) {
         // If all dependencies have loaded, link the modules and fire the
         // success callback.
         try {
-            LinkComponents(linkSet);
+            LinkModules(linkSet);
         } catch (exc) {
             FinishLinkSet(linkSet, false, exc);
             return;
@@ -1880,7 +1874,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 // which exception is thrown.
 
 
-// LinkComponents(linkSet) is the entry point to linkage; it implements the
+// LinkModules(linkSet) is the entry point to linkage; it implements the
 // above algorithm.
 
 
@@ -2007,10 +2001,10 @@ function ExportStarRequestNames(linkingInfo) {
     return names;
 }
 
-// **GetComponentImports** - Return an Array that includes one edge for each
+// **GetModuleImports** - Return an Array that includes one edge for each
 // import declaration and each `module ... from` declaration in the given
-// script or module.
-function GetComponentImports(linkingInfo) {
+// module.
+function GetModuleImports(linkingInfo) {
     let imports = [];
     for (let i = 0; i < linkingInfo.length; i++) {
         let edge = linkingInfo[i];
@@ -2253,34 +2247,31 @@ function ResolveExport(loader, fullName, exportName, visited) {
 //> #### LinkImport(loader, load, edge) Abstract Operation
 //>
 function LinkImport(loader, load, edge) {
-    let component = TODO_GetComponent(load); // $ModuleBodyToModuleObject(load.body), if module
+    let mod = $ModuleBodyToModuleObject(load.body);
     let fullName = $MapGet(load.dependencies, edge.importModule);
     let sourceModule = FindModuleForLink(loader, fullName);
     let name = edge.importName;
     if (name === MODULE) {
-        $DefineConstant(component, edge.localName, sourceModule);
+        $DefineConstant(mod, edge.localName, sourceModule);
     } else {
-        let exp = $GetModuleExport(module, name);
+        let exp = $GetModuleExport(sourceModule, name);
         if (exp === undefined) {
             throw $ReferenceError("can't import name '" + name + "': " +
                                   "no matching export in module '" + fullName + "'");
         }
-        $CreateImportBinding(component, edge.localName, exp);
+        $CreateImportBinding(mod, edge.localName, exp);
     }
 }
 
-//> #### LinkComponents(linkSet) Abstract Operation
+//> #### LinkModules(linkSet) Abstract Operation
 //>
 //> Link all scripts and modules in linkSet to each other and to modules in the
 //> registry.  This is done in a synchronous walk of the graph.  On success,
 //> commit all the modules in linkSet to the loader's module registry.
 //>
-function LinkComponents(linkSet) {
+function LinkModules(linkSet) {
     let loads = $SetElements(linkSet.loads);
 
-    // Implementation note: This needs error handling. The spec does not,
-    // because error-checking is specified to happen in a separate, earlier
-    // pass over the components.
     try {
         // Find which names are exported by each new module.
         for (let i = 0; i < loads.length; i++) {
@@ -2310,7 +2301,7 @@ function LinkComponents(linkSet) {
         for (let i = 0; i < loads.length; i++) {
             let load = loads[i];
             if (load.status === "loaded") {
-                let imports = GetComponentImports(load.linkingInfo);
+                let imports = GetModuleImports(load.linkingInfo);
                 for (let j = 0; j < loads.length; j++)
                     LinkImport(loader, load, imports[j]);
             }
@@ -2324,15 +2315,18 @@ function LinkComponents(linkSet) {
         throw exc;
     }
 
-    // Set each linked component's list of dependencies, used by
+    // Set each linked module's list of dependencies, used by
     // EnsureEvaluated.
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
+        let m = $ModuleBodyToModuleObject(load.body);
+        load.module = m;
+
         let deps = [];
         var depNames = $MapValues(load.dependencies);
         for (let j = 0; j < depNames.length; j++)
             $ArrayPush(deps, FindModuleForLink(depNames[j]));
-        $SetComponentDependencies(TODO_GetComponent(load), deps);
+        $SetDependencies(m, deps);
     }
 
     // Set the status of Load records for the modules we linked to "linked".
@@ -2341,14 +2335,9 @@ function LinkComponents(linkSet) {
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
         let fullName = load.fullName;
-        let m = $ModuleBodyToModuleObject(load.body);
         load.status = "linked";
-        load.module = m;  // Some LinkSet.done promise callbacks use this.
-                          // The modules table is mutable and may change before
-                          // callbacks fire, whereas this will never change
-                          // again.
         if (fullName !== null)
-            $MapSet(loaderData.modules, fullName, m);
+            $MapSet(loaderData.modules, fullName, load.module);
     }
 }
 
@@ -2367,45 +2356,43 @@ function LinkComponents(linkSet) {
 //> evaluated.  Simply put, we have to start somewhere: one of the
 //> modules in the cycle must run before the others.
 //>
-// **`evaluatedBody`** - The set of all scripts and modules we have ever
-// passed to `$Evaluate()`; that is, all the code we've ever tried to
-// run.
+// **`evaluatedModules`** - The set of all modules we have ever passed to
+// `$Evaluate()`; that is, all the code we've ever tried to run.
 //
 // (Of course instead of a hash table, an implementation could implement this
 // using a bit per script/module.)
 //
-var evaluatedBody = $WeakMapNew();
+var evaluatedModules = $WeakMapNew();
 
-//> #### EvaluateScriptOrModuleOnce(realm, global, c) Abstract Operation
+//> #### EvaluateModuleOnce(realm, global, mod) Abstract Operation
 //>
-//> Evaluate the given script or module c, but only if we
-//> have never tried to evaluate it before.
+//> Evaluate the given module mod, but only if we have never tried to evaluate it
+//> before.
 //>
-function EvaluateScriptOrModuleOnce(realm, global, c) {
-    let body = $IsModule(c) ? $GetModuleBody(c) : c;
-    if (!$WeakMapHas(evaluatedBody, body)) {
-        $WeakMapSet(evaluatedBody, body, true);
-        return $Evaluate(realm, global, body);
+function EvaluateModuleOnce(realm, global, mod) {
+    if (!$WeakMapHas(evaluatedModules, mod)) {
+        $WeakMapSet(evaluatedModules, mod, true);
+        return $Evaluate(realm, global, mod);
     }
 }
 
 
-//> #### BuildSchedule(c, seen, schedule) Abstract Operation
+//> #### BuildSchedule(mod, seen, schedule) Abstract Operation
 //>
 //> The abstract operation BuildSchedule performs a depth-first walk of the
-//> dependency tree of the component c, adding each module to the List
-//> schedule. It performs the following steps:
+//> dependency tree of the module mod, adding each module to the List
+//> schedule, stopping at cycles. It performs the following steps:
 //>
-function BuildSchedule(c, seen, schedule) {
-    //> 1. Append c as the last element of seen.
-    $SetAdd(seen, c);
+function BuildSchedule(mod, seen, schedule) {
+    //> 1. Append mod as the last element of seen.
+    $SetAdd(seen, mod);
 
-    //> 2. Let deps be c.[[Dependencies]].
+    //> 2. Let deps be mod.[[Dependencies]].
     //
     // (In this implementation, deps is undefined if the module and all its
     // dependencies have been evaluated; or if the module was created via the
     // `Module()` constructor rather than from a script.)
-    let deps = $GetComponentDependencies(c);
+    let deps = $GetDependencies(mod);
     if (deps !== undefined) {
         //> 3. Repeat for each dep that is an element of deps, in order
         for (let i = 0; i < deps.length; i++) {
@@ -2419,16 +2406,14 @@ function BuildSchedule(c, seen, schedule) {
         }
     }
 
-    //> 4. Append c as the last element of schedule.
-    $SetAdd(schedule, c);
+    //> 4. Append mod as the last element of schedule.
+    $SetAdd(schedule, mod);
 }
 
 //> #### EnsureEvaluated(loader, start) Abstract Operation
 //>
-//> Walk the dependency graph of the script or module start, evaluating
-//> any script or module bodies that have not already been evaluated
-//> (including, finally, start itself).
-//>
+//> Walk the dependency graph of the module start, evaluating any module bodies
+//> that have not already been evaluated (including, finally, start itself).
 //> Modules are evaluated in depth-first, left-to-right, post order, stopping
 //> at cycles.
 //>
@@ -2441,23 +2426,24 @@ function EnsureEvaluated(loader, start) {
     // *Why the graph walk doesn't stop at already-evaluated modules:*  It's a
     // matter of correctness.  Here is the test case:
     //
-    //     <script>
-    //       var ok = false;
-    //     </script>
-    //     <script>
-    //       module "x" { import "y" as y; throw fit; }
-    //       module "y" { import "x" as x; ok = true; }
-    //       import "y" as y;  // marks "x" as evaluated, but not "y"
-    //     </script>
-    //     <script>
-    //       import "x" as x;  // must evaluate "y" but not "x"
-    //       assert(ok === true);
-    //     </script>
+    //     // module "x"
+    //     import y from "y";
+    //     throw fit;
     //
-    // When we `EnsureEvaluated` the third script, module `x` is already
-    // marked as evaluated, but one of its dependencies, `y`, isn't.  In
-    // order to achieve the desired postcondition, we must find `y`
-    // anyway and evaluate it.
+    //     // module "y"
+    //     import x from "x";
+    //     global.ok = true;
+    //
+    //     // anonymous module #1
+    //     module y from "y";  // marks "x" as evaluated, but not "y"
+    //
+    //     // anonymous module #2
+    //     module x from "x";  // must evaluate "y" but not "x"
+    //
+    // When we `EnsureEvaluated` anonymous module #2, module `x` is already
+    // marked as evaluated, but one of its dependencies, `y`, isn't.  In order
+    // to achieve the desired postcondition, we must find `y` anyway and
+    // evaluate it.
     //
     // Cyclic imports, combined with exceptions during module evaluation
     // interrupting this algorithm, are the culprit.
@@ -2465,9 +2451,9 @@ function EnsureEvaluated(loader, start) {
     // The remedy: when walking the dependency graph, do not stop at
     // already-marked-evaluated modules.
     //
-    // (The implementation could optimize this by marking each module
-    // with an extra "no need to walk this subtree" bit when all
-    // dependencies, transitively, are found to have been evaluated.)
+    // (This implementation optimizes away future EnsureEvaluated passes by
+    // clearing mod.[[Dependencies]] for all modules in the dependency tree
+    // when EnsureEvaluated finishes successfully.)
 
     // Build a *schedule* giving the sequence in which modules and scripts
     // should be evaluated.
@@ -2482,6 +2468,8 @@ function EnsureEvaluated(loader, start) {
 
     //> 3. Call BuildSchedule with arguments start, seen, schedule.
     BuildSchedule(start, seen, schedule);
+
+    // TODO - Do not build an explicit schedule. It's unnecessary.
 
     // Run the code.
     //
@@ -2504,14 +2492,13 @@ function EnsureEvaluated(loader, start) {
     // That is, module body evaluation can nest.  However no individual
     // module's body will be evaluated more than once.
 
-    //> 4. Repeat, for each script or module C in schedule:
+    //> 4. Repeat, for each module mod in schedule:
     let realm = loaderData.realm;
     let global = loaderData.global;
-    let result;
     schedule = $SetElements(schedule);
     for (let i = 0; i < schedule.length; i++) {
-        //>     1. Call EvaluateScriptOrModuleOnce with the argument C.
-        result = EvaluateScriptOrModuleOnce(realm, global, schedule[i]);
+        //>     1. Call EvaluateModuleOnce with the argument mod.
+        EvaluateModuleOnce(realm, global, schedule[i]);
     }
 
     // All evaluation succeeded. As an optimization for future EnsureEvaluated
@@ -2519,9 +2506,7 @@ function EnsureEvaluated(loader, start) {
     // fused with the evaluation loop above; the meaning would change on error
     // for certain dependency graphs containing cycles.)
     for (let i = 0; i < schedule.length; i++)
-        $SetComponentDependencies(schedule[i], undefined);
-
-    return result;
+        $SetDependencies(schedule[i], undefined);
 }
 
 
