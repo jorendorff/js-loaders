@@ -1217,27 +1217,6 @@ function UnpackOption(options, name) {
 }
 
 
-// **`MakeEvalCallback`** - Create and return a callback, to be called
-// after linking is complete, that evaluates the script loaded by the
-// given `load`.
-function MakeEvalCallback(loader, load, callback, errback) {
-    return () => {
-        // Tail calls would be equivalent to AsyncCall, except for
-        // possibly some imponderable timing details.  This is meant as
-        // a reference implementation, so we just literal-mindedly do
-        // what the spec is expected to say.
-        let result;
-        try {
-            result = EnsureEvaluated(loader, load.body);
-        } catch (exc) {
-            AsyncCall(errback, exc);
-            return;
-        }
-        AsyncCall(callback, result);
-    };
-}
-
-
 // ## The loader pipeline
 
 // **`StartModuleLoad`** - The common implementation of the `import()`
