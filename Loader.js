@@ -37,7 +37,7 @@
 //   * the browser's configuration method, `ondemand`;
 //   * the browser's custom loader hooks: `normalize`, `resolve`, and `fetch`.
 //
-// Some parts are not implemented at all yet:
+// Some parts are not implemented yet:
 //
 //   * making the loader hooks all asynchronous;
 //   * backward-compatibility support for AMD-style modules ("factory-made modules").
@@ -218,8 +218,11 @@ var $CreateModule = () => Object.create(null);
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
 //
-// * `$Evaluate(realm, global, body)` runs the body of a module in the context
-//   of a given realm and global object. Returns undefined.
+// * `$EvaluateModuleBody(realm, mod)` runs the body of the given module in the
+//   context of a given realm. Returns undefined.
+//
+// * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
+//   $EvaluateModuleBody.
 //
 // * `$DefineBuiltins(realm, obj)` builds a full copy of the ES builtins on `obj`
 //   for the given realm, so for example you get a fresh new `obj.Array`
@@ -688,7 +691,7 @@ def(Loader.prototype, {
                         throw $TypeError("import(): module \"" + load.fullName +
                                          "\" was deleted from the loader");
                     }
-                    EnsureEvaluated(loader, m);
+                    EnsureEvaluatedHelper(m, loader);
                 } catch (exc) {
                     resolver.reject(exc);
                     return;
@@ -842,7 +845,7 @@ def(Loader.prototype, {
         let loaderData = GetLoaderInternalData(this);
         let m = $MapGet(loaderData.modules, ToString(name));
         if (m !== undefined)
-            EnsureEvaluated(this, m);
+            EnsureEvaluatedHelper(m, this);
         return m;
     },
     //>
@@ -2355,74 +2358,26 @@ function LinkModules(linkSet) {
 //> module is evaluated first can observe the others before they are
 //> evaluated.  Simply put, we have to start somewhere: one of the
 //> modules in the cycle must run before the others.
-//>
-// **`evaluatedModules`** - The set of all modules we have ever passed to
-// `$Evaluate()`; that is, all the code we've ever tried to run.
-//
-// (Of course instead of a hash table, an implementation could implement this
-// using a bit per script/module.)
-//
-var evaluatedModules = $WeakMapNew();
-
-//> #### EvaluateModuleOnce(realm, global, mod) Abstract Operation
-//>
-//> Evaluate the given module mod, but only if we have never tried to evaluate it
-//> before.
-//>
-function EvaluateModuleOnce(realm, global, mod) {
-    if (!$WeakMapHas(evaluatedModules, mod)) {
-        $WeakMapSet(evaluatedModules, mod, true);
-        return $Evaluate(realm, global, mod);
-    }
-}
 
 
-//> #### BuildSchedule(mod, seen, schedule) Abstract Operation
+//> #### EnsureEvaluated(mod, seen, loader) Abstract Operation
 //>
-//> The abstract operation BuildSchedule performs a depth-first walk of the
-//> dependency tree of the module mod, adding each module to the List
-//> schedule, stopping at cycles. It performs the following steps:
+//> The abstract operation EnsureEvaluated walks the dependency graph of the
+//> module mod, evaluating any module bodies that have not already been
+//> evaluated (including, finally, mod itself).  Modules are evaluated in
+//> depth-first, left-to-right, post order, stopping at cycles.
 //>
-function BuildSchedule(mod, seen, schedule) {
-    //> 1. Append mod as the last element of seen.
-    $SetAdd(seen, mod);
-
-    //> 2. Let deps be mod.[[Dependencies]].
-    //
-    // (In this implementation, deps is undefined if the module and all its
-    // dependencies have been evaluated; or if the module was created via the
-    // `Module()` constructor rather than from a script.)
-    let deps = $GetDependencies(mod);
-    if (deps !== undefined) {
-        //> 3. Repeat for each dep that is an element of deps, in order
-        for (let i = 0; i < deps.length; i++) {
-            let dep = deps[i];
-
-            //>         1. If dep is not an element of seen, then
-            //>             1. Call BuildSchedule with the arguments dep, seen,
-            //>                and schedule.
-            if (!$SetHas(seen, dep))
-                BuildSchedule(dep, seen, schedule);
-        }
-    }
-
-    //> 4. Append mod as the last element of schedule.
-    $SetAdd(schedule, mod);
-}
-
-//> #### EnsureEvaluated(loader, start) Abstract Operation
+//> mod and its dependencies must already be linked.
 //>
-//> Walk the dependency graph of the module start, evaluating any module bodies
-//> that have not already been evaluated (including, finally, start itself).
-//> Modules are evaluated in depth-first, left-to-right, post order, stopping
-//> at cycles.
+//> The List seen is used to detect cycles. mod must not already be in the List
+//> seen.
 //>
-//> start and its dependencies must already be linked.
-//>
-//> On success, start and all its dependencies, transitively, will have started
+//> On success, mod and all its dependencies, transitively, will have started
 //> to evaluate exactly once.
 //>
-function EnsureEvaluated(loader, start) {
+//> EnsureEvaluated performs the following steps:
+//>
+function EnsureEvaluated(mod, seen, loaderData) {
     // *Why the graph walk doesn't stop at already-evaluated modules:*  It's a
     // matter of correctness.  Here is the test case:
     //
@@ -2455,24 +2410,28 @@ function EnsureEvaluated(loader, start) {
     // clearing mod.[[Dependencies]] for all modules in the dependency tree
     // when EnsureEvaluated finishes successfully.)
 
-    // Build a *schedule* giving the sequence in which modules and scripts
-    // should be evaluated.
+    //> 1. Append mod as the last element of seen.
+    $SetAdd(seen, mod);
 
-    let loaderData = GetLoaderInternalData(loader);
-
-    //> 1. Let seen be an empty List.
-    let seen = $SetNew();
-
-    //> 2. Let schedule be an empty List.
-    let schedule = $SetNew();
-
-    //> 3. Call BuildSchedule with arguments start, seen, schedule.
-    BuildSchedule(start, seen, schedule);
-
-    // TODO - Do not build an explicit schedule. It's unnecessary.
-
-    // Run the code.
+    //> 2. Let deps be mod.[[Dependencies]].
     //
+    // (In this implementation, deps is undefined if the module and all its
+    // dependencies have been evaluated; or if the module was created via the
+    // `Module()` constructor rather than from a script.)
+    let deps = $GetDependencies(mod);
+    if (deps !== undefined) {
+        //> 3. Repeat for each dep that is an element of deps, in order
+        for (let i = 0; i < deps.length; i++) {
+            let dep = deps[i];
+
+            //>         1. If dep is not an element of seen, then
+            //>             1. Call BuildSchedule with the arguments dep, seen,
+            //>                and schedule.
+            if (!$SetHas(seen, dep))
+                EnsureEvaluated(dep, seen, loaderData);
+        }
+    }
+
     // **Exceptions during evaluation** - Module bodies can throw exceptions,
     // which are propagated to the caller.
     //
@@ -2492,21 +2451,37 @@ function EnsureEvaluated(loader, start) {
     // That is, module body evaluation can nest.  However no individual
     // module's body will be evaluated more than once.
 
-    //> 4. Repeat, for each module mod in schedule:
-    let realm = loaderData.realm;
-    let global = loaderData.global;
-    schedule = $SetElements(schedule);
-    for (let i = 0; i < schedule.length; i++) {
-        //>     1. Call EvaluateModuleOnce with the argument mod.
-        EvaluateModuleOnce(realm, global, schedule[i]);
+    //> 4. If mod.[[Evaluated]] is false,
+    if (!$HasBeenEvaluated(mod)) {
+        //>     1. Set mod.[[Evaluated]] to true.
+        //>     2. Let initContext be a new ECMAScript code execution context.
+        //>     3. Set initContext's Realm to loader.[[Realm]].
+        //>     4. Set initContext's VariableEnvironment to mod.[[Environment]].
+        //>     5. Set initContext's LexicalEnvironment to mod.[[Environment]].
+        //>     6. If there is a currently running execution context, suspend it.
+        //>     7. Push initContext on to the execution context stack; initContext is
+        //>         now the running execution context.
+        //>     8. Let r be the result of evaluating mod.[[Body]].
+        //>     9. Suspend initContext and remove it from the execution context stack.
+        //>     10. Resume the context, if any, that is now on the top of the execution
+        //>         context stack as the running execution context.
+        //>     11. ReturnIfAbrupt(r).
+        $EvaluateModuleBody(loaderData.realm, mod);
     }
+}
+
+function EnsureEvaluatedHelper(mod, loader) {
+    let seen = $SetNew();
+    let loaderData = GetLoaderInternalData(loader);
+    EnsureEvaluated(mod, seen, loaderData);
 
     // All evaluation succeeded. As an optimization for future EnsureEvaluated
     // calls, drop this portion of the dependency graph.  (This loop cannot be
     // fused with the evaluation loop above; the meaning would change on error
     // for certain dependency graphs containing cycles.)
-    for (let i = 0; i < schedule.length; i++)
-        $SetDependencies(schedule[i], undefined);
+    seen = $SetElements(seen);
+    for (let i = 0; i < seen.length; i++)
+        $SetDependencies(seen[i], undefined);
 }
 
 
