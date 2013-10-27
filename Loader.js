@@ -643,7 +643,7 @@ def(Loader.prototype, {
         // The `Load` object here is *pro forma*; `eval` is synchronous and
         // thus cannot fetch code.
         let load = CreateLoad(null);
-        let linkSet = CreateLinkSet(this, load, null, null);
+        let linkSet = CreateLinkSet(this, load);
 
         // Finish loading `src`.  This is the part where, in an *asynchronous*
         // load, we would trigger further loads for any imported modules that
@@ -687,9 +687,9 @@ def(Loader.prototype, {
         return new Promise(function (resolver) {
             let address = UnpackOption(options, "address");
             let load = CreateLoad(null);
-            CreateLinkSet(loader, load,
-                          m => resolver.resolve(m),
-                          exc => resolver.reject(exc));
+            let linkSet = CreateLinkSet(loader, load);
+            linkSet.done.then(_ => resolver.resolve(load.module),
+                              exc => resolver.reject(exc));
             OnFulfill(loader, load, {}, null, false, src, address);
         });
     },
@@ -729,13 +729,12 @@ def(Loader.prototype, {
             } else {
                 // The module is now loading.  When it loads, it may have more
                 // imports, requiring further loads, so put it in a LinkSet.
-                CreateLinkSet(loader, load, success, exc => resolver.reject(exc));
+                CreateLinkSet(loader, load).done.then(success, exc => resolver.reject(exc));
             }
 
             function success() {
-                let m = load.status === "linked"
-                    ? load.module
-                    : $ModuleBodyToModuleObject(load.body);
+                $Assert(load.status === "linked");
+                let m = load.module;
                 try {
                     if (m === undefined) {
                         throw $TypeError("import(): module \"" + load.fullName +
@@ -800,9 +799,9 @@ def(Loader.prototype, {
                     let load = CreateLoad(fullName);
                     $MapSet(loaderData.loads, fullName, load);
                     if (linkSet === undefined) {
-                        linkSet = CreateLinkSet(loader, load,
-                                                _ => resolver.resolve(undefined),
-                                                exc => resolver.reject(exc));
+                        linkSet = CreateLinkSet(loader, load).done.then(
+                            _ => resolver.resolve(undefined),
+                            exc => resolver.reject(exc));
                     } else {
                         AddLoadToLinkSet(linkSet, load);
                     }
@@ -858,9 +857,9 @@ def(Loader.prototype, {
                 let moduleName = names[i];
                 let load = StartModuleLoad(loader, referer, moduleName, false);
                 if (linkSet === undefined) {
-                    linkSet = CreateLinkSet(loader, load,
-                                            _ => resolver.resolve(undefined),
-                                            exc => resolver.reject(exc));
+                    linkSet = CreateLinkSet(loader, load).done.then(
+                        _ => resolver.resolve(undefined),
+                        exc => resolver.reject(exc));
                 } else {
                     AddLoadToLinkSet(linkSet, load);
                 }
@@ -1839,14 +1838,16 @@ function LoadFailed(load, exc) {
 //>     before the modules can be linked and evaluated.
 //>
 
-//> #### CreateLinkSet(loader, startingLoad, callback, errback) Abstract Operation
+//> #### CreateLinkSet(loader, startingLoad) Abstract Operation
 //>
-function CreateLinkSet(loader, startingLoad, callback, errback) {
+function CreateLinkSet(loader, startingLoad) {
     var loaderData = GetLoaderInternalData(linkSet.loader);
+    var resolver;
+    var done = new Promise(r => { resolver = r; });
     var linkSet = {
         loader: loader,
-        callback: callback,
-        errback: errback,
+        done: done,
+        resolver: resolver,
         loads: $SetNew(),
         timestamp: loaderData.nextLinkSetTimestamp++,
 
@@ -1944,17 +1945,13 @@ function FinishLinkSet(linkSet, succeeded, exc) {
                 if (currentLoad === load)
                     $MapDelete(loaderData.loads, fullName);
             }
-        } else {
-            // Otherwise, on success, mark linked modules as "linked".
-            if (succeeded && load.status === "loaded")
-                load.status = "linked";
         }
     }
 
     if (succeeded)
-        AsyncCall(linkSet.callback);
+        linkSet.resolver.resolve(undefined);
     else
-        AsyncCall(linkSet.errback, exc);
+        linkSet.resolver.reject(exc);
 }
 
 // **Timing and grouping of dependencies** - Consider
@@ -2465,15 +2462,20 @@ function LinkComponents(linkSet) {
         $SetComponentDependencies(TODO_GetComponent(load), deps);
     }
 
-    // Move the fully linked modules from the `loads` table to the
-    // `modules` table.
+    // Set the status of Load records for the modules we linked to "linked".
+    // Move the fully linked modules from the `loads` table to the `modules`
+    // table.
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
         let fullName = load.fullName;
-        if (fullName !== null) {
-            let m = $ModuleBodyToModuleObject(load.body);
+        let m = $ModuleBodyToModuleObject(load.body);
+        load.status = "linked";
+        load.module = m;  // Some LinkSet.done promise callbacks use this.
+                          // The modules table is mutable and may change before
+                          // callbacks fire, whereas this will never change
+                          // again.
+        if (fullName !== null)
             $MapSet(loaderData.modules, fullName, m);
-        }
     }
 }
 
