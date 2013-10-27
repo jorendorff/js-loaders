@@ -1160,6 +1160,9 @@ def(Loader.prototype, {
     //>
 });
 
+//> ## Module loading
+//>
+
 // **`UnpackOption`** - Used by several Loader methods to get options
 // off of an options object and, if defined, coerce them to strings.
 //
@@ -1455,7 +1458,7 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
 //   - Evaluation of a module body or a script can throw.
 
 
-//> ### Dependency loading
+//> ### Load Records
 //>
 //> The Load Record type represents an attempt to locate, fetch, translate, and
 //> parse a single module or script.
@@ -1840,7 +1843,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
 
 
-//> ### Linkage
+//> ## Module linking
 //>
 
 // Before we reach this stage, we already have dependencies for each newly
@@ -1898,7 +1901,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //     an `export * from` declaration for load_2.
 
 
-//> #### Note: Link-time errors (informative)
+//> ### Note: Link-time errors (informative)
 //>
 //> The following are link-time errors. If any of these exist in the LinkSet
 //> when linking starts, then linking will fail, with no side effects except
@@ -2017,7 +2020,7 @@ function GetModuleImports(linkingInfo) {
     return imports;
 }
 
-//> #### GetExports(linkSet, load) Abstract Operation
+//> ### GetExports(linkSet, load) Abstract Operation
 //>
 // (This operation is a combination of ComputeLinkage, ExportedNames, and
 // ModuleInstanceExportedNames in the draft spec language.)
@@ -2148,7 +2151,7 @@ function GetExports(linkSet, load) {
     return exports;
 }
 
-//> #### FindModuleForLink(loader, fullName) Abstract Operation
+//> ### FindModuleForLink(loader, fullName) Abstract Operation
 //>
 function FindModuleForLink(loader, fullName) {
     let loaderData = GetLoaderInternalData(loader);
@@ -2165,7 +2168,7 @@ function FindModuleForLink(loader, fullName) {
     return $ModuleBodyToModuleObject(depLoad.body);
 }
 
-//> #### LinkExport(loader, load, edge) Abstract Operation
+//> ### LinkExport(loader, load, edge) Abstract Operation
 //>
 // Implementation note: My theory is that the spec doesn't need visited because
 // all errors are detected in an earlier phase. This implementation uses
@@ -2199,7 +2202,7 @@ function LinkExport(loader, load, edge, visited) {
     return origin;
 }
 
-//> #### ResolveExport(loader, fullName, exportName) Abstract Operation
+//> ### ResolveExport(loader, fullName, exportName) Abstract Operation
 //>
 function ResolveExport(loader, fullName, exportName, visited) {
     // If fullName refers to an already-linked Module, return that
@@ -2247,7 +2250,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
     return exp;
 }
 
-//> #### LinkImport(loader, load, edge) Abstract Operation
+//> ### LinkImport(loader, load, edge) Abstract Operation
 //>
 function LinkImport(loader, load, edge) {
     let mod = $ModuleBodyToModuleObject(load.body);
@@ -2266,7 +2269,7 @@ function LinkImport(loader, load, edge) {
     }
 }
 
-//> #### LinkModules(linkSet) Abstract Operation
+//> ### LinkModules(linkSet) Abstract Operation
 //>
 //> Link all scripts and modules in linkSet to each other and to modules in the
 //> registry.  This is done in a synchronous walk of the graph.  On success,
@@ -2346,7 +2349,7 @@ function LinkModules(linkSet) {
 
 
 
-//> ### Module and script evaluation
+//> ## Module evaluation
 //>
 //> Module bodies are evaluated on demand, as late as possible.  The
 //> loader uses the function `EnsureEvaluated`, defined below, to run
@@ -2360,7 +2363,7 @@ function LinkModules(linkSet) {
 //> modules in the cycle must run before the others.
 
 
-//> #### EnsureEvaluated(mod, seen, loader) Abstract Operation
+//> ### EnsureEvaluated(mod, seen, loader) Abstract Operation
 //>
 //> The abstract operation EnsureEvaluated walks the dependency graph of the
 //> module mod, evaluating any module bodies that have not already been
