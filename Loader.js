@@ -347,7 +347,13 @@ function AsyncCall(fn, ...args) {
 }
 
 
-// ## Module objects
+
+
+//> # Modules: Built-in objects
+//>
+//> ## Module objects
+//>
+//> Module instances are ordinary objects.
 //
 // A Module object:
 //
@@ -363,12 +369,14 @@ function AsyncCall(fn, ...args) {
 //     [[BindingName]]: a String}, such that the [[ExportName]]s of the records
 //     in the List are each unique.
 //
-//   * has data properties that correspond exactly to the [[Exports]], and no
-//     other properties.
-//
 //   * has a [[Dependencies]] internal data property, a List of Modules or
 //     undefined.  This is populated at link time by the loader and used by
 //     EnsureEvaluated.
+//
+//   * has accessor properties that correspond exactly to the [[Exports]], and no
+//     other properties.
+//
+//   * is inextensible by the time it is exposed to ECMAScript code.
 
 function ConstantGetter(value) {
     return function () { return value; };
@@ -1199,6 +1207,11 @@ def(Loader.prototype, {
     //>
 });
 
+
+
+
+//> # Modules: Semantics
+//>
 //> ## Module Loading
 //>
 
