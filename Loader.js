@@ -349,867 +349,6 @@ function AsyncCall(fn, ...args) {
 
 
 
-//> # Modules: Built-in objects
-//>
-//> ## Module objects
-//>
-//> Module instances are ordinary objects.
-//
-// A Module object:
-//
-//   * has null [[Prototype]] initially, or perhaps no [[Prototype]] at all
-//
-//   * has an [[Environment]] internal data property whose value is a
-//     Declarative Environment Record (consisting of all bindings declared at
-//     toplevel in the module) whose outerEnvironment is a Global Environment
-//     Record.
-//
-//   * has an [[Exports]] internal data property whose value is a List of
-//     Export Records, {[[ExportName]]: a String, [[SourceModule]]: a Module,
-//     [[BindingName]]: a String}, such that the [[ExportName]]s of the records
-//     in the List are each unique.
-//
-//   * has a [[Dependencies]] internal data property, a List of Modules or
-//     undefined.  This is populated at link time by the loader and used by
-//     EnsureEvaluated.
-//
-//   * has accessor properties that correspond exactly to the [[Exports]], and no
-//     other properties.
-//
-//   * is inextensible by the time it is exposed to ECMAScript code.
-
-function ConstantGetter(value) {
-    return function () { return value; };
-}
-
-function Module(obj) {
-    var mod = $CreateModule();
-    var keys = $ObjectKeys(obj);
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var value = obj[key];
-        $ObjectDefineProperty(mod, keys[i], {
-            configurable: false,
-            enumerable: true,
-            get: ConstantGetter(value),
-            set: undefined
-        });
-    }
-    $ObjectPreventExtensions(mod);
-    return mod;
-}
-
-Module.prototype = null;
-
-
-// ## The Loader class
-//
-// The public API of the module loader system is the `Loader` class.
-// A Loader is responsible for asynchronously finding, fetching, linking,
-// and running modules and scripts.
-
-
-//> ## Loader Objects
-//>
-//> Each Loader object has the following internal data properties:
-//>
-//>   * loader.[[Global]] - The global object associated with the loader. All
-//>     scripts and modules loaded by the loader run in the scope of this
-//>     object. (XXX needs better wording; it is hard to be both precise and
-//>     comprehensible on this point)
-//>
-//>   * loader.[[Strict]] - A boolean value, the loader's strictness setting.  If
-//>     true, all code loaded by the loader is strict-mode code.
-//>
-//> These properties are fixed when the Loader is created and can't be
-//> changed. In addition, each Loader contains two Lists:
-//>
-//>   * loader.[[Modules]] - A List of Module Records: the module registry.
-//>
-//>   * loader.[[Loads]] - A List of Load Records. These represent ongoing
-//>     asynchronous loads of modules or scripts.
-
-
-// ### Loader hooks
-//
-// The import process can be customized by assigning to (or subclassing and
-// overriding) any number of the five loader hooks:
-//
-//   * `normalize(name, options)` - From a possibly relative module name,
-//     determine the full module name.
-//
-//   * `resolve(fullName, options)` - Given a full module name, determine
-//     the address to load.
-//
-//   * `fetch(address, options)` - Load a module from the given address.
-//
-//   * `translate(src, options)` - Optionally translate a module from some
-//     other language to JS.
-//
-//   * `instantiate(src, options)` - Optionally convert an AMD/npm/other module
-//     to an ES Module object.
-
-
-
-//> ### The Loader Constructor
-
-//> #### Loader ( options )
-
-// Implementation note: Since ES6 does not have support for private state or
-// private methods, the "internal data properties" of Loader objects are stored
-// on a separate object which is not accessible from user code.
-//
-// So what the specification refers to as `loader.[[Modules]]` is implemented
-// as `GetLoaderInternalData(loader).modules`.
-//
-// The simplest way to connect the two objects without exposing this internal
-// data to user code is to use a `WeakMap`.
-//
-let loaderInternalDataMap = $WeakMapNew();
-
-function Loader(options={}) {
-    // Bug: This calls Loader[@@create] directly.  The spec will instead make
-    // `new Loader(options)` equivalent to
-    // `Loader.[[Call]](Loader[@@create](), List [options])`.
-    // In other words, Loader_create will be called *before* Loader.
-    // We'll change that when symbols and @@create are implemented.
-    var loader = callFunction(Loader["@@create"], Loader);
-    var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
-    if (loaderData === undefined)
-        throw $TypeError("Loader object expected");
-    if (loaderData.modules !== undefined)
-        throw $TypeError("Loader object cannot be intitialized more than once");
-
-    // Fallible operations.
-    var global = options.global;
-    if (global !== undefined && !IsObject(global))
-        throw $TypeError("options.global must be an object or undefined");
-    var strict = ToBoolean(options.strict);
-    var realm = options.realm;
-    if (realm === undefined) {
-        loaderData.realm = $RealmNew();
-    } else {
-        if (typeof realm !== "object" || realm === null)
-            throw $TypeError("realm must be a Loader object, if defined");
-        let realmLoaderData = $WeakMapGet(loaderInternalDataMap, realm);
-        if (realmLoaderData === undefined)
-            throw $TypeError("realm must be a Loader object, if defined");
-        loaderData.realm = realmLoaderData.realm;
-    }
-
-    // Initialize infallibly.
-    loaderData.global = global;
-    loaderData.strict = strict;
-    loaderData.module = $MapNew();
-
-    var builtins = {};
-    $DefineBuiltins(loaderData.realm, builtins);
-    $ObjectDefineProperty(loader, "builtins", {
-        configurable: true,
-        enumerable: true,
-        value: builtins,
-        writable: true
-    });
-
-    // Hooks provided via `options` are just ordinary properties of the new
-    // Loader object.
-    //
-    // *Rationale*: The Loader class contains default implementations of each
-    // hook. This way the hooks can be called unconditionally, and either the
-    // user-provided hook or the default is called. Furthermore, Loader
-    // subclasses can add methods with the appropriate names and use `super()`
-    // to invoke the base-class behavior.
-    //
-    function takeHook(name) {
-        var hook = options[name];
-        if (hook !== undefined) {
-            $ObjectDefineProperty(loader, name, {
-                configurable: true,
-                enumerable: true,
-                value: hook,
-                writable: true
-            });
-        }
-    }
-
-    takeHook("normalize");
-    takeHook("resolve");
-    takeHook("fetch");
-    takeHook("translate");
-    takeHook("instantiate");
-    return loader;
-}
-
-// This helper function uses Object methods rather than 
-function def(obj, props) {
-    var names = Object.getOwnPropertyNames(props);
-    for (var i = 0; i < names.length; i++) {
-        var name = names[i];
-        var desc = Object.getOwnPropertyDescriptor(props, name);
-        desc.enumerable = false;
-        Object.defineProperty(obj, name, desc);
-    }
-}
-
-def(global, {Module: Module, Loader: Loader});
-
-
-
-//> #### Loader [ @@create ] ( )
-//>
-
-function create() {
-    var loader = Object.create(this.prototype);
-    var internalData = {
-        // **`loaderData.modules`** is the module registry.  It maps full
-        // module names to `Module` objects.
-        //
-        // This map only ever contains `Module` objects that have been
-        // fully linked.  However it can contain modules whose bodies
-        // have not yet been evaluated.  Except in the case of cyclic
-        // imports, such modules are not exposed to user code.  See
-        // `EnsureEvaluated()`.
-        //
-        // This is initially undefined but is populated with a new Map
-        // when the constructor runs.
-        //
-        modules: undefined,
-
-        // **`loaderData.loads`** stores information about modules that are
-        // loading or loaded but not yet linked.  (TODO - fix that sentence for
-        // OnEndRun.)  It maps full module names to `Load` objects.
-        //
-        // This is stored in the loader so that multiple calls to
-        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
-        // what they need only once.
-        //
-        loads: $MapNew(),
-
-        // Various configurable options.
-        global: undefined,
-        strict: false,
-        realm: undefined,
-
-        // **`loaderData.runtimeDependencies`** stores the
-        // should-be-evaluated-before relation for modules.
-        runtimeDependencies: $WeakMapNew(),
-
-        nextLinkSetTimestamp: 0
-    };
-
-    $WeakMapSet(loaderInternalDataMap, loader, internalData);
-    return loader;
-}
-
-def(Loader, {"@@create": create});
-
-// Get the internal data for a given `Loader` object.
-function GetLoaderInternalData(value) {
-    // Loader methods could be placed on wrapper prototypes like String.prototype.
-    if (typeof value !== "object")
-        throw $TypeError("Loader method called on incompatible primitive");
-
-    let internalData = $WeakMapGet(loaderInternalDataMap, value);
-    if (internalData === undefined)
-        throw $TypeError("Loader method called on incompatible object");
-    return internalData;
-}
-
-//> ### Properties of the Loader Prototype Object
-//>
-//> The abstract operation thisLoader(*value*) performs the following steps:
-//>
-//> 1. If Type(*value*) is Object and value has a [[Modules]] internal data property, then
-//>     1. Let m be *value*.[[Modules]].
-//>     2. If m is not **undefined**, then return *value*.
-//> 2. Throw a **TypeError** exception.
-//>
-//> The phrase "this Loader" within the specification of a method refers to the
-//> result returned by calling the abstract operation thisLoader with the this
-//> value of the method invocation passed as the argument.
-//>
-
-def(Loader.prototype, {
-
-    //> #### Loader.prototype.global
-    //>
-    //> `Loader.prototype.global` is an accessor property whose set accessor
-    //> function is undefined. Its get accessor function performs the following
-    //> steps:
-    //>
-    get global() {
-        //> 1. Let L be this Loader.
-        //> 2. Return L.[[Global]].
-        return GetLoaderInternalData(this).global;
-    },
-    //>
-
-    //> #### Loader.prototype.strict
-    //>
-    //> `Loader.prototype.strict` is an accessor property whose set accessor
-    //> function is undefined. Its get accessor function performs the following
-    //> steps:
-    //>
-    get strict() {
-        //> 1. Let L be this Loader.
-        //> 2. Return L.[[Strict]].
-        return GetLoaderInternalData(this).strict;
-    },
-    //>
-
-
-    // ### Loading and running code
-    //
-    // The high-level interface of `Loader` consists of a few methods for
-    // loading and running code.
-    //
-    // These are implemented in terms of slightly lower-level building blocks.
-    // Each of these methods creates a `LinkSet` object, which is in charge
-    // of linking, and at least one `Load`.
-
-
-    //> #### Loader.prototype.module ( src, options )
-    //>
-    // **`module`** - Execute a top-level, anonymous module, without adding it
-    // to the loader's module registry.
-    //
-    // This is the dynamic equivalent of an asynchronous, anonymous `<module>`
-    // in HTML.
-    //
-    // Returns a future for the Module object.
-    //
-    module: function module_(src, options) {
-        src = ToString(src);
-        var loader = this;
-        var loaderData = GetLoaderInternalData(loader);
-
-        return new Promise(function (resolver) {
-            let address = UnpackOption(options, "address");
-            let load = CreateLoad(null);
-            let linkSet = CreateLinkSet(loader, load);
-            linkSet.done.then(_ => resolver.resolve(load.module),
-                              exc => resolver.reject(exc));
-            OnFulfill(loader, load, {}, null, src, address);
-        });
-    },
-    //>
-    //> The `length` property of the `module` method is **2**.
-    //>
-
-
-    //> #### Loader.prototype.import ( moduleName, options )
-    //>
-
-    // **`import`** - Asynchronously load, link, and evaluate a module and any
-    // dependencies it imports.  Return a promise for the `Module` object.
-    //
-    import: function import_(moduleName,
-                             options = undefined)
-    {
-        var loader = this;
-
-        return new Promise(function (resolver) {
-            // Unpack `options`.  Build the referer object that we will pass to
-            // StartModuleLoad. (Implementation note: if a Promise's init
-            // function throws, the new Promise is automatically
-            // rejected. UnpackOption and StartModuleLoad can throw.)
-
-            let name = UnpackOption(options, "module");
-            let address = UnpackOption(options, "address");
-            let referer = {name: name, address: address};
-
-            // `StartModuleLoad` starts us along the pipeline.
-            let load = StartModuleLoad(loader, referer, moduleName);
-
-            if (load.status === "linked") {
-                // We already had this module in the registry.
-                resolver.resolve(load.module);
-            } else {
-                // The module is now loading.  When it loads, it may have more
-                // imports, requiring further loads, so put it in a LinkSet.
-                CreateLinkSet(loader, load).done.then(success, exc => resolver.reject(exc));
-            }
-
-            function success() {
-                $Assert(load.status === "linked");
-                let m = load.module;
-                try {
-                    if (m === undefined) {
-                        throw $TypeError("import(): module \"" + load.fullName +
-                                         "\" was deleted from the loader");
-                    }
-                    EnsureEvaluatedHelper(m, loader);
-                } catch (exc) {
-                    resolver.reject(exc);
-                    return;
-                }
-                resolver.resolve(m);
-            }
-        });
-    },
-    //>
-    //> The `length` property of the `import` method is **1**.
-    //>
-
-
-    //> #### Loader.prototype.define ( names, moduleBodies )
-    //>
-    define: function define(names, moduleBodies) {
-        // ISSUE: Two separate iterables is dumb. Why not an iterable of pairs?
-        // Then you could pass in a Map, and the semantics below would not be so
-        // bizarre.
-        let loader = this;
-        let loaderData = GetLoaderInternalData(this);
-
-        if (typeof names === "string" && typeof moduleBodies === "string") {
-            names = [names];
-            moduleBodies = [moduleBodies];
-        }
-
-        return new Promise(function (resolver) {
-            let linkSet = undefined;
-            let loads = [];
-            try {
-                let nameSet = $SetNew();
-                for (let name of names) {
-                    name = ToString(name);
-                    if ($SetHas(nameSet, name))
-                        throw $TypeError("define(): argument 1 contains a duplicate entry '" + name + "'");
-                    $SetAdd(nameSet, name);
-                }
-                names = $SetElements(nameSet);
-                moduleBodies = [...moduleBodies];
-                if (names.length !== moduleBodies.length)
-                    throw $TypeError("define(): names and moduleBodies must be the same length");
-
-                if (names.length === 0) {
-                    resolver.resolve(undefined);
-                    return;
-                }
-
-                // Make a LinkSet.  Pre-populate it with phony Load objects for
-                // the given modules.  Kick off real Loads for any additional
-                // modules imported by the given moduleBodies.  Let the link
-                // set finish loading, and run the real linking algorithm.
-                for (let i = 0; i < names.length; i++) {
-                    let fullName = names[i];
-                    let load = CreateLoad(fullName);
-                    $MapSet(loaderData.loads, fullName, load);
-                    if (linkSet === undefined) {
-                        linkSet = CreateLinkSet(loader, load).done.then(
-                            _ => resolver.resolve(undefined),
-                            exc => resolver.reject(exc));
-                    } else {
-                        AddLoadToLinkSet(linkSet, load);
-                    }
-                    $ArrayPush(loads, load);
-                }
-            } catch (exc) {
-                if (linkSet === undefined)
-                    resolver.reject(exc);
-                else
-                    FinishLinkSet(linkSet, false, exc);
-                return;
-            }
-
-            for (let i = 0; i < names.length; i++) {
-                // TODO: This status check is here because I think OnFulfill could
-                // cause the LinkSet to fail, which may or may not cause all the
-                // other loads to fail. Need to try to observe this happening.
-                if (loads[i].status === "loading")
-                    OnFulfill(loader, loads[i], {}, names[i], moduleBodies[i], null);
-            }
-        });
-    },
-    //>
-
-    //> #### Loader.prototype.load ( names )
-    //>
-    load: function load(names) {
-        let loader = this;
-        let loaderData = GetLoaderInternalData(this);
-
-        if (typeof names === "string")
-            names = [names];
-
-        // loader.load([]) succeeds immediately.
-        if (names.length === 0)
-            return Promise.resolve(undefined);
-
-        return new Promise(function (resolver) {
-            let name, address;
-            try {
-                name = UnpackOption(options, "module");
-                address = UnpackOption(options, "address");
-            } catch (exn) {
-                resolver.resolve(exn);
-                return;
-            }
-
-            let referer = {name: name, address: address};
-
-            // Make a LinkSet.
-            let linkSet;
-            for (let i = 0; i < names.length; i++) {
-                let moduleName = names[i];
-                let load = StartModuleLoad(loader, referer, moduleName);
-                if (linkSet === undefined) {
-                    linkSet = CreateLinkSet(loader, load).done.then(
-                        _ => resolver.resolve(undefined),
-                        exc => resolver.reject(exc));
-                } else {
-                    AddLoadToLinkSet(linkSet, load);
-                }
-            }
-        });
-    },
-
-
-    // ### Module registry
-    //
-    // Each `Loader` has a **module registry**, a cache of already loaded and
-    // linked modules.  The Loader uses this map to avoid fetching modules
-    // multiple times.
-    //
-    // The methods below support directly querying and modifying the registry.
-    // They are synchronous and never fire any loader hooks or trigger new
-    // loads.
-
-
-    //> #### Loader.prototype.get ( name )
-    //>
-
-    // **`get`** - Get a module by name from the registry.  The argument `name`
-    // is the full module name.
-    //
-    // Throw a TypeError if `name` is not a string.
-    //
-    // If the module is in the registry but has never been evaluated, first
-    // synchronously evaluate the bodies of the module and any dependencies
-    // that have not evaluated yet.
-    //
-    get: function get(name) {
-        let loaderData = GetLoaderInternalData(this);
-        let m = $MapGet(loaderData.modules, ToString(name));
-        if (m !== undefined)
-            EnsureEvaluatedHelper(m, this);
-        return m;
-    },
-    //>
-
-
-    //> #### Loader.prototype.has ( name )
-    //>
-
-    // **`has`** - Return `true` if a module with the given full name is in the
-    // registry.
-    //
-    // This doesn't call any hooks or run any module code.
-    //
-    has: function has(name) {
-        let loaderData = GetLoaderInternalData(this);
-        return $MapHas(loaderData.modules, ToString(name));
-    },
-    //>
-
-
-    //> #### Loader.prototype.set ( name, module )
-    //>
-
-    // **`set`** - Put a module into the registry.
-    set: function set(name, module) {
-        let loaderData = GetLoaderInternalData(this);
-
-        name = ToString(name);
-
-        // Entries in the module registry must actually be `Module`s.
-        // *Rationale:* We use `Module`-specific intrinsics like
-        // `$GetDependencies` and `$Evaluate` on them.  per samth,
-        // 2013 April 22.
-        if (!$IsModule(module))
-            throw $TypeError("Module object required");
-
-        // If there is already a module in the registry with the given full
-        // name, replace it, but any scripts or modules that are linked to the
-        // old module remain linked to it. *Rationale:* Re-linking
-        // already-linked modules might not work, since the new module may
-        // export a different set of names. Also, the new module may be linked
-        // to the old one! This is a convenient way to monkeypatch
-        // modules. Once modules are widespread, this technique can be used for
-        // polyfilling.
-        //
-        // If `name` is in `this.loads`, `.set()` succeeds, with no immediate
-        // effect on the pending load; but if that load eventually produces a
-        // module-declaration for the same name, that will produce a link-time
-        // error. per samth, 2013 April 22.
-        //
-        $MapSet(loaderData.modules, name, module);
-
-        return this;
-    },
-    //>
-
-
-    //> #### Loader.prototype.delete ( name )
-    //>
-
-    // **`delete`** - Remove a module from the registry.
-    //
-    // **`.delete()` and concurrent loads:** Calling `.delete()` has no
-    // immediate effect on in-flight loads, but it can cause such a load to
-    // fail later.
-    //
-    // That's because the dependency-loading algorithm (which we'll get to in a
-    // bit) assumes that if it finds a module in the registry, it doesn't need
-    // to load that module.  If someone deletes that module from the registry
-    // (and doesn't replace it with something compatible), then when loading
-    // finishes, it will find that a module it was counting on has vanished.
-    // Linking will fail.
-    //
-    // **`.delete()` and already-linked modules:** `loader.delete("A")` removes
-    // only `A` from the registry, and not other modules linked against `A`,
-    // for several reasons:
-    //
-    // 1. What a module is linked against is properly an implementation
-    //    detail, which the "remove everything" behavior would leak.
-    //
-    // 2. The transitive closure of what is linked against what is
-    //    an unpredictable amount of stuff, potentially a lot.
-    //
-    // 3. Some uses of modules&mdash;in particular polyfilling&mdash;involve
-    //    defining a new module `MyX`, linking it against some busted built-in
-    //    module `X`, then replacing `X` in the registry with `MyX`. So having
-    //    multiple "versions" of a module linked together is a feature, not a
-    //    bug.
-    //
-    delete: function delete_(name) {
-        let loaderData = GetLoaderInternalData(this);
-
-        // If there is no module with the given name in the registry, this does
-        // nothing.
-        //
-        // `loader.delete("A")` has no effect at all if
-        // `!loaderData.modules.has("A")`, even if "A" is currently loading (an
-        // entry exists in `loaderData.loads`).  This is analogous to `.set()`.
-        // per (reading between the lines) discussions with dherman, 2013 April
-        // 17, and samth, 2013 April 22.
-        $MapDelete(loaderData.modules, ToString(name));
-
-        return this;
-    }
-    //>
-});
-
-
-//> #### *LoaderIterator*.prototype.next ( )
-//>
-function LoaderIterator(iterator) {
-    $SetLoaderIteratorPrivate(this, iterator);
-}
-
-function LoaderIterator_next() {
-    return $MapIteratorNext($GetLoaderIteratorPrivate(this));
-}
-
-def(Loader.prototype, {
-    //> #### Loader.prototype[@@iterator] ( )
-    //> #### Loader.prototype.entries ( )
-    //>
-    entries: function entries() {
-        let loaderData = GetLoaderInternalData(this);
-        return new LoaderIterator($MapEntriesIterator(loaderData.modules));
-    },
-
-    //> #### Loader.prototype.keys ( )
-    //>
-    keys: function keys() {
-        let loaderData = GetLoaderInternalData(this);
-        return new LoaderIterator($MapKeysIterator(loaderData.modules));
-    },
-
-    //> #### Loader.prototype.values ( )
-    //>
-    values: function values() {
-        let loaderData = GetLoaderInternalData(this);
-        return new LoaderIterator($MapValuesIterator(loaderData.modules));
-    },
-
-
-    //> #### Loader.prototype.normalize ( name, options )
-    //>
-    //> This hook receives the module name as passed to `import()` or as written in
-    //> the import-declaration. It returns a string, the full module name, which is
-    //> used for the rest of the import process.  (In particular, modules are
-    //> stored in the registry under their full module name.)
-    //>
-    //> *When this hook is called:*  For all imports, including imports in
-    //> scripts.  It is not called for the main script body evaluated by a call
-    //> to `loader.load()`, `.eval()`, or `.evalAsync()`.
-    //>
-    //> After calling this hook, if the full module name is in the registry,
-    //> loading stops. Otherwise loading continues, calling the `resolve`
-    //> hook.
-    //>
-    //> *Default behavior:*  Return the module name unchanged.
-    //>
-    //> When the normalize method is called, the following steps are taken:
-    //>
-    normalize: function normalize(name, options) {
-        //> 1. Return name.
-        return name;
-    },
-    //>
-
-
-    //> #### Loader.prototype.resolve ( normalized, options )
-    //>
-    //> Given a full module name, determine the resource address (URL, path,
-    //> etc.) to load.
-    //>
-    //> The `resolve` hook is also responsible for determining whether the
-    //> resource in question is a module or a script.
-    //>
-    //> The hook may return:
-    //>
-    //>   - a string, the resource address. In this case the resource is a
-    //>     module.
-    //>
-    //>   - an object that has a `.address` property which is a string, the
-    //>     resource address.  The object may also have a `.extra` property,
-    //>     which if present must be an iterable of strings, the names of the
-    //>     modules defined in the script at the given address.
-    //>
-    //> *When this hook is called:*  For all imports, immediately after the
-    //> `normalize` hook returns successfully, unless the module is already
-    //> loaded or loading.
-    //>
-    //> *Default behavior:*  Return the module name unchanged.
-    //>
-    //> NOTE The browser's `System.resolve` hook is considerably more complex.
-    //>
-    //> When the resolve method is called, the following steps are taken:
-    //>
-    resolve: function resolve(normalized, options) {
-        //> 1. Return normalized.
-        return normalized;
-    },
-    //>
-
-
-    //> #### Loader.prototype.fetch ( address, options )
-    //>
-    //> Asynchronously fetch the requested source from the given address
-    //> (produced by the `resolve` hook).
-    //>
-    //> This is the hook that must be overloaded in order to make the `import`
-    //> keyword work.
-    //>
-    //> The fetch hook should return a promise for a fetch-result object. It
-    //> should then load the requested address asynchronously.  On success, the
-    //> Promise must resolve to an object of the form {src: string, address:
-    //> string}.  The .src property is the fetched source, as a string; the
-    //> .address property is the actual address where it was found (after all
-    //> redirects), also as a string.
-    //>
-    //> options.type is the string `"module"` when fetching a standalone
-    //> module, and `"script"` when fetching a script.
-    //>
-    //> *When this hook is called:* For all modules and scripts whose source is
-    //> not directly provided by the caller.  It is not called for the script
-    //> bodies evaluated by `loader.eval()` and `.evalAsync()`, or for the
-    //> module bodies defined with `loader.define()`, since those do not need
-    //> to be fetched.  `loader.evalAsync()` can trigger this hook, for modules
-    //> imported by the script.  `loader.eval()` is synchronous and thus never
-    //> triggers the `fetch` hook.
-    //>
-    //> (`loader.load()` does not call `normalize`, `resolve`, or
-    //> `instantiate`, since we're loading a script, not a module; but it does
-    //> call the `fetch` and `translate` hooks, per samth, 2013 April 22.)
-    //>
-    //> *Default behavior:*  Return a Promise that is already rejected with a
-    //> `TypeError`.
-    //>
-    //> When the fetch method is called, the following steps are taken:
-    //>
-    fetch: function fetch(address, options) {
-        return Promise.reject($TypeError("Loader.prototype.fetch was called"));
-    },
-    //>
-
-
-    //> #### Loader.prototype.translate ( src, options )
-    //>
-    //> Optionally translate src from some other language into ECMAScript.
-    //>
-    //> *When this hook is called:*  For all modules and scripts.  (It is not
-    //> decided whether this is called for direct eval scripts; see issue #8.)
-    //>
-    //> *Default behavior:*  Return src unchanged.
-    //>
-    //> When the translate method is called, the following steps are taken:
-    //>
-    translate: function translate(src, options) {
-        //> 1. Return src.
-        return src;
-    },
-    //>
-
-
-    //> #### Loader.prototype.instantiate ( src, options )
-    //>
-    //> Allow a loader to optionally provide interoperability with other module
-    //> systems.  There are three options.
-    //>
-    //>  1. The instantiate hook may return `undefined`. The loader then uses
-    //>     the default linking behavior.  It parses src as a module body,
-    //>     looks at its imports, loads all dependencies asynchronously, and
-    //>     finally links them as a unit and adds them to the registry.
-    //>
-    //>     The module bodies will then be evaluated on demand; see
-    //>     `EnsureEvaluated`.
-    //>
-    //>  2. The hook may return a full `Module` instance object.  The loader
-    //>     then simply adds that module to the registry.
-    //>
-    //>  3. *(unimplemented)* The hook may return a factory object which the
-    //>     loader will use to create the module and link it with its clients
-    //>     and dependencies.
-    //>
-    //>     The form of a factory object is:
-    //>
-    //>         {
-    //>             imports: <array of strings (module names)>,
-    //>             execute: <function (Module, Module, ...) -> Module>
-    //>         }
-    //>
-    //>     The module is executed during the linking process.  First all of
-    //>     its dependencies are executed and linked, and then passed to the
-    //>     relevant execute function.  Then the resulting module is linked
-    //>     with the downstream dependencies.  This requires incremental
-    //>     linking when such modules are present, but it ensures that modules
-    //>     implemented with standard source-level module declarations can
-    //>     still be statically validated.
-    //>
-    //>     (This feature is provided in order to support using `import` to
-    //>     import pre-ES6 modules such as AMD modules. See
-    //>     issue #19.)
-    //>
-    //> *When this hook is called:*  After the `translate` hook, for modules
-    //> only.
-    //>
-    //> *Default behavior:*  Return undefined.
-    //>
-    //> When the instantiate method is called, the following steps are taken:
-    //>
-    instantiate: function instantiate(src, options) {
-        //> 1. Return **undefined**.
-    }
-    //>
-});
-
-
-
-
 //> # Modules: Semantics
 //>
 //> ## Module Loading
@@ -2538,5 +1677,866 @@ function EnsureEvaluatedHelper(mod, loader) {
     for (let i = 0; i < seen.length; i++)
         $SetDependencies(seen[i], undefined);
 }
+
+
+
+
+//> # Modules: Built-in objects
+//>
+//> ## Module objects
+//>
+//> Module instances are ordinary objects.
+//
+// A Module object:
+//
+//   * has null [[Prototype]] initially, or perhaps no [[Prototype]] at all
+//
+//   * has an [[Environment]] internal data property whose value is a
+//     Declarative Environment Record (consisting of all bindings declared at
+//     toplevel in the module) whose outerEnvironment is a Global Environment
+//     Record.
+//
+//   * has an [[Exports]] internal data property whose value is a List of
+//     Export Records, {[[ExportName]]: a String, [[SourceModule]]: a Module,
+//     [[BindingName]]: a String}, such that the [[ExportName]]s of the records
+//     in the List are each unique.
+//
+//   * has a [[Dependencies]] internal data property, a List of Modules or
+//     undefined.  This is populated at link time by the loader and used by
+//     EnsureEvaluated.
+//
+//   * has accessor properties that correspond exactly to the [[Exports]], and no
+//     other properties.
+//
+//   * is inextensible by the time it is exposed to ECMAScript code.
+
+function ConstantGetter(value) {
+    return function () { return value; };
+}
+
+function Module(obj) {
+    var mod = $CreateModule();
+    var keys = $ObjectKeys(obj);
+    for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var value = obj[key];
+        $ObjectDefineProperty(mod, keys[i], {
+            configurable: false,
+            enumerable: true,
+            get: ConstantGetter(value),
+            set: undefined
+        });
+    }
+    $ObjectPreventExtensions(mod);
+    return mod;
+}
+
+Module.prototype = null;
+
+
+// ## The Loader class
+//
+// The public API of the module loader system is the `Loader` class.
+// A Loader is responsible for asynchronously finding, fetching, linking,
+// and running modules and scripts.
+
+
+//> ## Loader Objects
+//>
+//> Each Loader object has the following internal data properties:
+//>
+//>   * loader.[[Global]] - The global object associated with the loader. All
+//>     scripts and modules loaded by the loader run in the scope of this
+//>     object. (XXX needs better wording; it is hard to be both precise and
+//>     comprehensible on this point)
+//>
+//>   * loader.[[Strict]] - A boolean value, the loader's strictness setting.  If
+//>     true, all code loaded by the loader is strict-mode code.
+//>
+//> These properties are fixed when the Loader is created and can't be
+//> changed. In addition, each Loader contains two Lists:
+//>
+//>   * loader.[[Modules]] - A List of Module Records: the module registry.
+//>
+//>   * loader.[[Loads]] - A List of Load Records. These represent ongoing
+//>     asynchronous loads of modules or scripts.
+
+
+// ### Loader hooks
+//
+// The import process can be customized by assigning to (or subclassing and
+// overriding) any number of the five loader hooks:
+//
+//   * `normalize(name, options)` - From a possibly relative module name,
+//     determine the full module name.
+//
+//   * `resolve(fullName, options)` - Given a full module name, determine
+//     the address to load.
+//
+//   * `fetch(address, options)` - Load a module from the given address.
+//
+//   * `translate(src, options)` - Optionally translate a module from some
+//     other language to JS.
+//
+//   * `instantiate(src, options)` - Optionally convert an AMD/npm/other module
+//     to an ES Module object.
+
+
+
+//> ### The Loader Constructor
+
+//> #### Loader ( options )
+
+// Implementation note: Since ES6 does not have support for private state or
+// private methods, the "internal data properties" of Loader objects are stored
+// on a separate object which is not accessible from user code.
+//
+// So what the specification refers to as `loader.[[Modules]]` is implemented
+// as `GetLoaderInternalData(loader).modules`.
+//
+// The simplest way to connect the two objects without exposing this internal
+// data to user code is to use a `WeakMap`.
+//
+let loaderInternalDataMap = $WeakMapNew();
+
+function Loader(options={}) {
+    // Bug: This calls Loader[@@create] directly.  The spec will instead make
+    // `new Loader(options)` equivalent to
+    // `Loader.[[Call]](Loader[@@create](), List [options])`.
+    // In other words, Loader_create will be called *before* Loader.
+    // We'll change that when symbols and @@create are implemented.
+    var loader = callFunction(Loader["@@create"], Loader);
+    var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
+    if (loaderData === undefined)
+        throw $TypeError("Loader object expected");
+    if (loaderData.modules !== undefined)
+        throw $TypeError("Loader object cannot be intitialized more than once");
+
+    // Fallible operations.
+    var global = options.global;
+    if (global !== undefined && !IsObject(global))
+        throw $TypeError("options.global must be an object or undefined");
+    var strict = ToBoolean(options.strict);
+    var realm = options.realm;
+    if (realm === undefined) {
+        loaderData.realm = $RealmNew();
+    } else {
+        if (typeof realm !== "object" || realm === null)
+            throw $TypeError("realm must be a Loader object, if defined");
+        let realmLoaderData = $WeakMapGet(loaderInternalDataMap, realm);
+        if (realmLoaderData === undefined)
+            throw $TypeError("realm must be a Loader object, if defined");
+        loaderData.realm = realmLoaderData.realm;
+    }
+
+    // Initialize infallibly.
+    loaderData.global = global;
+    loaderData.strict = strict;
+    loaderData.module = $MapNew();
+
+    var builtins = {};
+    $DefineBuiltins(loaderData.realm, builtins);
+    $ObjectDefineProperty(loader, "builtins", {
+        configurable: true,
+        enumerable: true,
+        value: builtins,
+        writable: true
+    });
+
+    // Hooks provided via `options` are just ordinary properties of the new
+    // Loader object.
+    //
+    // *Rationale*: The Loader class contains default implementations of each
+    // hook. This way the hooks can be called unconditionally, and either the
+    // user-provided hook or the default is called. Furthermore, Loader
+    // subclasses can add methods with the appropriate names and use `super()`
+    // to invoke the base-class behavior.
+    //
+    function takeHook(name) {
+        var hook = options[name];
+        if (hook !== undefined) {
+            $ObjectDefineProperty(loader, name, {
+                configurable: true,
+                enumerable: true,
+                value: hook,
+                writable: true
+            });
+        }
+    }
+
+    takeHook("normalize");
+    takeHook("resolve");
+    takeHook("fetch");
+    takeHook("translate");
+    takeHook("instantiate");
+    return loader;
+}
+
+// This helper function uses Object methods rather than 
+function def(obj, props) {
+    var names = Object.getOwnPropertyNames(props);
+    for (var i = 0; i < names.length; i++) {
+        var name = names[i];
+        var desc = Object.getOwnPropertyDescriptor(props, name);
+        desc.enumerable = false;
+        Object.defineProperty(obj, name, desc);
+    }
+}
+
+def(global, {Module: Module, Loader: Loader});
+
+
+
+//> #### Loader [ @@create ] ( )
+//>
+
+function create() {
+    var loader = Object.create(this.prototype);
+    var internalData = {
+        // **`loaderData.modules`** is the module registry.  It maps full
+        // module names to `Module` objects.
+        //
+        // This map only ever contains `Module` objects that have been
+        // fully linked.  However it can contain modules whose bodies
+        // have not yet been evaluated.  Except in the case of cyclic
+        // imports, such modules are not exposed to user code.  See
+        // `EnsureEvaluated()`.
+        //
+        // This is initially undefined but is populated with a new Map
+        // when the constructor runs.
+        //
+        modules: undefined,
+
+        // **`loaderData.loads`** stores information about modules that are
+        // loading or loaded but not yet linked.  (TODO - fix that sentence for
+        // OnEndRun.)  It maps full module names to `Load` objects.
+        //
+        // This is stored in the loader so that multiple calls to
+        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
+        // what they need only once.
+        //
+        loads: $MapNew(),
+
+        // Various configurable options.
+        global: undefined,
+        strict: false,
+        realm: undefined,
+
+        // **`loaderData.runtimeDependencies`** stores the
+        // should-be-evaluated-before relation for modules.
+        runtimeDependencies: $WeakMapNew(),
+
+        nextLinkSetTimestamp: 0
+    };
+
+    $WeakMapSet(loaderInternalDataMap, loader, internalData);
+    return loader;
+}
+
+def(Loader, {"@@create": create});
+
+// Get the internal data for a given `Loader` object.
+function GetLoaderInternalData(value) {
+    // Loader methods could be placed on wrapper prototypes like String.prototype.
+    if (typeof value !== "object")
+        throw $TypeError("Loader method called on incompatible primitive");
+
+    let internalData = $WeakMapGet(loaderInternalDataMap, value);
+    if (internalData === undefined)
+        throw $TypeError("Loader method called on incompatible object");
+    return internalData;
+}
+
+//> ### Properties of the Loader Prototype Object
+//>
+//> The abstract operation thisLoader(*value*) performs the following steps:
+//>
+//> 1. If Type(*value*) is Object and value has a [[Modules]] internal data property, then
+//>     1. Let m be *value*.[[Modules]].
+//>     2. If m is not **undefined**, then return *value*.
+//> 2. Throw a **TypeError** exception.
+//>
+//> The phrase "this Loader" within the specification of a method refers to the
+//> result returned by calling the abstract operation thisLoader with the this
+//> value of the method invocation passed as the argument.
+//>
+
+def(Loader.prototype, {
+
+    //> #### Loader.prototype.global
+    //>
+    //> `Loader.prototype.global` is an accessor property whose set accessor
+    //> function is undefined. Its get accessor function performs the following
+    //> steps:
+    //>
+    get global() {
+        //> 1. Let L be this Loader.
+        //> 2. Return L.[[Global]].
+        return GetLoaderInternalData(this).global;
+    },
+    //>
+
+    //> #### Loader.prototype.strict
+    //>
+    //> `Loader.prototype.strict` is an accessor property whose set accessor
+    //> function is undefined. Its get accessor function performs the following
+    //> steps:
+    //>
+    get strict() {
+        //> 1. Let L be this Loader.
+        //> 2. Return L.[[Strict]].
+        return GetLoaderInternalData(this).strict;
+    },
+    //>
+
+
+    // ### Loading and running code
+    //
+    // The high-level interface of `Loader` consists of a few methods for
+    // loading and running code.
+    //
+    // These are implemented in terms of slightly lower-level building blocks.
+    // Each of these methods creates a `LinkSet` object, which is in charge
+    // of linking, and at least one `Load`.
+
+
+    //> #### Loader.prototype.module ( src, options )
+    //>
+    // **`module`** - Execute a top-level, anonymous module, without adding it
+    // to the loader's module registry.
+    //
+    // This is the dynamic equivalent of an asynchronous, anonymous `<module>`
+    // in HTML.
+    //
+    // Returns a future for the Module object.
+    //
+    module: function module_(src, options) {
+        src = ToString(src);
+        var loader = this;
+        var loaderData = GetLoaderInternalData(loader);
+
+        return new Promise(function (resolver) {
+            let address = UnpackOption(options, "address");
+            let load = CreateLoad(null);
+            let linkSet = CreateLinkSet(loader, load);
+            linkSet.done.then(_ => resolver.resolve(load.module),
+                              exc => resolver.reject(exc));
+            OnFulfill(loader, load, {}, null, src, address);
+        });
+    },
+    //>
+    //> The `length` property of the `module` method is **2**.
+    //>
+
+
+    //> #### Loader.prototype.import ( moduleName, options )
+    //>
+
+    // **`import`** - Asynchronously load, link, and evaluate a module and any
+    // dependencies it imports.  Return a promise for the `Module` object.
+    //
+    import: function import_(moduleName,
+                             options = undefined)
+    {
+        var loader = this;
+
+        return new Promise(function (resolver) {
+            // Unpack `options`.  Build the referer object that we will pass to
+            // StartModuleLoad. (Implementation note: if a Promise's init
+            // function throws, the new Promise is automatically
+            // rejected. UnpackOption and StartModuleLoad can throw.)
+
+            let name = UnpackOption(options, "module");
+            let address = UnpackOption(options, "address");
+            let referer = {name: name, address: address};
+
+            // `StartModuleLoad` starts us along the pipeline.
+            let load = StartModuleLoad(loader, referer, moduleName);
+
+            if (load.status === "linked") {
+                // We already had this module in the registry.
+                resolver.resolve(load.module);
+            } else {
+                // The module is now loading.  When it loads, it may have more
+                // imports, requiring further loads, so put it in a LinkSet.
+                CreateLinkSet(loader, load).done.then(success, exc => resolver.reject(exc));
+            }
+
+            function success() {
+                $Assert(load.status === "linked");
+                let m = load.module;
+                try {
+                    if (m === undefined) {
+                        throw $TypeError("import(): module \"" + load.fullName +
+                                         "\" was deleted from the loader");
+                    }
+                    EnsureEvaluatedHelper(m, loader);
+                } catch (exc) {
+                    resolver.reject(exc);
+                    return;
+                }
+                resolver.resolve(m);
+            }
+        });
+    },
+    //>
+    //> The `length` property of the `import` method is **1**.
+    //>
+
+
+    //> #### Loader.prototype.define ( names, moduleBodies )
+    //>
+    define: function define(names, moduleBodies) {
+        // ISSUE: Two separate iterables is dumb. Why not an iterable of pairs?
+        // Then you could pass in a Map, and the semantics below would not be so
+        // bizarre.
+        let loader = this;
+        let loaderData = GetLoaderInternalData(this);
+
+        if (typeof names === "string" && typeof moduleBodies === "string") {
+            names = [names];
+            moduleBodies = [moduleBodies];
+        }
+
+        return new Promise(function (resolver) {
+            let linkSet = undefined;
+            let loads = [];
+            try {
+                let nameSet = $SetNew();
+                for (let name of names) {
+                    name = ToString(name);
+                    if ($SetHas(nameSet, name))
+                        throw $TypeError("define(): argument 1 contains a duplicate entry '" + name + "'");
+                    $SetAdd(nameSet, name);
+                }
+                names = $SetElements(nameSet);
+                moduleBodies = [...moduleBodies];
+                if (names.length !== moduleBodies.length)
+                    throw $TypeError("define(): names and moduleBodies must be the same length");
+
+                if (names.length === 0) {
+                    resolver.resolve(undefined);
+                    return;
+                }
+
+                // Make a LinkSet.  Pre-populate it with phony Load objects for
+                // the given modules.  Kick off real Loads for any additional
+                // modules imported by the given moduleBodies.  Let the link
+                // set finish loading, and run the real linking algorithm.
+                for (let i = 0; i < names.length; i++) {
+                    let fullName = names[i];
+                    let load = CreateLoad(fullName);
+                    $MapSet(loaderData.loads, fullName, load);
+                    if (linkSet === undefined) {
+                        linkSet = CreateLinkSet(loader, load).done.then(
+                            _ => resolver.resolve(undefined),
+                            exc => resolver.reject(exc));
+                    } else {
+                        AddLoadToLinkSet(linkSet, load);
+                    }
+                    $ArrayPush(loads, load);
+                }
+            } catch (exc) {
+                if (linkSet === undefined)
+                    resolver.reject(exc);
+                else
+                    FinishLinkSet(linkSet, false, exc);
+                return;
+            }
+
+            for (let i = 0; i < names.length; i++) {
+                // TODO: This status check is here because I think OnFulfill could
+                // cause the LinkSet to fail, which may or may not cause all the
+                // other loads to fail. Need to try to observe this happening.
+                if (loads[i].status === "loading")
+                    OnFulfill(loader, loads[i], {}, names[i], moduleBodies[i], null);
+            }
+        });
+    },
+    //>
+
+    //> #### Loader.prototype.load ( names )
+    //>
+    load: function load(names) {
+        let loader = this;
+        let loaderData = GetLoaderInternalData(this);
+
+        if (typeof names === "string")
+            names = [names];
+
+        // loader.load([]) succeeds immediately.
+        if (names.length === 0)
+            return Promise.resolve(undefined);
+
+        return new Promise(function (resolver) {
+            let name, address;
+            try {
+                name = UnpackOption(options, "module");
+                address = UnpackOption(options, "address");
+            } catch (exn) {
+                resolver.resolve(exn);
+                return;
+            }
+
+            let referer = {name: name, address: address};
+
+            // Make a LinkSet.
+            let linkSet;
+            for (let i = 0; i < names.length; i++) {
+                let moduleName = names[i];
+                let load = StartModuleLoad(loader, referer, moduleName);
+                if (linkSet === undefined) {
+                    linkSet = CreateLinkSet(loader, load).done.then(
+                        _ => resolver.resolve(undefined),
+                        exc => resolver.reject(exc));
+                } else {
+                    AddLoadToLinkSet(linkSet, load);
+                }
+            }
+        });
+    },
+
+
+    // ### Module registry
+    //
+    // Each `Loader` has a **module registry**, a cache of already loaded and
+    // linked modules.  The Loader uses this map to avoid fetching modules
+    // multiple times.
+    //
+    // The methods below support directly querying and modifying the registry.
+    // They are synchronous and never fire any loader hooks or trigger new
+    // loads.
+
+
+    //> #### Loader.prototype.get ( name )
+    //>
+
+    // **`get`** - Get a module by name from the registry.  The argument `name`
+    // is the full module name.
+    //
+    // Throw a TypeError if `name` is not a string.
+    //
+    // If the module is in the registry but has never been evaluated, first
+    // synchronously evaluate the bodies of the module and any dependencies
+    // that have not evaluated yet.
+    //
+    get: function get(name) {
+        let loaderData = GetLoaderInternalData(this);
+        let m = $MapGet(loaderData.modules, ToString(name));
+        if (m !== undefined)
+            EnsureEvaluatedHelper(m, this);
+        return m;
+    },
+    //>
+
+
+    //> #### Loader.prototype.has ( name )
+    //>
+
+    // **`has`** - Return `true` if a module with the given full name is in the
+    // registry.
+    //
+    // This doesn't call any hooks or run any module code.
+    //
+    has: function has(name) {
+        let loaderData = GetLoaderInternalData(this);
+        return $MapHas(loaderData.modules, ToString(name));
+    },
+    //>
+
+
+    //> #### Loader.prototype.set ( name, module )
+    //>
+
+    // **`set`** - Put a module into the registry.
+    set: function set(name, module) {
+        let loaderData = GetLoaderInternalData(this);
+
+        name = ToString(name);
+
+        // Entries in the module registry must actually be `Module`s.
+        // *Rationale:* We use `Module`-specific intrinsics like
+        // `$GetDependencies` and `$Evaluate` on them.  per samth,
+        // 2013 April 22.
+        if (!$IsModule(module))
+            throw $TypeError("Module object required");
+
+        // If there is already a module in the registry with the given full
+        // name, replace it, but any scripts or modules that are linked to the
+        // old module remain linked to it. *Rationale:* Re-linking
+        // already-linked modules might not work, since the new module may
+        // export a different set of names. Also, the new module may be linked
+        // to the old one! This is a convenient way to monkeypatch
+        // modules. Once modules are widespread, this technique can be used for
+        // polyfilling.
+        //
+        // If `name` is in `this.loads`, `.set()` succeeds, with no immediate
+        // effect on the pending load; but if that load eventually produces a
+        // module-declaration for the same name, that will produce a link-time
+        // error. per samth, 2013 April 22.
+        //
+        $MapSet(loaderData.modules, name, module);
+
+        return this;
+    },
+    //>
+
+
+    //> #### Loader.prototype.delete ( name )
+    //>
+
+    // **`delete`** - Remove a module from the registry.
+    //
+    // **`.delete()` and concurrent loads:** Calling `.delete()` has no
+    // immediate effect on in-flight loads, but it can cause such a load to
+    // fail later.
+    //
+    // That's because the dependency-loading algorithm (which we'll get to in a
+    // bit) assumes that if it finds a module in the registry, it doesn't need
+    // to load that module.  If someone deletes that module from the registry
+    // (and doesn't replace it with something compatible), then when loading
+    // finishes, it will find that a module it was counting on has vanished.
+    // Linking will fail.
+    //
+    // **`.delete()` and already-linked modules:** `loader.delete("A")` removes
+    // only `A` from the registry, and not other modules linked against `A`,
+    // for several reasons:
+    //
+    // 1. What a module is linked against is properly an implementation
+    //    detail, which the "remove everything" behavior would leak.
+    //
+    // 2. The transitive closure of what is linked against what is
+    //    an unpredictable amount of stuff, potentially a lot.
+    //
+    // 3. Some uses of modules&mdash;in particular polyfilling&mdash;involve
+    //    defining a new module `MyX`, linking it against some busted built-in
+    //    module `X`, then replacing `X` in the registry with `MyX`. So having
+    //    multiple "versions" of a module linked together is a feature, not a
+    //    bug.
+    //
+    delete: function delete_(name) {
+        let loaderData = GetLoaderInternalData(this);
+
+        // If there is no module with the given name in the registry, this does
+        // nothing.
+        //
+        // `loader.delete("A")` has no effect at all if
+        // `!loaderData.modules.has("A")`, even if "A" is currently loading (an
+        // entry exists in `loaderData.loads`).  This is analogous to `.set()`.
+        // per (reading between the lines) discussions with dherman, 2013 April
+        // 17, and samth, 2013 April 22.
+        $MapDelete(loaderData.modules, ToString(name));
+
+        return this;
+    }
+    //>
+});
+
+
+//> #### *LoaderIterator*.prototype.next ( )
+//>
+function LoaderIterator(iterator) {
+    $SetLoaderIteratorPrivate(this, iterator);
+}
+
+function LoaderIterator_next() {
+    return $MapIteratorNext($GetLoaderIteratorPrivate(this));
+}
+
+def(Loader.prototype, {
+    //> #### Loader.prototype[@@iterator] ( )
+    //> #### Loader.prototype.entries ( )
+    //>
+    entries: function entries() {
+        let loaderData = GetLoaderInternalData(this);
+        return new LoaderIterator($MapEntriesIterator(loaderData.modules));
+    },
+
+    //> #### Loader.prototype.keys ( )
+    //>
+    keys: function keys() {
+        let loaderData = GetLoaderInternalData(this);
+        return new LoaderIterator($MapKeysIterator(loaderData.modules));
+    },
+
+    //> #### Loader.prototype.values ( )
+    //>
+    values: function values() {
+        let loaderData = GetLoaderInternalData(this);
+        return new LoaderIterator($MapValuesIterator(loaderData.modules));
+    },
+
+
+    //> #### Loader.prototype.normalize ( name, options )
+    //>
+    //> This hook receives the module name as passed to `import()` or as written in
+    //> the import-declaration. It returns a string, the full module name, which is
+    //> used for the rest of the import process.  (In particular, modules are
+    //> stored in the registry under their full module name.)
+    //>
+    //> *When this hook is called:*  For all imports, including imports in
+    //> scripts.  It is not called for the main script body evaluated by a call
+    //> to `loader.load()`, `.eval()`, or `.evalAsync()`.
+    //>
+    //> After calling this hook, if the full module name is in the registry,
+    //> loading stops. Otherwise loading continues, calling the `resolve`
+    //> hook.
+    //>
+    //> *Default behavior:*  Return the module name unchanged.
+    //>
+    //> When the normalize method is called, the following steps are taken:
+    //>
+    normalize: function normalize(name, options) {
+        //> 1. Return name.
+        return name;
+    },
+    //>
+
+
+    //> #### Loader.prototype.resolve ( normalized, options )
+    //>
+    //> Given a full module name, determine the resource address (URL, path,
+    //> etc.) to load.
+    //>
+    //> The `resolve` hook is also responsible for determining whether the
+    //> resource in question is a module or a script.
+    //>
+    //> The hook may return:
+    //>
+    //>   - a string, the resource address. In this case the resource is a
+    //>     module.
+    //>
+    //>   - an object that has a `.address` property which is a string, the
+    //>     resource address.  The object may also have a `.extra` property,
+    //>     which if present must be an iterable of strings, the names of the
+    //>     modules defined in the script at the given address.
+    //>
+    //> *When this hook is called:*  For all imports, immediately after the
+    //> `normalize` hook returns successfully, unless the module is already
+    //> loaded or loading.
+    //>
+    //> *Default behavior:*  Return the module name unchanged.
+    //>
+    //> NOTE The browser's `System.resolve` hook is considerably more complex.
+    //>
+    //> When the resolve method is called, the following steps are taken:
+    //>
+    resolve: function resolve(normalized, options) {
+        //> 1. Return normalized.
+        return normalized;
+    },
+    //>
+
+
+    //> #### Loader.prototype.fetch ( address, options )
+    //>
+    //> Asynchronously fetch the requested source from the given address
+    //> (produced by the `resolve` hook).
+    //>
+    //> This is the hook that must be overloaded in order to make the `import`
+    //> keyword work.
+    //>
+    //> The fetch hook should return a promise for a fetch-result object. It
+    //> should then load the requested address asynchronously.  On success, the
+    //> Promise must resolve to an object of the form {src: string, address:
+    //> string}.  The .src property is the fetched source, as a string; the
+    //> .address property is the actual address where it was found (after all
+    //> redirects), also as a string.
+    //>
+    //> options.type is the string `"module"` when fetching a standalone
+    //> module, and `"script"` when fetching a script.
+    //>
+    //> *When this hook is called:* For all modules and scripts whose source is
+    //> not directly provided by the caller.  It is not called for the script
+    //> bodies evaluated by `loader.eval()` and `.evalAsync()`, or for the
+    //> module bodies defined with `loader.define()`, since those do not need
+    //> to be fetched.  `loader.evalAsync()` can trigger this hook, for modules
+    //> imported by the script.  `loader.eval()` is synchronous and thus never
+    //> triggers the `fetch` hook.
+    //>
+    //> (`loader.load()` does not call `normalize`, `resolve`, or
+    //> `instantiate`, since we're loading a script, not a module; but it does
+    //> call the `fetch` and `translate` hooks, per samth, 2013 April 22.)
+    //>
+    //> *Default behavior:*  Return a Promise that is already rejected with a
+    //> `TypeError`.
+    //>
+    //> When the fetch method is called, the following steps are taken:
+    //>
+    fetch: function fetch(address, options) {
+        return Promise.reject($TypeError("Loader.prototype.fetch was called"));
+    },
+    //>
+
+
+    //> #### Loader.prototype.translate ( src, options )
+    //>
+    //> Optionally translate src from some other language into ECMAScript.
+    //>
+    //> *When this hook is called:*  For all modules and scripts.  (It is not
+    //> decided whether this is called for direct eval scripts; see issue #8.)
+    //>
+    //> *Default behavior:*  Return src unchanged.
+    //>
+    //> When the translate method is called, the following steps are taken:
+    //>
+    translate: function translate(src, options) {
+        //> 1. Return src.
+        return src;
+    },
+    //>
+
+
+    //> #### Loader.prototype.instantiate ( src, options )
+    //>
+    //> Allow a loader to optionally provide interoperability with other module
+    //> systems.  There are three options.
+    //>
+    //>  1. The instantiate hook may return `undefined`. The loader then uses
+    //>     the default linking behavior.  It parses src as a module body,
+    //>     looks at its imports, loads all dependencies asynchronously, and
+    //>     finally links them as a unit and adds them to the registry.
+    //>
+    //>     The module bodies will then be evaluated on demand; see
+    //>     `EnsureEvaluated`.
+    //>
+    //>  2. The hook may return a full `Module` instance object.  The loader
+    //>     then simply adds that module to the registry.
+    //>
+    //>  3. *(unimplemented)* The hook may return a factory object which the
+    //>     loader will use to create the module and link it with its clients
+    //>     and dependencies.
+    //>
+    //>     The form of a factory object is:
+    //>
+    //>         {
+    //>             imports: <array of strings (module names)>,
+    //>             execute: <function (Module, Module, ...) -> Module>
+    //>         }
+    //>
+    //>     The module is executed during the linking process.  First all of
+    //>     its dependencies are executed and linked, and then passed to the
+    //>     relevant execute function.  Then the resulting module is linked
+    //>     with the downstream dependencies.  This requires incremental
+    //>     linking when such modules are present, but it ensures that modules
+    //>     implemented with standard source-level module declarations can
+    //>     still be statically validated.
+    //>
+    //>     (This feature is provided in order to support using `import` to
+    //>     import pre-ES6 modules such as AMD modules. See
+    //>     issue #19.)
+    //>
+    //> *When this hook is called:*  After the `translate` hook, for modules
+    //> only.
+    //>
+    //> *Default behavior:*  Return undefined.
+    //>
+    //> When the instantiate method is called, the following steps are taken:
+    //>
+    instantiate: function instantiate(src, options) {
+        //> 1. Return **undefined**.
+    }
+    //>
+});
 
 })(this);
