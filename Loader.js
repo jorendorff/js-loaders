@@ -655,8 +655,7 @@ def(Loader.prototype, {
     //>
 
     // **`import`** - Asynchronously load, link, and evaluate a module and any
-    // dependencies it imports.  On success, pass the `Module` object to the
-    // success callback.
+    // dependencies it imports.  Return a promise for the `Module` object.
     //
     import: function import_(moduleName,
                              options = undefined)
@@ -742,11 +741,10 @@ def(Loader.prototype, {
                     return;
                 }
 
-                // Make a LinkSet.
-                // Pre-populate it with phony Load objects for the given modules.
-                // Kick off real Loads for any additional modules imported by the given moduleBodies.
-                // Let the link set finish loading, and run the real linking algorithm.
-                // Success callback does the rest.
+                // Make a LinkSet.  Pre-populate it with phony Load objects for
+                // the given modules.  Kick off real Loads for any additional
+                // modules imported by the given moduleBodies.  Let the link
+                // set finish loading, and run the real linking algorithm.
                 for (let i = 0; i < names.length; i++) {
                     let fullName = names[i];
                     let load = CreateLoad(fullName);
@@ -819,33 +817,6 @@ def(Loader.prototype, {
             }
         });
     },
-
-
-    // **About `callback` and `errback`:** `Loader.prototype.evalAsync()`,
-    // `.load()`, and `.import()` all take two callback arguments, `callback`
-    // and `errback`, the success and failure callbacks respectively.
-    //
-    // On success, these methods each schedule the success callback to be
-    // called with a single argument (the result of the operation).
-    //
-    // These three methods never throw. Instead, on error, the exception is
-    // saved and passed to failure callback asynchronously.
-    //
-    // Both arguments are optional.  The default success callback does
-    // nothing.  The default failure callback throws its argument.
-    // *Rationale:*  The event loop will then treat it like any other
-    // unhandled exception.
-    //
-    // Success and failure callbacks are always called in a fresh event
-    // loop turn.  This means they will not be called until after
-    // `evalAsync` returns, and they are always called directly from the
-    // event loop:  except in the case of nested event loops, these
-    // callbacks are never called while user code is on the stack.
-    //
-    // **Future directions:**  `evalAsync`, `import`, and `load` (as well as
-    // the `fetch` loader hook, described later) all take callbacks and
-    // currently return `undefined`.  They are designed to be
-    // upwards-compatible to `Future`s.  per samth, 2013 April 22.
 
 
     // ### Module registry
@@ -1109,12 +1080,8 @@ def(Loader.prototype, {
     //> `instantiate`, since we're loading a script, not a module; but it does
     //> call the `fetch` and `translate` hooks, per samth, 2013 April 22.)
     //>
-    //> *Default behavior:*  Pass a `TypeError` to the reject callback.
-    //>
-    //> *Synchronous calls to fulfill and reject:* The `fetch` hook may call
-    //> the fulfill or reject callback directly (for example, if source is
-    //> already available).  fulfill schedules the pipeline to resume
-    //> asynchronously.  *Rationale:* This is how Futures behave.
+    //> *Default behavior:*  Return a Promise that is already rejected with a
+    //> `TypeError`.
     //>
     //> When the fetch method is called, the following steps are taken:
     //>
@@ -1289,8 +1256,8 @@ function StartModuleLoad(loader, referer, name) {
         // Call the `resolve` hook.
         address = loader.resolve(normalized, {metadata: metadata});
     } catch (exc) {
-        // `load` is responsible for firing error callbacks and removing
-        // itself from `loaderData.loads`.
+        // LoadFailed is responsible for rejecting promises, if necessary, and
+        // removing `load` from `loaderData.loads`.
         LoadFailed(load, exc);
         return load;
     }
@@ -1304,7 +1271,6 @@ function StartModuleLoad(loader, referer, name) {
 // **`callFetch`** - Call the fetch hook.  Handle any errors.
 function CallFetch(loader, load, address, metadata, normalized, type) {
     let options = {metadata: metadata, normalized: normalized, type: type};
-    let errback = exc => LoadFailed(load, exc);
 
     // *Rationale for `fetchCompleted`:* The fetch hook is user code.
     // Callbacks the Loader passes to it are subject to every variety of
@@ -1342,18 +1308,18 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
             throw $TypeError("fetch() reject callback: fetch already completed");
         fetchCompleted = true;
         if ($SetSize(load.linkSets) !== 0)
-            AsyncCall(errback, exc);
+            AsyncCall(LoadFailed, load, exc);
     }
 
     try {
         loader.fetch(address, options).then(fulfill, reject);
     } catch (exc) {
         // Some care is taken here to prevent even a badly-behaved fetch
-        // hook from causing errback() to be called twice.
+        // hook from causing LoadFailed to be called twice.
         if (fetchCompleted)
             AsyncCall(() => { throw exc; });
         else
-            AsyncCall(errback, exc);
+            AsyncCall(LoadFailed, load, exc);
     }
 }
 
@@ -1445,7 +1411,7 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
 //  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
 //     state, make the `fulfill` and `reject` callbacks into no-ops.
 //
-//  5. Call the `errback` for each `LinkSet` in F (in timestamp order).
+//  5. Reject the promises associated with each `LinkSet` in F.
 //
 // After that, we drop the failed `LinkSet`s and they become garbage.
 //
@@ -1489,13 +1455,6 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
 //   - A factory function can throw or return an invalid value.
 //
 //   - Evaluation of a module body or a script can throw.
-//
-// Other:
-//
-//   - The `normalize` hook throws or returns an invalid value when we call it
-//     for `loader.import()`.  This happens so early in the load process that
-//     there is no `Load` yet.  A call to the `errback` hook is explicitly
-//     scheduled.
 
 
 //> ### Dependency loading
