@@ -1872,8 +1872,14 @@ function Loader(options={}) {
     return loader;
 }
 
-// This helper function uses Object methods rather than 
+// Define properties on an object. The properties defined this way are exactly
+// like the originals on *props*, but non-enumerable. This is used to build
+// prototype objects and to attach Module and Loader to the global.
 function def(obj, props) {
+    // This helper function calls Object methods directly because it is only
+    // called during polyfill initialization, and then never again. In all
+    // other places where standard library features are used, we make an effort
+    // to be robust against mutation of the built-in objects.
     var names = Object.getOwnPropertyNames(props);
     for (var i = 0; i < names.length; i++) {
         var name = names[i];
