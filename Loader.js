@@ -2328,22 +2328,9 @@ def(Loader.prototype, {
         $MapDelete(loaderData.modules, ToString(name));
 
         return this;
-    }
+    },
     //>
-});
 
-
-//> #### *LoaderIterator*.prototype.next ( )
-//>
-function LoaderIterator(iterator) {
-    $SetLoaderIteratorPrivate(this, iterator);
-}
-
-function LoaderIterator_next() {
-    return $MapIteratorNext($GetLoaderIteratorPrivate(this));
-}
-
-def(Loader.prototype, {
     //> #### Loader.prototype[@@iterator] ( )
     //> #### Loader.prototype.entries ( )
     //>
@@ -2537,6 +2524,20 @@ def(Loader.prototype, {
         //> 1. Return **undefined**.
     }
     //>
+});
+
+//> ### The *LoaderIterator* Prototype
+//>
+//> #### *LoaderIteratorPrototype*.next ( )
+//>
+function LoaderIterator(iterator) {
+    $SetLoaderIteratorPrivate(this, iterator);
+}
+
+def(LoaderIterator.prototype, {
+    next: function next() {
+        return $MapIteratorNext($GetLoaderIteratorPrivate(this));
+    }
 });
 
 })(this);
