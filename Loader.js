@@ -1750,9 +1750,6 @@ Module.prototype = null;
 //>     object. (XXX needs better wording; it is hard to be both precise and
 //>     comprehensible on this point)
 //>
-//>   * loader.[[Strict]] - A boolean value, the loader's strictness setting.  If
-//>     true, all code loaded by the loader is strict-mode code.
-//>
 //> These properties are fixed when the Loader is created and can't be
 //> changed. In addition, each Loader contains two Lists:
 //>
@@ -1816,7 +1813,6 @@ function Loader(options={}) {
     var global = options.global;
     if (global !== undefined && !IsObject(global))
         throw $TypeError("options.global must be an object or undefined");
-    var strict = ToBoolean(options.strict);
     var realm = options.realm;
     if (realm === undefined) {
         loaderData.realm = $RealmNew();
@@ -1831,7 +1827,6 @@ function Loader(options={}) {
 
     // Initialize infallibly.
     loaderData.global = global;
-    loaderData.strict = strict;
     loaderData.module = $MapNew();
 
     var builtins = {};
@@ -1925,7 +1920,6 @@ function create() {
 
         // Various configurable options.
         global: undefined,
-        strict: false,
         realm: undefined,
 
         // **`loaderData.runtimeDependencies`** stores the
