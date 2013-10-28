@@ -1781,8 +1781,9 @@ Module.prototype = null;
 
 
 //> ### The Loader Constructor
-
+//>
 //> #### Loader ( options )
+//>
 
 // Implementation note: Since ES6 does not have support for private state or
 // private methods, the "internal data properties" of Loader objects are stored
@@ -1796,41 +1797,70 @@ Module.prototype = null;
 //
 let loaderInternalDataMap = $WeakMapNew();
 
+//> When the `Loader` function is called with optional argument options the
+//> following steps are taken:
+//>
 function Loader(options={}) {
+    //> 1.  Let loader be the this value.
+    //> 2.  If Type(loader) is not Object, throw a TypeError exception.
+    //
     // Bug: This calls Loader[@@create] directly.  The spec will instead make
     // `new Loader(options)` equivalent to
     // `Loader.[[Call]](Loader[@@create](), List [options])`.
-    // In other words, Loader_create will be called *before* Loader.
+    // In other words, Loader[@@create] will be called *before* Loader.
     // We'll change that when symbols and @@create are implemented.
     var loader = callFunction(Loader["@@create"], Loader);
+
+    //> 3.  If loader does not have all of the internal properties of a Module
+    //>     Instance, throw a TypeError exception.
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
     if (loaderData === undefined)
         throw $TypeError("Loader object expected");
+
+    //> 4.  If loader.[[Modules]] is not undefined, throw a TypeError
+    //>     exception.
     if (loaderData.modules !== undefined)
         throw $TypeError("Loader object cannot be intitialized more than once");
 
+    //> 5.  If Type(options) is not Object, throw a TypeError exception.
+    if (!IsObject(options))
+        throw $TypeError("options must be an object or undefined");
+
     // Fallible operations.
-    var global = options.global;
-    if (global !== undefined && !IsObject(global))
-        throw $TypeError("options.global must be an object or undefined");
-    var realm = options.realm;
-    if (realm === undefined) {
-        loaderData.realm = $RealmNew();
+
+    //> 6.  Let realmOption be the result of calling the [[Get]] internal method
+    //>     of options with arguments `"realm"` and options.
+    //> 7.  ReturnIfAbrupt(realmOption).
+    var realmOption = options.realm;
+
+    let realm;
+    //> 8.  If realmOption is undefined,
+    if (realmOption === undefined) {
+        //>     1.  Let realm to the result of CreateRealm().
+        realm = $CreateRealm();
+    //> 9.  Else if Type(realmOption) is Object and realmOption has all the
+    //>     internal properties of a Loader instance,
+    } else if (IsObject(realmOption) && $WeakMapHas(loaderInternalDataMap, realmOption)) {
+        //>     1. Let realm be realmOption.[[Realm]].
+        let realmLoaderData = $WeakMapGet(loaderInternalDataMap, realmOption);
+        realm = realmLoaderData.realm;
+    //> 10. Else,
     } else {
-        if (typeof realm !== "object" || realm === null)
-            throw $TypeError("realm must be a Loader object, if defined");
-        let realmLoaderData = $WeakMapGet(loaderInternalDataMap, realm);
-        if (realmLoaderData === undefined)
-            throw $TypeError("realm must be a Loader object, if defined");
-        loaderData.realm = realmLoaderData.realm;
+        //>     1.  Let realmDesc be ObjectToRealmDescriptor(realmOption).
+        //>     2.  ReturnIfAbrupt(realmDesc);
+        //>     3.  Let realm be the result of CreateRealm(realmDesc).
+        throw TODO;
     }
 
-    // Initialize infallibly.
-    loaderData.global = global;
-    loaderData.module = $MapNew();
-
+    //> 11. Let builtins be the result of performing ObjectCreate(%ObjectPrototype%).
     var builtins = {};
+    //> 12. Call DefineBuiltins(realm, builtins).
     $DefineBuiltins(loaderData.realm, builtins);
+    //> 13. Let result be the result of calling the [[DefineOwnProperty]]
+    //>     internal method of loader passing `"builtins`" and the Property
+    //>     Descriptor {[[Value]]: builtins, [[Writable]]: true,
+    //>     [[Enumerable]]: true, [[Configurable]]: true} as arguments.
+    //> 14. ReturnIfAbrupt(13).
     $ObjectDefineProperty(loader, "builtins", {
         configurable: true,
         enumerable: true,
@@ -1847,9 +1877,22 @@ function Loader(options={}) {
     // subclasses can add methods with the appropriate names and use `super()`
     // to invoke the base-class behavior.
     //
-    function takeHook(name) {
+    //> 15. For each name in the List (`"normalize"`, `"resolve"`, `"fetch"`,
+    //>     `"translate"`, `"instantiate"`),
+    let hooks = ["normalize", "resolve", "fetch", "translate", "instantiate"];
+    for (let i = 0; i < hooks.length; i++) {
+        let name = hooks[i];
+        //     1.  Let hook be the result of calling the [[Get]] internal
+        //         method of options with arguments name and options.
+        //     2.  ReturnIfAbrupt(hook).
         var hook = options[name];
+        //     3.  If hook is not undefined,
         if (hook !== undefined) {
+            //         1.  Let result be the result of calling the
+            //             [[DefineOwnProperty]] internal method of loader
+            //             passing name and the Property Descriptor {[[Value]]:
+            //             hook, [[Writable]]: true, [[Enumerable]]: true,
+            //             [[Configurable]]: true} as arguments.
             $ObjectDefineProperty(loader, name, {
                 configurable: true,
                 enumerable: true,
@@ -1859,11 +1902,15 @@ function Loader(options={}) {
         }
     }
 
-    takeHook("normalize");
-    takeHook("resolve");
-    takeHook("fetch");
-    takeHook("translate");
-    takeHook("instantiate");
+    // Infallible initialization of internal data properties.
+
+    //> 16. Set loader.[[Realm]] to realm.
+    loaderData.realm = realm;
+
+    //> 17. Set loader.[[Modules]] to a new empty List.
+    loaderData.modules = $MapNew();
+
+    //> 18. Return loader.
     return loader;
 }
 
