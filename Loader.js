@@ -72,6 +72,21 @@ function $QueueTask(fn) {
     setTimeout(fn, 0);
 }
 
+// * `$ToPromise(thing)` coerces `thing` to a Promise. If `thing` is *not*
+//   thenable, this is like Promise.fulfill(thing). Otherwise, this returns a
+//   real Promise wrapping `thing`. The real Promise guarantees that it won't
+//   call the callbacks multiple times, call both of them, or call them
+//   synchronously, no matter what `thing.then()` tries to do.
+var std_Promise_isThenable = Promise.isThenable;
+var std_Promise_resolve = Promise.resolve;
+var std_Promise_fulfill = Promise.fulfill;
+function $ToPromise(thing) {
+    if (std_Promise_isThenable(thing))
+        return std_Promise_resolve(thing);  // BUG - not hardened, need Promise.cast
+    else
+        return std_Promise_fulfill(thing);
+}
+
 // Now on to the core JS language implementation primitives.
 //
 // * `$ParseModule(loader, src, moduleName, address)` parses the string `src`
@@ -303,6 +318,8 @@ var $WeakMapHas = unmethod(WeakMap.prototype.has);
 var $WeakMapGet = unmethod(WeakMap.prototype.get);
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
 var $WeakMapSet = unmethod(WeakMap.prototype.set);
+// * `$PromiseThen(p, fulfill, reject)` ~= p.then(fulfill, reject)
+var $PromiseThen = unmethod(Promise.prototype.then);
 // * `$TypeError(msg)` ~= new TypeError(msg)
 var $TypeError = TypeError;
 // * `$SyntaxError(msg)` ~= new SyntaxError(msg)
@@ -443,55 +460,26 @@ function StartModuleLoad(loader, referer, name) {
 function CallFetch(loader, load, address, metadata, normalized, type) {
     let options = {metadata: metadata, normalized: normalized, type: type};
 
-    // *Rationale for `fetchCompleted`:* The fetch hook is user code.
-    // Callbacks the Loader passes to it are subject to every variety of
-    // misuse; the system must be robust against these hooks being called
-    // multiple times.
-    //
-    // Futures treat extra `resolve()` calls after the first as no-ops.
-    // At the moment this implementation throws TypeError instead, but the API
-    // will transition to Futures.
-    //
-    let fetchCompleted = false;
-
     function fulfill(fetchResult) {
-        if (fetchCompleted)
-            throw $TypeError("fetch() fulfill callback: fetch already completed");
-        fetchCompleted = true;
-
-        let src = fetchResult.src;
-        let address = fetchResult.address;
-
-        if ($SetSize(load.linkSets) === 0)
-            return;
-
-        // Even though `fulfill()` will *typically* be called
-        // asynchronously from an empty or nearly empty stack, the `fetch`
-        // hook may call it from a nonempty stack, even synchronously.
-        // Therefore use `AsyncCall` here, at the cost of an extra event
-        // loop turn.
-        AsyncCall(() =>
-                  OnFulfill(loader, load, metadata, normalized, src, address));
+        if ($SetSize(load.linkSets) !== 0) {
+            OnFulfill(loader, load, metadata, normalized,
+                      fetchResult.src, fetchResult.address);
+        }
     }
 
     function reject(exc) {
-        if (fetchCompleted)
-            throw $TypeError("fetch() reject callback: fetch already completed");
-        fetchCompleted = true;
         if ($SetSize(load.linkSets) !== 0)
-            AsyncCall(LoadFailed, load, exc);
+            LoadFailed(load, exc);
     }
 
+    var fetchResult;
     try {
-        loader.fetch(address, options).then(fulfill, reject);
+        fetchResult = loader.fetch(address, options);
     } catch (exc) {
-        // Some care is taken here to prevent even a badly-behaved fetch
-        // hook from causing LoadFailed to be called twice.
-        if (fetchCompleted)
-            AsyncCall(() => { throw exc; });
-        else
-            AsyncCall(LoadFailed, load, exc);
+        AsyncCall(LoadFailed, load, exc);
+        return;
     }
+    $PromiseThen($ToPromise(fetchResult), fulfill, reject);
 }
 
 // **`OnFulfill`** - This is called once a fetch succeeds.
