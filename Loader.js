@@ -354,28 +354,6 @@ function AsyncCall(fn, ...args) {
 //> ## Module Loading
 //>
 
-// **`UnpackOption`** - Used by several Loader methods to get options
-// off of an options object and, if defined, coerce them to strings.
-//
-// `eval()` and `evalAsync()` accept an optional `options` object.
-// `options.address`, if present, is passed to the `translate` and
-// `instantiate` hooks as `options.actualAddress`, and to the `normalize` hook
-// for each dependency, as `options.referer.address`.  The default loader hooks
-// ignore it, though.
-//
-// (`options.address` may also be stored in the script and used for
-// `Error().fileName`, `Error().stack`, and developer tools; but such use
-// is outside the scope of the language standard.)
-//
-function UnpackOption(options, name) {
-    if (options === undefined)
-        return null;
-    let value = options[name];
-    if (value === undefined)
-        return null;
-    return ToString(value);
-}
-
 
 // ## The loader pipeline
 
@@ -2007,6 +1985,29 @@ function GetLoaderInternalData(value) {
 //> result returned by calling the abstract operation thisLoader with the this
 //> value of the method invocation passed as the argument.
 //>
+
+
+// **`UnpackOption`** - Used by several Loader methods to get options
+// off of an options object and, if defined, coerce them to strings.
+//
+// `eval()` and `evalAsync()` accept an optional `options` object.
+// `options.address`, if present, is passed to the `translate` and
+// `instantiate` hooks as `options.actualAddress`, and to the `normalize` hook
+// for each dependency, as `options.referer.address`.  The default loader hooks
+// ignore it, though.
+//
+// (`options.address` may also be stored in the script and used for
+// `Error().fileName`, `Error().stack`, and developer tools; but such use
+// is outside the scope of the language standard.)
+//
+function UnpackOption(options, name) {
+    if (options === undefined)
+        return null;
+    let value = options[name];
+    if (value === undefined)
+        return null;
+    return ToString(value);
+}
 
 def(Loader.prototype, {
 
