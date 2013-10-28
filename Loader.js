@@ -1946,11 +1946,6 @@ function create() {
         // Various configurable options.
         global: undefined,
         realm: undefined,
-
-        // **`loaderData.runtimeDependencies`** stores the
-        // should-be-evaluated-before relation for modules.
-        runtimeDependencies: $WeakMapNew(),
-
         nextLinkSetTimestamp: 0
     };
 
