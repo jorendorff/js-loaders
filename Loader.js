@@ -184,7 +184,7 @@ function $ToPromise(thing) {
 //
 // * `$CreateModule()` returns a new `Module` object. The object is extensible.
 //   It must not be exposed to scripts until it has been populated and frozen.
-var $CreateModule = () => Object.create(null);
+var $CreateModule = () => $ObjectCreate(null);
 
 // * `$IsModule(v)` returns true if `v` is a `Module` object.
 //
@@ -249,6 +249,8 @@ var $CreateModule = () => Object.create(null);
 // that JS provides via builtin methods. We use primitives rather than the
 // builtin methods because user code can delete or replace the methods.
 //
+// * `$ObjectCreate(proto)` ~= Object.create(proto)
+var $ObjectCreate = Object.create;
 // * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
 var $ObjectDefineProperty = Object.defineProperty;
 // * `$ObjectGetOwnPropertyNames(obj)` ~= Object.getOwnPropertyNames(obj)
@@ -878,7 +880,7 @@ function CreateLinkSet(loader, startingLoad) {
         done: done,
         resolver: resolver,
         loads: $SetNew(),
-        timestamp: loaderData.nextLinkSetTimestamp++,
+        timestamp: loaderData.linkSetCounter++,
 
         // Implementation note: `this.loadingCount` is not in the spec. This is
         // the number of `Load`s in `this.loads` whose `.status` is
@@ -1868,14 +1870,16 @@ function Loader(options={}) {
     }
 
     // Infallible initialization of internal data properties.
-
-    //> 16. Set loader.[[Realm]] to realm.
-    loaderData.realm = realm;
-
-    //> 17. Set loader.[[Modules]] to a new empty List.
+    //> 16. Set loader.[[Modules]] to a new empty List.
     loaderData.modules = $MapNew();
+    //> 17. Set loader.[[Loads]] to a new empty List.
+    loaderData.loads = $MapNew();
+    //> 18. Set loader.[[Realm]] to realm.
+    loaderData.realm = realm;
+    //> 19. Set loader.[[LinkSetCounter]] to 0.
+    loaderData.linkSetCounter = 0;
 
-    //> 18. Return loader.
+    //> 20. Return loader.
     return loader;
 }
 
@@ -1902,9 +1906,18 @@ def(global, {Module: Module, Loader: Loader});
 
 //> #### Loader [ @@create ] ( )
 //>
-
+//> The @@create method of the builtin Loader constructor performs the
+//> following steps:
+//>
 function create() {
-    var loader = Object.create(this.prototype);
+    //> 1.  Let F be the this value.
+    //> 2.  Let loader be the result of calling OrdinaryCreateFromConstructor(F,
+    //>     "%LoaderPrototype%", ( [[Modules]], [[Loads]], [[Realm]],
+    //>     [[LinkSetCounter]]) ).
+    var loader = $ObjectCreate(this.prototype);
+
+    // The fields are initially undefined but are populated when the
+    // constructor runs.
     var internalData = {
         // **`loaderData.modules`** is the module registry.  It maps full
         // module names to `Module` objects.
@@ -1915,28 +1928,30 @@ function create() {
         // imports, such modules are not exposed to user code.  See
         // `EnsureEvaluated()`.
         //
-        // This is initially undefined but is populated with a new Map
-        // when the constructor runs.
-        //
         modules: undefined,
 
         // **`loaderData.loads`** stores information about modules that are
-        // loading or loaded but not yet linked.  (TODO - fix that sentence for
-        // OnEndRun.)  It maps full module names to `Load` objects.
+        // loading or loaded but not yet committed to the module registry.
+        // It maps full module names to Load records.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
         // what they need only once.
         //
-        loads: $MapNew(),
+        loads: undefined,
 
-        // Various configurable options.
-        global: undefined,
+        // **`loaderData.realm`** is an ECMAScript Realm. It determines the
+        // global scope and intrinsics of all code this Loader runs. By
+        // default, `new Loader()` creates a new Realm.
         realm: undefined,
-        nextLinkSetTimestamp: 0
-    };
 
+        // **`loaderData.linkSetCounter`** is used to give each LinkSet record
+        // an id that imposes a total ordering on LinkSets.
+        linkSetCounter: undefined
+    };
     $WeakMapSet(loaderInternalDataMap, loader, internalData);
+
+    //> 3.  Return loader.
     return loader;
 }
 
@@ -2001,8 +2016,8 @@ def(Loader.prototype, {
     //>
     get global() {
         //> 1. Let L be this Loader.
-        //> 2. Return L.[[Global]].
-        return GetLoaderInternalData(this).global;
+        //> 2. Return L.[[Realm]].[[globalThis]].
+        return GetLoaderInternalData(this).realm.global;
     },
     //>
 
