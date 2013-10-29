@@ -1876,10 +1876,8 @@ function Loader(options={}) {
     loaderData.loads = $MapNew();
     //> 18. Set loader.[[Realm]] to realm.
     loaderData.realm = realm;
-    //> 19. Set loader.[[LinkSetCounter]] to 0.
-    loaderData.linkSetCounter = 0;
 
-    //> 20. Return loader.
+    //> 19. Return loader.
     return loader;
 }
 
@@ -1911,9 +1909,9 @@ def(global, {Module: Module, Loader: Loader});
 //>
 function create() {
     //> 1.  Let F be the this value.
-    //> 2.  Let loader be the result of calling OrdinaryCreateFromConstructor(F,
-    //>     "%LoaderPrototype%", ( [[Modules]], [[Loads]], [[Realm]],
-    //>     [[LinkSetCounter]]) ).
+    //> 2.  Let loader be the result of calling
+    //>     OrdinaryCreateFromConstructor(F, "%LoaderPrototype%", (
+    //>     [[Modules]], [[Loads]], [[Realm]] )).
     var loader = $ObjectCreate(this.prototype);
 
     // The fields are initially undefined but are populated when the
@@ -1946,8 +1944,12 @@ function create() {
         realm: undefined,
 
         // **`loaderData.linkSetCounter`** is used to give each LinkSet record
-        // an id that imposes a total ordering on LinkSets.
-        linkSetCounter: undefined
+        // an id (LinkSet.timestamp) that imposes a total ordering on
+        // LinkSets. This is used when multiple LinkSets are completed or
+        // rejected at once (FinishLoad, RejectLoad).  This counter is an
+        // implementation detail; the spec just says "in the order in which
+        // they were created".
+        linkSetCounter: 0
     };
     $WeakMapSet(loaderInternalDataMap, loader, internalData);
 
