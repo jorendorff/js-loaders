@@ -805,14 +805,13 @@ function FinishLoad(load, loader, address, body) {
     load.body = body;
     load.linkingInfo = linkingInfo;
     load.dependencies = dependencies;
-    if (!sync) {
-        // For determinism, finish linkable LinkSets in timestamp order.
-        // (NOTE: If it turns out that Futures fire in deterministic
-        // order, then there's no point sorting this array here.)
-        $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
-        for (let i = 0; i < sets.length; i++)
-            LinkSetOnLoad(sets[i], load);
-    }
+
+    // For determinism, finish linkable LinkSets in timestamp order.
+    // (NOTE: If it turns out that Futures fire in deterministic
+    // order, then there's no point sorting this array here.)
+    $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
+    for (let i = 0; i < sets.length; i++)
+        LinkSetOnLoad(sets[i], load);
 }
 
 //> #### OnEndRun(load, mod) Abstract Operation
