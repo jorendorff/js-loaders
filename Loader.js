@@ -1910,8 +1910,8 @@ def(global, {Module: Module, Loader: Loader});
 function create() {
     //> 1.  Let F be the this value.
     //> 2.  Let loader be the result of calling
-    //>     OrdinaryCreateFromConstructor(F, "%LoaderPrototype%", (
-    //>     [[Modules]], [[Loads]], [[Realm]] )).
+    //>     OrdinaryCreateFromConstructor(F, "%LoaderPrototype%", ([[Modules]],
+    //>     [[Loads]], [[Realm]])).
     var loader = $ObjectCreate(this.prototype);
 
     // The fields are initially undefined but are populated when the
@@ -2244,18 +2244,36 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.get ( name )
     //>
+    //> If this Loader's module registry contains a Module with the given name,
+    //> return it.  Otherwise, return undefined.
 
-    // **`get`** - Get a module by name from the registry.  The argument `name`
-    // is the full module name.
+    //>
+    //> If the module is in the registry but has never been evaluated, first
+    //> synchronously evaluate the bodies of the module and any dependencies
+    //> that have not evaluated yet.
     //
-    // Throw a TypeError if `name` is not a string.
-    //
-    // If the module is in the registry but has never been evaluated, first
-    // synchronously evaluate the bodies of the module and any dependencies
-    // that have not evaluated yet.
-    //
+
+    //> When the `get` method is called with one argument, the following steps
+    //> are taken:
+    //>
     get: function get(name) {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+
+        //> 3.  Let name be ToString(name).
+        //> 4.  ReturnIfAbrupt(name).
+        name = $ToString(name);
+
+        //> 5.  Repeat for each Record {[[key]], [[value]]} p that is an
+        //>     element of loader.[[Modules]],
+        //>     1.  If p.[[key]] is equal to name, then
+        //>         1.  Let module be p.[[value]].
+        //>         2.  Let result be the result of EnsureEvaluated(module, (),
+        //>             loader).
+        //>         3.  ReturnIfAbrupt(result).
+        //>         4.  Return p.[[value]].
+        //> 6.  Return undefined.
         let m = $MapGet(loaderData.modules, ToString(name));
         if (m !== undefined)
             EnsureEvaluatedHelper(m, this);
@@ -2266,14 +2284,24 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.has ( name )
     //>
-
-    // **`has`** - Return `true` if a module with the given full name is in the
-    // registry.
-    //
-    // This doesn't call any hooks or run any module code.
-    //
+    //> Return true if this Loader's module registry contains a Module with the
+    //> given name. This method does not call any hooks or run any module code.
+    //>
+    //> The following steps are taken:
+    //>
     has: function has(name) {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+
+        //> 3.  Let name be ToString(name).
+        //> 4.  ReturnIfAbrupt(name).
+        name = $ToString(name);
+
+        //> 5.  Repeat for each Record {[[name]], [[value]]} p that is an
+        //>     element of loader.[[Modules]],
+        //>     1.  If p.[[key]] is equal to name, then return true.
+        //> 6.  Return false.
         return $MapHas(loaderData.modules, ToString(name));
     },
     //>
@@ -2281,13 +2309,23 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.set ( name, module )
     //>
-
-    // **`set`** - Put a module into the registry.
+    //> Store a module in this Loader's module registry, overwriting any existing
+    //> entry with the same name.
+    //>
+    //> The following steps are taken:
+    //>
     set: function set(name, module) {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
 
+        //> 3.  Let name be ToString(name).
+        //> 4.  ReturnIfAbrupt(name).
         name = ToString(name);
 
+        //> 5.  If module does not have all the internal data properties of a
+        //>     Module instance, throw a TypeError exception.
+        //
         // Entries in the module registry must actually be `Module`s.
         // *Rationale:* We use `Module`-specific intrinsics like
         // `$GetDependencies` and `$Evaluate` on them.  per samth,
@@ -2307,10 +2345,17 @@ def(Loader.prototype, {
         // If `name` is in `this.loads`, `.set()` succeeds, with no immediate
         // effect on the pending load; but if that load eventually produces a
         // module-declaration for the same name, that will produce a link-time
-        // error. per samth, 2013 April 22.
+        // error.
         //
+        //> 6.  Repeat for each Record {[[name]], [[value]]} p that is an
+        //>     element of loader.[[Modules]],
+        //>     1.  If p.[[key]] is equal to name,
+        //>         1.  Set p.[[value]] to module.
+        //>         2.  Return loader.
+        //> 7.  Let p be the Record {[[key]]: name, [[value]]: module}.
+        //> 8.  Append p as the last record of loader.[[Modules]].
+        //> 9.  Return loader.
         $MapSet(loaderData.modules, name, module);
-
         return this;
     },
     //>
@@ -2318,9 +2363,8 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.delete ( name )
     //>
-
-    // **`delete`** - Remove a module from the registry.
-    //
+    //> Remove an entry from this loader's module registry.
+    //>
     // **`.delete()` and concurrent loads:** Calling `.delete()` has no
     // immediate effect on in-flight loads, but it can cause such a load to
     // fail later.
@@ -2348,42 +2392,69 @@ def(Loader.prototype, {
     //    multiple "versions" of a module linked together is a feature, not a
     //    bug.
     //
+    //> The following steps are taken:
+    //>
     delete: function delete_(name) {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
 
+        //> 3.  Let name be ToString(name).
+        //> 4.  ReturnIfAbrupt(name).
+        name = ToString(name);
+
+        //> 5.  Repeat for each Record {[[name]], [[value]]} p that is an
+        //>     element of loader.[[Modules]],
+        //>     1.  If p.[[key]] is equal to name,
+        //>         1.  Set p.[[key]] to empty.
+        //>         2.  Set p.[[value]] to empty.
+        //>         3.  Return true.
+        //> 6.  Return false.
+        //
         // If there is no module with the given name in the registry, this does
         // nothing.
         //
         // `loader.delete("A")` has no effect at all if
         // `!loaderData.modules.has("A")`, even if "A" is currently loading (an
         // entry exists in `loaderData.loads`).  This is analogous to `.set()`.
-        // per (reading between the lines) discussions with dherman, 2013 April
-        // 17, and samth, 2013 April 22.
-        $MapDelete(loaderData.modules, ToString(name));
-
-        return this;
+        //
+        return $MapDelete(loaderData.modules, name);
     },
     //>
 
-    //> #### Loader.prototype[@@iterator] ( )
     //> #### Loader.prototype.entries ( )
     //>
+    //> The following steps are taken.
+    //>
     entries: function entries() {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+        //> 3.  Return the result of CreateLoaderIterator(loader, `"key+value"`).
         return new LoaderIterator($MapEntriesIterator(loaderData.modules));
     },
 
     //> #### Loader.prototype.keys ( )
     //>
+    //> The following steps are taken.
+    //>
     keys: function keys() {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+        //> 3.  Return the result of CreateLoaderIterator(loader, `"key"`).
         return new LoaderIterator($MapKeysIterator(loaderData.modules));
     },
 
     //> #### Loader.prototype.values ( )
     //>
+    //> The following steps are taken.
+    //>
     values: function values() {
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+        //> 3.  Return the result of CreateLoaderIterator(loader, `"value"`).
         return new LoaderIterator($MapValuesIterator(loaderData.modules));
     },
 
@@ -2560,18 +2631,115 @@ def(Loader.prototype, {
     //>
 });
 
-//> ### The *LoaderIterator* Prototype
+
+//> #### Loader.prototype[@@iterator] ( )
 //>
-//> #### *LoaderIteratorPrototype*.next ( )
+//> The initial value of the @@iterator property is the same function
+//> object as the initial value of the entries property.
+def(Loader.prototype, {"@@iterator": Loader.prototype.entries});
+
+
+//> ### Loader Iterator Object Structure
+//>
+//> A Loader Iterator is an object, with the structure defined below, that
+//> represents a specific iteration over the module registry of some specific
+//> Loader instance object.
+//>
+
+//> #### CreateLoaderIterator(loader, kind) Abstract Operation
+//>
+//> Several methods of Loader objects return LoaderIterator objects. The
+//> abstract iteration CreateLoaderIterator is used to create such iterator
+//> objects. It performs the following steps:
+//>
+//> 1.  Assert: Type(loader) is Object.
+//> 2.  Assert: loader has all the internal data properties of a Loader object.
+//> 3.  Let iterator be the result of ObjectCreate(%LoaderIteatorPrototype%,
+//>     ([[Loader]], [[ModuleMapNextIndex]], [[MapIterationKind]])).
+//> 4.  Set iterator.[[Loader]] to loader.
+//> 5.  Set iterator.[[ModuleMapNextIndex]] to 0.
+//> 6.  Set iterator.[[MapIterationKind]] to kind.
+//> 7.  Return iterator.
 //>
 function LoaderIterator(iterator) {
     $SetLoaderIteratorPrivate(this, iterator);
 }
 
+//> #### The Loader Iterator Prototype
+//>
+//> All Loader Iterator Objects inherit properties from a common Loader
+//> Iterator Prototype object.  The [[Prototype]] internal data property of the
+//> Loader Iterator Prototype is the %ObjectPrototype% intrinsic object. In
+//> addition, the Loader Iterator Prototype has the following properties:
+//>
+
 def(LoaderIterator.prototype, {
+    //> ##### *LoaderIteratorPrototype*.constructor
+    //>
+
+    //> ##### *LoaderIteratorPrototype*.next ( )
+    //>
+    //> 1.  Let O be the this value.
+    //> 2.  If Type(O) is not Object, throw a TypeError exception.
+    //> 3.  If O does not have all of the internal properties of a Loader
+    //>     Iterator Instance, throw a TypeError exception.
+    //> 4.  Let loader be the value of the [[Loader]] internal data property of
+    //>     O.
+    //> 5.  Let index be the value of the [[ModuleMapNextIndex]] internal data
+    //>     property of O.
+    //> 6.  Let itemKind be the value of the [[MapIterationKind]] internal data
+    //>     property of O.
+    //> 7.  Assert: loader has a [[Modules]] internal data property and loader
+    //>     has been initialised so the value of loader.[[Modules]] is not
+    //>     undefined.
+    //> 8.  Repeat while index is less than the total number of elements of
+    //>     loader.[[Modules]],
+    //>     1.  Let e be the Record {[[key]], [[value]]} at 0-origined
+    //>         insertion position index of loader.[[Modules]].
+    //>     2.  Set index to index + 1.
+    //>     3.  Set the [[ModuleMapNextIndex]] internal data property of O to
+    //>         index.
+    //>     4.  If e.[[key]] is not empty, then
+    //>         1.  If itemKind is `"key"`, then let result be e.[[key]].
+    //>         2.  Else if itemKind is `"value"`, then let result be
+    //>             e.[[value]].
+    //>         3.  Else,
+    //>             1.  Assert: itemKind is `"key+value"`.
+    //>             2.  Let result be the result of ArrayCreate(2).
+    //>             3.  Assert: result is a new, well-formed Array object so
+    //>                 the following operations will never fail.
+    //>             4.  Call CreateOwnDataProperty(result, `"0"`, e.[[key]]).
+    //>             5.  Call CreateOwnDataProperty(result, `"1"`, e.[[value]]).
+    //>         4.  Return CreateIterResultObject(result, false).
+    //> 9.  Return CreateIterResultObject(undefined, true).
+    //>
+    // The implementation is one line of code, delegating to
+    // MapIterator.prototype.next.
+    //
     next: function next() {
         return $MapIteratorNext($GetLoaderIteratorPrivate(this));
-    }
+    },
+
+    //> ##### *LoaderIteratorPrototype* [ @@iterator ] ()
+    //>
+    //> The following steps are taken:
+    //>
+    // Bug: "@@iterator" should of course be [Symbol.iterator], but
+    // SpiderMonkey doesn't have Symbol support yet.
+    //
+    "@@iterator": function () {
+        //> 1.  Return the this value.
+        return this;
+    },
+    //>
+
+    //> ##### *LoaderIteratorPrototype* [ @@toStringTag ]
+    //>
+    //> The initial value of the @@toStringTag property is the string value
+    //> `"Loader Iterator"`.
+    //>
+    "@@toStringTag": "Loader Iterator"
 });
+
 
 })(this);
