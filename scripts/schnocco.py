@@ -120,7 +120,16 @@ def format(sections, config):
         if right == '':
             right = '\n'
         docs_text = left + "(schnocco-source-code-segment-{})".format(n) + right
-        docs_text += "\n"  # perhaps ">\n" in some cases
+
+        # Add a blank line between sections, unless this section starts with a
+        # numbered list item.
+        if re.match(r'^> *\d+\.', docs_text) is None:
+            if docs_text.startswith(">"):
+                blank = ">\n"
+            else:
+                blank = "\n"
+            docs_text = blank + docs_text
+
         docs_segments.append(docs_text)
 
         code_html = pygments.highlight(code_text, lexer, formatter)
