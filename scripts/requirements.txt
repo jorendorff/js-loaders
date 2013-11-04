@@ -1,3 +1,4 @@
 Markdown==2.3.1
+Pygments==1.6
 html5lib==0.95
 wsgiref==0.1.2

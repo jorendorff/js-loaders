@@ -18,6 +18,7 @@ span.src {
     vertical-align: baseline;
 }
 span.src > code {
+    background: transparent;  /* override pygments */
     display: block;
     white-space: pre;
     font-weight: normal;
