@@ -447,20 +447,25 @@ function StartModuleLoad(loader, referer, name) {
 
     let metadata = {};
 
-    let address;
-    try {
-        // Call the `resolve` hook.
-        address = loader.resolve(normalized, {metadata: metadata});
-    } catch (exc) {
+    function fulfill(address) {
+        // Start the fetch.
+        CallFetch(loader, load, address, metadata, normalized, "module");
+    }
+
+    function reject(exc) {
         // LoadFailed is responsible for rejecting promises, if necessary, and
         // removing `load` from `loaderData.loads`.
         LoadFailed(load, exc);
-        return load;
     }
 
-    // Start the fetch.
-    CallFetch(loader, load, address, metadata, normalized, "module");
-
+    let resolveResult;
+    try {
+        // Call the `resolve` hook.
+        resolveResult = loader.resolve(normalized, metadata);
+    } catch (exc) {
+        resolveResult = std_Promise_reject(exc);
+    }
+    $PromiseThen($ToPromise(resolveResult), fulfill, reject);
     return load;
 }
 
@@ -2503,7 +2508,7 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.resolve ( normalized, options )
+    //> #### Loader.prototype.resolve ( normalized, metadata )
     //>
     //> Given a full module name, determine the resource address (URL, path,
     //> etc.) to load.
@@ -2511,15 +2516,14 @@ def(Loader.prototype, {
     //> The `resolve` hook is also responsible for determining whether the
     //> resource in question is a module or a script.
     //>
-    //> The hook may return:
+    //> The metadata argument, provided by the Loader, is a new Object which
+    //> the hook may use for any purpose. The Loader does not use this
+    //> Object except to pass it to the subsequent loader hooks.
     //>
-    //>   - a string, the resource address. In this case the resource is a
-    //>     module.
-    //>
-    //>   - an object that has a `.address` property which is a string, the
-    //>     resource address.  The object may also have a `.extra` property,
-    //>     which if present must be an iterable of strings, the names of the
-    //>     modules defined in the script at the given address.
+    //> The hook returns either the resource address (any non-Promise value) or
+    //> a Promise for the resource address. If the hook returns a Promise,
+    //> loading will continue with the `fetch()` hook once the Promise is
+    //> fulfilled.
     //>
     //> *When this hook is called:*  For all imports, immediately after the
     //> `normalize` hook returns successfully, unless the module is already
@@ -2531,7 +2535,7 @@ def(Loader.prototype, {
     //>
     //> When the resolve method is called, the following steps are taken:
     //>
-    resolve: function resolve(normalized, options) {
+    resolve: function resolve(normalized, metadata) {
         //> 1. Return normalized.
         return normalized;
     },
