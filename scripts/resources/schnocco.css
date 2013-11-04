@@ -1,0 +1,181 @@
+
+
+body {
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 50%;
+    padding-right: 1em;
+    margin-left: auto;
+    max-width: 800px;
+}
+span.src {
+    width: 50%;
+    margin-right: -54%;
+    margin-right: calc(-50% - 1em);
+    float: right;
+    font-weight: normal;
+    font-style: normal;
+    vertical-align: baseline;
+}
+span.src > code {
+    display: block;
+    white-space: pre;
+    font-weight: normal;
+    font-size: 14px;
+    line-height: 16px;
+    font-family: Menlo, Monaco, Consolas, "Lucida Console", monospace;
+}
+
+p, li { clear: both; }
+
+
+
+/* Basics */
+html {
+    padding-left: 6.8em;
+    padding-right: 6.8em;  /* It would be nice to have this collapse as the window gets small. */
+}
+body {
+    background-color: white;
+    color: #333333;
+    font-family: Cambria, Palatino Linotype, Palatino, Liberation Serif,
+        serif;
+    font-size: 16px;
+    line-height: 135%;
+}
+blockquote {
+    background-color: #f6f5f1;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 3em;
+    padding-right: 0.5em;
+}
+
+section { display: block; }
+h1, h2, h3, h4, h5, h6 {
+    line-height: normal;
+    font-size: 110%;
+    margin-bottom: 0.8em;
+    padding-bottom: 0.2em;
+/*
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: #fdfdfc;
+    box-shadow: 0 0 6px #fdfdfc;
+*/
+    margin-left: -7em;
+    padding-left: 7em;
+}
+h1 { margin-top: 5em; }
+h2 { margin-top: 4em; }
+h3 { margin-top: 2.5em; }
+h1 span.secnum {
+    width: 6em;
+    margin-left: -6.8em;
+    text-align: right;
+    float: left;
+}
+
+blockquote > p {
+    text-align: justify;
+}
+
+blockquote b,
+blockquote em.jargon-first-use,
+blockquote span.this,
+blockquote span.value,
+blockquote span.libname,
+blockquote span.errorname,
+blockquote code,
+blockquote pre {
+    color: #555555;
+    font-weight: bold;
+}
+
+blockquote code,
+blockquote pre { font-family: "Courier New", monospace; }
+
+sup, sub {
+    font-size: smaller;
+    vertical-align: baseline;  /* Make sup and sub not affect line height. */
+    position: relative;
+}
+sup { bottom:  0.3em; }
+sub { bottom: -0.3em; }
+.gp sub, .prod sub, sub.gopt {  /* Specifically for "opt". */
+    font-size: 65%;
+}
+
+pre {
+    margin-left: 2em;
+    font-size: 85%;
+}
+div.math-display {
+    margin-left: 4em;
+}
+
+a:link {
+    text-decoration: none;
+    color: #3333bb;
+}
+a:hover {
+    text-decoration: underline;
+    color: blue;
+}
+a:link b, a:link span.value, a:link span.this,
+a:link span.libname, a:link span.errorname, a:link code {
+    color: #5555bb;
+}
+a:hover b, a:hover span.value, a:hover span.this,
+a:hover span.libname, a:hover span.errorname, a:hover code {
+    color: #0000ee;
+}
+a:visited b, a:visited span.value, a:visited span.this,
+a:visited span.libname, a:visited span.errorname, a:visited code {
+    color: inherit;
+}
+
+/*
+code { (* including code.t, meaning "terminal" or "token" *)
+    font-weight: bold;
+    color: #555555;
+}
+*/
+
+span.secnum a:link, span.secnum a:visited { color: inherit; }
+h1:hover span.secnum a:link, h1:hover span.secnum a:visited {
+    color:#5555bb;
+    text-decoration: underline;
+}
+.toc span.secnum a:link, .toc span.secnum a:visited {
+    color:#5555bb;
+}
+
+em { font-style: italic; }
+
+/* Notes */
+blockquote div.note {
+    margin: 1em 0 1em 6em;
+}
+blockquote div.note span.nh {
+    float: left;
+    width: 6em;
+    margin-left: -6em;
+}
+
+ul > li { list-style-type: disc; }
+
+/* Procedures */
+blockquote > ol > li
+  { list-style-type: decimal; }
+blockquote > ol > li > ol > li
+  { list-style-type: lower-latin; }
+blockquote > ol > li > ol > li > ol > li
+  { list-style-type: lower-roman; }
+blockquote > ol > li > ol > li > ol > li > ol > li
+  { list-style-type: decimal; }
+blockquote > ol > li > ol > li > ol > li > ol > li > ol > li
+  { list-style-type: lower-latin; }
+blockquote > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li
+  { list-style-type: lower-roman; }
