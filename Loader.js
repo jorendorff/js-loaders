@@ -2240,7 +2240,12 @@ def(Loader.prototype, {
     // The methods below support directly querying and modifying the registry.
     // They are synchronous and never fire any loader hooks or trigger new
     // loads.
-
+    //
+    // The polyfill for these methods ends up being shorter than the
+    // specification text because they use Maps internally. Perhaps the
+    // spec will gain a few abstractions for &ldquo;association Lists&rdquo;,
+    // but there&rsquo;s nothing at the moment.
+    //
 
     //> #### Loader.prototype.get ( name )
     //>
