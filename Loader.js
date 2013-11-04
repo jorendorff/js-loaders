@@ -2244,15 +2244,13 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.get ( name )
     //>
-    //> If this Loader's module registry contains a Module with the given name,
-    //> return it.  Otherwise, return undefined.
-
+    //> If this Loader's module registry contains a Module with the given
+    //> normalized name, return it.  Otherwise, return undefined.
     //>
     //> If the module is in the registry but has never been evaluated, first
     //> synchronously evaluate the bodies of the module and any dependencies
     //> that have not evaluated yet.
-    //
-
+    //>
     //> When the `get` method is called with one argument, the following steps
     //> are taken:
     //>
@@ -2325,28 +2323,9 @@ def(Loader.prototype, {
 
         //> 5.  If module does not have all the internal data properties of a
         //>     Module instance, throw a TypeError exception.
-        //
-        // Entries in the module registry must actually be `Module`s.
-        // *Rationale:* We use `Module`-specific intrinsics like
-        // `$GetDependencies` and `$Evaluate` on them.  per samth,
-        // 2013 April 22.
         if (!$IsModule(module))
             throw $TypeError("Module object required");
 
-        // If there is already a module in the registry with the given full
-        // name, replace it, but any scripts or modules that are linked to the
-        // old module remain linked to it. *Rationale:* Re-linking
-        // already-linked modules might not work, since the new module may
-        // export a different set of names. Also, the new module may be linked
-        // to the old one! This is a convenient way to monkeypatch
-        // modules. Once modules are widespread, this technique can be used for
-        // polyfilling.
-        //
-        // If `name` is in `this.loads`, `.set()` succeeds, with no immediate
-        // effect on the pending load; but if that load eventually produces a
-        // module-declaration for the same name, that will produce a link-time
-        // error.
-        //
         //> 6.  Repeat for each Record {[[name]], [[value]]} p that is an
         //>     element of loader.[[Modules]],
         //>     1.  If p.[[key]] is equal to name,
@@ -2359,39 +2338,33 @@ def(Loader.prototype, {
         return this;
     },
     //>
+    //
+    // **The `Module` type check in `.set()`:** If the module argument is not
+    // actually a `Module`, `set` fails. This enforces an invariant of the
+    // module registry: all the values are `Module` instances. *Rationale:* We
+    // use `Module`-specific intrinsics on them, particularly
+    // `$GetModuleExport`.
+    //
+    // **`.set()` and already-linked modules:** If there is already a module in
+    // the registry with the given full name, `set` replaces it, but any
+    // scripts or modules that are linked to the old module remain linked to
+    // it. *Rationale:* Re-linking already-linked modules might not work, since
+    // the new module may export a different set of names. Also, the new module
+    // may be linked to the old one! This is a convenient way to monkeypatch
+    // modules. Once modules are widespread, this technique can be used for
+    // polyfilling.
+    //
+    // **`.set()` and concurrent loads:** If a Load Record for `name` is in
+    // `this.loads`, `.set()` succeeds, with no immediate effect on the pending
+    // load; but if that load is eventually linked, an error will occur at the
+    // end of the link phase, just before any of the new linked modules are
+    // committed to the registry.
 
 
     //> #### Loader.prototype.delete ( name )
     //>
     //> Remove an entry from this loader's module registry.
     //>
-    // **`.delete()` and concurrent loads:** Calling `.delete()` has no
-    // immediate effect on in-flight loads, but it can cause such a load to
-    // fail later.
-    //
-    // That's because the dependency-loading algorithm (which we'll get to in a
-    // bit) assumes that if it finds a module in the registry, it doesn't need
-    // to load that module.  If someone deletes that module from the registry
-    // (and doesn't replace it with something compatible), then when loading
-    // finishes, it will find that a module it was counting on has vanished.
-    // Linking will fail.
-    //
-    // **`.delete()` and already-linked modules:** `loader.delete("A")` removes
-    // only `A` from the registry, and not other modules linked against `A`,
-    // for several reasons:
-    //
-    // 1. What a module is linked against is properly an implementation
-    //    detail, which the "remove everything" behavior would leak.
-    //
-    // 2. The transitive closure of what is linked against what is
-    //    an unpredictable amount of stuff, potentially a lot.
-    //
-    // 3. Some uses of modules&mdash;in particular polyfilling&mdash;involve
-    //    defining a new module `MyX`, linking it against some busted built-in
-    //    module `X`, then replacing `X` in the registry with `MyX`. So having
-    //    multiple "versions" of a module linked together is a feature, not a
-    //    bug.
-    //
     //> The following steps are taken:
     //>
     delete: function delete_(name) {
@@ -2421,6 +2394,34 @@ def(Loader.prototype, {
         return $MapDelete(loaderData.modules, name);
     },
     //>
+    //
+    // **`.delete()` and concurrent loads:** Calling `.delete()` has no
+    // immediate effect on in-flight loads, but it can cause such a load to
+    // fail later.
+    //
+    // That's because the dependency-loading algorithm (above) assumes that if
+    // it finds a module in the registry, it doesn't need to load that module.
+    // If someone deletes that module from the registry (and doesn't replace it
+    // with something compatible), then when loading finishes, it will find
+    // that a module it was counting on has vanished.  Linking will fail.
+    //
+    // **`.delete()` and already-linked modules:** `loader.delete("A")` removes
+    // only `A` from the registry, and not other modules linked against `A`,
+    // for several reasons:
+    //
+    // 1. What a module is linked against is properly an implementation
+    //    detail, which the "remove everything" behavior would leak.
+    //
+    // 2. The transitive closure of what is linked against what is
+    //    an unpredictable amount of stuff, potentially a lot.
+    //
+    // 3. Some uses of modules&mdash;in particular polyfilling&mdash;involve
+    //    defining a new module `MyX`, linking it against some busted built-in
+    //    module `X`, then replacing `X` in the registry with `MyX`. So having
+    //    multiple "versions" of a module linked together is a feature, not a
+    //    bug.
+    //
+
 
     //> #### Loader.prototype.entries ( )
     //>
@@ -2433,6 +2434,8 @@ def(Loader.prototype, {
         //> 3.  Return the result of CreateLoaderIterator(loader, `"key+value"`).
         return new LoaderIterator($MapEntriesIterator(loaderData.modules));
     },
+    //>
+
 
     //> #### Loader.prototype.keys ( )
     //>
@@ -2445,6 +2448,8 @@ def(Loader.prototype, {
         //> 3.  Return the result of CreateLoaderIterator(loader, `"key"`).
         return new LoaderIterator($MapKeysIterator(loaderData.modules));
     },
+    //>
+
 
     //> #### Loader.prototype.values ( )
     //>
@@ -2458,6 +2463,14 @@ def(Loader.prototype, {
         return new LoaderIterator($MapValuesIterator(loaderData.modules));
     },
 
+
+    // ### Loader hooks
+    //
+    // These five methods may be overloaded in a subclass or in any particular
+    // Loader instance. Together, they govern the process of loading a single
+    // module. (There are no hooks into the link phase or the module registry
+    // itself.)
+    //
 
     //> #### Loader.prototype.normalize ( name, options )
     //>
