@@ -1,4 +1,4 @@
-# How to run render.py
+# How to run these scripts
 
 You will need Python 2.7 and virtualenv.
 
@@ -23,15 +23,23 @@ You will need Python 2.7 and virtualenv.
     This creates a directory `./venv` and downloads a few Python
     libraries and installs them there (not globally).
 
-4.  Now you can run the script just by doing:
+4.  To generate a Word document from Loader.js, the command is:
 
         python render.py
 
     The output document is `./modules.docx`.
 
-You don&rsquo;t need to repeat those steps every time.
-From a fresh shell, just
+5.  To generate HTML from Loader.js, the command is:
+
+        python schnocco.py ../Loader.js
+
+    By default, the output document is `./docs/Loader.html`. This script
+    accepts command-line arguments to change the default; run
+    `python schnocco.py --help` for details.
+
+You don&rsquo;t need to repeat all those steps every time.
+If you&rsquo;ve done it once, subsequently you can just:
 
     . ./venv/bin/activate
-    python render.py
 
+and then you&rsquo;re ready for step 4 or 5.
