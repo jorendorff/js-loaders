@@ -2461,10 +2461,10 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.normalize ( name, options )
     //>
-    //> This hook receives the module name as passed to `import()` or as written in
-    //> the import-declaration. It returns a string, the full module name, which is
-    //> used for the rest of the import process.  (In particular, modules are
-    //> stored in the registry under their full module name.)
+    //> This hook receives the module name as written in the import
+    //> declaration. It returns a string, the full module name, which is used
+    //> for the rest of the import process.  (In particular, modules are stored
+    //> in the registry under their full module name.)
     //>
     //> *When this hook is called:*  For all imports, including imports in
     //> scripts.  It is not called for the main script body evaluated by a call
