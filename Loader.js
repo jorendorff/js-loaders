@@ -125,6 +125,11 @@ function $ToPromise(thing) {
 //
 // * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
 //
+// * `$ModuleRequests(body)` - Return an Array of strings, the module
+//   specifiers as they appear in import declarations and module declarations
+//   in the given module body, with duplicates removed. (This corresponds to
+//   the ModuleRequests static semantics operation.)
+//
 // * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
 //
 // * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
@@ -661,9 +666,6 @@ function OnFulfill(loader, load, metadata, normalized, src, address) {
 // The spec text currently uses only .[[Module]] and makes .[[ExportedNames]]
 // an internal property of the Module object.
 //
-// Implementation note: We also use this linkingInfo thing, not sure if that needs
-// to be part of the standard since it's a pure function of the syntax tree.
-//
 // Implementation node: This implementation uses a special value of 0 as an
 // intermediate value for load.exportedNames, to indicate that the value is
 // being computed. This is necessary to detect `export * from` cycles. The spec
@@ -774,38 +776,36 @@ function FinishLoad(load, loader, address, body) {
     let fullNames = [];
     let sets = $SetElements(load.linkSets);
 
-    let linkingInfo = $GetLinkingInfo(body);
+    let moduleRequests = $ModuleRequests(body);
 
-    // Find all dependencies by walking the list of import-declarations.  For
-    // each new dependency, create a new Load and add it to the same link set.
+    // For each new dependency, create a new??? Load Record and add it to the
+    // same LinkSet.
     //
-    // The module-specifiers in import-declarations, and thus the .importModule
-    // fields of the objects in `linkingInfo`, are not necessarily full names.
-    // We pass them to StartModuleLoad which will call the `normalize` hook.
+    // The module-specifiers in import-declarations are not necessarily
+    // normalized module names.  We pass them to StartModuleLoad which will
+    // call the `normalize` hook.
     //
     let dependencies = $MapNew();
-    for (let i = 0; i < linkingInfo.length; i++) {
-        let request = linkingInfo[i].importModule;
-        if (!$MapHas(names, request)) {
-            let referer = {name: refererName, address: address};
-            let depLoad;
-            try {
-                depLoad = StartModuleLoad(loader, referer, request);
-            } catch (exc) {
-                return load.fail(exc);
-            }
-            $MapSet(dependencies, request, depLoad.fullName);
+    for (let i = 0; i < moduleRequests.length; i++) {
+        let request = moduleRequests[i];
+        let referer = {name: refererName, address: address};
+        let depLoad;
+        try {
+            depLoad = StartModuleLoad(loader, referer, request);
+        } catch (exc) {
+            return load.fail(exc);
+        }
+        $MapSet(dependencies, request, depLoad.fullName);
 
-            if (depLoad.status !== "linked") {
-                for (let j = 0; j < sets.length; j++)
-                    AddLoadToLinkSet(sets[j], depLoad);
-            }
+        if (depLoad.status !== "linked") {
+            for (let j = 0; j < sets.length; j++)
+                AddLoadToLinkSet(sets[j], depLoad);
         }
     }
 
     load.status = "loaded";
     load.body = body;
-    load.linkingInfo = linkingInfo;
+    load.linkingInfo = $GetLinkingInfo(body);
     load.dependencies = dependencies;
 
     // For determinism, finish linkable LinkSets in timestamp order.
