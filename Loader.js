@@ -80,6 +80,7 @@ function $QueueTask(fn) {
 var std_Promise_isThenable = Promise.isThenable;
 var std_Promise_resolve = Promise.resolve;
 var std_Promise_fulfill = Promise.fulfill;
+var std_Promise_reject = Promise.reject;
 function $ToPromise(thing) {
     if (std_Promise_isThenable(thing))
         return std_Promise_resolve(thing);  // BUG - not hardened, need Promise.cast
@@ -478,8 +479,7 @@ function CallFetch(loader, load, address, metadata, normalized, type) {
     try {
         fetchResult = loader.fetch(address, options);
     } catch (exc) {
-        AsyncCall(LoadFailed, load, exc);
-        return;
+        fetchResult = std_Promise_reject(exc);
     }
     $PromiseThen($ToPromise(fetchResult), fulfill, reject);
 }
@@ -2574,7 +2574,7 @@ def(Loader.prototype, {
     //> When the fetch method is called, the following steps are taken:
     //>
     fetch: function fetch(address, options) {
-        return Promise.reject($TypeError("Loader.prototype.fetch was called"));
+        return std_Promise_reject($TypeError("Loader.prototype.fetch was called"));
     },
     //>
 
