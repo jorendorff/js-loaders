@@ -449,7 +449,8 @@ function StartModuleLoad(loader, referer, name) {
 
     function fulfill(address) {
         // Start the fetch.
-        CallFetch(loader, load, address, metadata, normalized);
+        if ($SetSize(load.linkSets) !== 0)
+            CallFetch(loader, load, address, metadata, normalized);
     }
 
     function reject(exc) {
@@ -481,8 +482,7 @@ function CallFetch(loader, load, address, metadata, normalized) {
     }
 
     function reject(exc) {
-        if ($SetSize(load.linkSets) !== 0)
-            LoadFailed(load, exc);
+        LoadFailed(load, exc);
     }
 
     var fetchResult;
