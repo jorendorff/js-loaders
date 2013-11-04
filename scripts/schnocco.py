@@ -128,7 +128,6 @@ def format(sections, config):
         code_segments.append(codespan_html)
 
     all_docs_md = ''.join(docs_segments)
-    print(all_docs_md)
     docs_html = markdown.markdown(all_docs_md)
 
     # Substitute code segments into the generated HTML.
