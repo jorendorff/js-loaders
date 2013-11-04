@@ -58,7 +58,7 @@ var std_Function_call = Function.prototype.call,
 
 // * `$Assert(condition)` is your bog-standard assert function. It does
 //   nothing. The given `condition` is always true.
-function $Assert(condition) { 
+function $Assert(condition) {
     assert(condition);
 }
 
@@ -1017,14 +1017,14 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 // The basic algorithm we want to describe in the spec is:
 //
 // 0. Create a Module object for each module being linked.
-// 
+//
 // 1. For each module, resolve all `export * from` edges.  This step also
 //    computes the complete set of exports for each new module.  The resulting
 //    synthetic `export {name} from` edges must be stored somewhere.
-// 
+//
 // 2. Link all exports. For each module in the link set, for each export,
-//    create an export binding and a property on the Module object. 
-// 
+//    create an export binding and a property on the Module object.
+//
 // 3. For each import, bind it to the corresponding export.
 //
 // 4. If any error occurred during steps 1-3, discard all the Module objects
