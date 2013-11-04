@@ -70,12 +70,6 @@ h1, h2, h3, h4, h5, h6 {
 h1 { margin-top: 5em; }
 h2 { margin-top: 4em; }
 h3 { margin-top: 2.5em; }
-h1 span.secnum {
-    width: 6em;
-    margin-left: -6.8em;
-    text-align: right;
-    float: left;
-}
 
 blockquote > p {
     text-align: justify;
@@ -122,34 +116,6 @@ a:link {
 a:hover {
     text-decoration: underline;
     color: blue;
-}
-a:link b, a:link span.value, a:link span.this,
-a:link span.libname, a:link span.errorname, a:link code {
-    color: #5555bb;
-}
-a:hover b, a:hover span.value, a:hover span.this,
-a:hover span.libname, a:hover span.errorname, a:hover code {
-    color: #0000ee;
-}
-a:visited b, a:visited span.value, a:visited span.this,
-a:visited span.libname, a:visited span.errorname, a:visited code {
-    color: inherit;
-}
-
-/*
-code { (* including code.t, meaning "terminal" or "token" *)
-    font-weight: bold;
-    color: #555555;
-}
-*/
-
-span.secnum a:link, span.secnum a:visited { color: inherit; }
-h1:hover span.secnum a:link, h1:hover span.secnum a:visited {
-    color:#5555bb;
-    text-decoration: underline;
-}
-.toc span.secnum a:link, .toc span.secnum a:visited {
-    color:#5555bb;
 }
 
 em { font-style: italic; }
