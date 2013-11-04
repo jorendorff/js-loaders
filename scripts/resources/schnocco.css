@@ -27,7 +27,7 @@ span.src > code {
     font-family: Menlo, Monaco, Consolas, "Lucida Console", monospace;
 }
 
-p, li { clear: both; }
+p, li, h1, h2, h3, h4, h5, h6 { clear: both; }
 
 
 
@@ -49,7 +49,7 @@ blockquote {
     margin-left: 0;
     margin-right: 0;
     padding-left: 3em;
-    padding-right: 0.5em;
+    padding-right: 1em;
 }
 
 section { display: block; }
