@@ -459,14 +459,14 @@ function StartModuleLoad(loader, referer, name) {
         LoadFailed(load, exc);
     }
 
-    let resolveResult;
+    var result;
     try {
         // Call the `resolve` hook.
-        resolveResult = loader.resolve(normalized, metadata);
+        result = loader.resolve(normalized, metadata);
     } catch (exc) {
-        resolveResult = std_Promise_reject(exc);
+        result = std_Promise_reject(exc);
     }
-    $PromiseThen($ToPromise(resolveResult), fulfill, reject);
+    $PromiseThen($ToPromise(result), fulfill, reject);
     return load;
 }
 
@@ -476,8 +476,8 @@ function CallFetch(loader, load, address, metadata, normalized) {
 
     function fulfill(fetchResult) {
         if ($SetSize(load.linkSets) !== 0) {
-            OnFulfill(loader, load, metadata, normalized,
-                      fetchResult.src, fetchResult.address);
+            CallTranslate(loader, load, metadata, normalized,
+                          fetchResult.src, fetchResult.address);
         }
     }
 
@@ -485,42 +485,74 @@ function CallFetch(loader, load, address, metadata, normalized) {
         LoadFailed(load, exc);
     }
 
-    var fetchResult;
+    var result;
     try {
-        fetchResult = loader.fetch(address, options);
+        result = loader.fetch(address, options);
     } catch (exc) {
-        fetchResult = std_Promise_reject(exc);
+        result = std_Promise_reject(exc);
     }
-    $PromiseThen($ToPromise(fetchResult), fulfill, reject);
+    $PromiseThen($ToPromise(result), fulfill, reject);
 }
 
-// **`OnFulfill`** - This is called once a fetch succeeds.
-function OnFulfill(loader, load, metadata, normalized, src, address) {
-    var loaderData = GetLoaderInternalData(loader);
+// **`CallTranslate`** - This is called once a fetch succeeds.
+function CallTranslate(loader, load, metadata, normalized, src, address) {
+    function fulfill(translatedSrc) {
+        if ($SetSize(load.linkSets) !== 0) {
+            CallInstantiate(loader, load, metadata, normalized,
+                            translatedSrc, address);
+        }
+    }
 
-    // If all link sets that required this load have failed, do nothing.
-    if ($SetSize(load.linkSets) === 0)
-        return;
+    function reject(exc) {
+        LoadFailed(load, exc);
+    }
 
+    var result;
     try {
-        // Call the `translate` hook.
-        src = loader.translate(src, {
+        result = loader.translate(src, {
             metadata: metadata,
             normalized: normalized,
             type: normalized === null ? "script" : "module",
             address: address
         });
+    } catch (exc) {
+        result = std_Promise_reject(exc);
+    }
+    $PromiseThen($ToPromise(result), fulfill, reject);
+}
 
-        // Call the `instantiate` hook, if we are loading a module.
-        let instantiateResult =
-            normalized === null
-            ? undefined
-            : loader.instantiate(src, {
-                metadata: metadata,
-                normalized: normalized,
-                address: address
-              });
+// **`CallInstantiate`** - This is called once the translate hook
+// succeeds. Continue module loading by calling the instantiate hook.
+function CallInstantiate(loader, load, metadata, normalized, src, address) {
+    function fulfill(instantiateResult) {
+        if ($SetSize(load.linkSets) !== 0) {
+            InstantiateSucceeded(loader, load, normalized, src, address,
+                                 instantiateResult);
+        }
+    }
 
+    function reject(exc) {
+        LoadFailed(load, exc);
+    }
+
+    var result;
+    try {
+        result = loader.instantiate(src, {
+            metadata: metadata,
+            normalized: normalized,
+            address: address
+        });
+    } catch (exc) {
+        result = std_Promise_reject(exc);
+    }
+    $PromiseThen($ToPromise(result), fulfill, reject);
+}
+
+// **`InstantiateSucceeded`** - This is called once the `instantiate` hook
+// succeeds. Continue module loading by interpreting the hook's result and
+// calling FinishLoad if necessary.
+function InstantiateSucceeded(loader, load, normalized, src, address, instantiateResult) {
+    try {
         // Interpret `instantiateResult`.  See comment on the `instantiate()`
         // method.
         if (instantiateResult === undefined) {
@@ -2060,7 +2092,7 @@ def(Loader.prototype, {
             let linkSet = CreateLinkSet(loader, load);
             linkSet.done.then(_ => resolver.resolve(load.module),
                               exc => resolver.reject(exc));
-            OnFulfill(loader, load, {}, null, src, address);
+            CallTranslate(loader, load, {}, null, src, address);
         });
     },
     //>
@@ -2184,11 +2216,11 @@ def(Loader.prototype, {
             }
 
             for (let i = 0; i < names.length; i++) {
-                // TODO: This status check is here because I think OnFulfill could
+                // TODO: This status check is here because I think CallTranslate could
                 // cause the LinkSet to fail, which may or may not cause all the
                 // other loads to fail. Need to try to observe this happening.
                 if (loads[i].status === "loading")
-                    OnFulfill(loader, loads[i], {}, names[i], moduleBodies[i], null);
+                    CallTranslate(loader, loads[i], {}, names[i], moduleBodies[i], null);
             }
         });
     },
