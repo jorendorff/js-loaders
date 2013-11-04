@@ -418,7 +418,7 @@ function StartModuleLoad(loader, referer, name) {
     //
     // Errors that happen during this step propagate to the caller.
     //
-    let normalized = loader.normalize(request, {referer: referer});
+    let normalized = loader.normalize(request, referer);
     normalized = ToString(normalized);
 
     // If the module has already been linked, we are done.
@@ -472,8 +472,6 @@ function StartModuleLoad(loader, referer, name) {
 
 // **`CallFetch`** - Call the fetch hook.  Handle any errors.
 function CallFetch(loader, load, address, metadata, normalized) {
-    let options = {metadata: metadata, normalized: normalized};
-
     function fulfill(fetchResult) {
         if ($SetSize(load.linkSets) !== 0) {
             CallTranslate(loader, load, metadata, normalized,
@@ -487,7 +485,7 @@ function CallFetch(loader, load, address, metadata, normalized) {
 
     var result;
     try {
-        result = loader.fetch(address, options);
+        result = loader.fetch(address, metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -509,12 +507,7 @@ function CallTranslate(loader, load, metadata, normalized, src, address) {
 
     var result;
     try {
-        result = loader.translate(src, {
-            metadata: metadata,
-            normalized: normalized,
-            type: normalized === null ? "script" : "module",
-            address: address
-        });
+        result = loader.translate(src, metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -537,11 +530,8 @@ function CallInstantiate(loader, load, metadata, normalized, src, address) {
 
     var result;
     try {
-        result = loader.instantiate(src, {
-            metadata: metadata,
-            normalized: normalized,
-            address: address
-        });
+        // TODO - src = ToString(src) here?
+        result = loader.instantiate(src, metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -2514,26 +2504,28 @@ def(Loader.prototype, {
     // itself.)
     //
 
-    //> #### Loader.prototype.normalize ( name, options )
+    //> #### Loader.prototype.normalize ( name, referer )
     //>
     //> This hook receives the module name as written in the import
-    //> declaration. It returns a string, the full module name, which is used
-    //> for the rest of the import process.  (In particular, modules are stored
-    //> in the registry under their full module name.)
+    //> declaration.  It returns a string, the full module name, which is used
+    //> for the rest of the import process.  In particular, loader.[[Loads]]
+    //> and loader.[[Modules]] are both keyed by normalized module names.  Only
+    //> a single load can be in progress for a given normalized module name at
+    //> a time.  The module registry can contain at most one module for a gievn
+    //> module name.)
     //>
-    //> *When this hook is called:*  For all imports, including imports in
-    //> scripts.  It is not called for the main script body evaluated by a call
-    //> to `loader.load()`, `.eval()`, or `.evalAsync()`.
+    //> *When this hook is called:*  When a module body is parsed, once per
+    //> distinct module specifier in that module body.
     //>
-    //> After calling this hook, if the full module name is in the registry,
-    //> loading stops. Otherwise loading continues, calling the `resolve`
-    //> hook.
+    //> After calling this hook, if the full module name is in the registry or
+    //> the load table, no new Load Record is created. Otherwise the loader
+    //> kicks off a new Load, starting by calling the `resolve` hook.
     //>
     //> *Default behavior:*  Return the module name unchanged.
     //>
     //> When the normalize method is called, the following steps are taken:
     //>
-    normalize: function normalize(name, options) {
+    normalize: function normalize(name, referer) {
         //> 1. Return name.
         return name;
     },
@@ -2542,19 +2534,16 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.resolve ( normalized, metadata )
     //>
-    //> Given a full module name, determine the resource address (URL, path,
-    //> etc.) to load.
-    //>
-    //> The `resolve` hook is also responsible for determining whether the
-    //> resource in question is a module or a script.
+    //> Given a normalized module name, determine the resource address (URL,
+    //> path, etc.) to load.
     //>
     //> The metadata argument, provided by the Loader, is a new Object which
     //> the hook may use for any purpose. The Loader does not use this
     //> Object except to pass it to the subsequent loader hooks.
     //>
-    //> The hook returns either the resource address (any non-Promise value) or
-    //> a Promise for the resource address. If the hook returns a Promise,
-    //> loading will continue with the `fetch()` hook once the Promise is
+    //> The hook returns either the resource address (any non-thenable value)
+    //> or a thenable for the resource address. If the hook returns a thenable,
+    //> loading will continue with the `fetch()` hook once the promise is
     //> fulfilled.
     //>
     //> *When this hook is called:*  For all imports, immediately after the
@@ -2563,7 +2552,8 @@ def(Loader.prototype, {
     //>
     //> *Default behavior:*  Return the module name unchanged.
     //>
-    //> NOTE The browser's `System.resolve` hook is considerably more complex.
+    //> NOTE The browser's `System.resolve` hook may be considerably more
+    //> complex.
     //>
     //> When the resolve method is called, the following steps are taken:
     //>
@@ -2574,59 +2564,49 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.fetch ( address, options )
+    //> #### Loader.prototype.fetch ( address, metadata )
     //>
-    //> Asynchronously fetch the requested source from the given address
-    //> (produced by the `resolve` hook).
+    //> Fetch the requested source from the given address (produced by the
+    //> `resolve` hook).
     //>
     //> This is the hook that must be overloaded in order to make the `import`
     //> keyword work.
     //>
-    //> The fetch hook should return a promise for a fetch-result object. It
-    //> should then load the requested address asynchronously.  On success, the
-    //> Promise must resolve to an object of the form {src: string, address:
-    //> string}.  The .src property is the fetched source, as a string; the
-    //> .address property is the actual address where it was found (after all
-    //> redirects), also as a string.
+    //> The fetch hook returns either module source (any non-thenable value) or
+    //> a thenable for module source.
     //>
-    //> options.type is the string `"module"` when fetching a standalone
-    //> module, and `"script"` when fetching a script.
+    //> *When this hook is called:* For all modules whose source is not
+    //> directly provided by the caller.  It is not called for the module
+    //> bodies provided as arguments to `loader.module()` or `loader.define()`,
+    //> since those do not need to be fetched. (However, this hook may be
+    //> called when loading dependencies of such modules.)
     //>
-    //> *When this hook is called:* For all modules and scripts whose source is
-    //> not directly provided by the caller.  It is not called for the script
-    //> bodies evaluated by `loader.eval()` and `.evalAsync()`, or for the
-    //> module bodies defined with `loader.define()`, since those do not need
-    //> to be fetched.  `loader.evalAsync()` can trigger this hook, for modules
-    //> imported by the script.  `loader.eval()` is synchronous and thus never
-    //> triggers the `fetch` hook.
-    //>
-    //> (`loader.load()` does not call `normalize`, `resolve`, or
-    //> `instantiate`, since we're loading a script, not a module; but it does
-    //> call the `fetch` and `translate` hooks, per samth, 2013 April 22.)
-    //>
-    //> *Default behavior:*  Return a Promise that is already rejected with a
-    //> `TypeError`.
+    //> *Default behavior:*  Throw a `TypeError`.
     //>
     //> When the fetch method is called, the following steps are taken:
     //>
-    fetch: function fetch(address, options) {
-        return std_Promise_reject($TypeError("Loader.prototype.fetch was called"));
+    fetch: function fetch(address, metadata) {
+        //> 1. Throw a TypeError exception.
+        throw $TypeError("Loader.prototype.fetch was called");
     },
     //>
 
 
-    //> #### Loader.prototype.translate ( src, options )
+    //> #### Loader.prototype.translate ( src, metadata )
     //>
     //> Optionally translate src from some other language into ECMAScript.
     //>
-    //> *When this hook is called:*  For all modules and scripts.  (It is not
-    //> decided whether this is called for direct eval scripts; see issue #8.)
+    //> The hook returns either an ECMAScript ModuleBody (any non-Promise
+    //> value) or a thenable for a ModuleBody.
+    //>
+    //> *When this hook is called:* For all modules, including module bodies
+    //> passed to `loader.module()` or `loader.define()`.
     //>
     //> *Default behavior:*  Return src unchanged.
     //>
     //> When the translate method is called, the following steps are taken:
     //>
-    translate: function translate(src, options) {
+    translate: function translate(src, metadata) {
         //> 1. Return src.
         return src;
     },
@@ -2679,7 +2659,7 @@ def(Loader.prototype, {
     //>
     //> When the instantiate method is called, the following steps are taken:
     //>
-    instantiate: function instantiate(src, options) {
+    instantiate: function instantiate(src, metadata) {
         //> 1. Return **undefined**.
     }
     //>
