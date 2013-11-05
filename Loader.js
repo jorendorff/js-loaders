@@ -446,12 +446,10 @@ function StartModuleLoad(loader, referer, name) {
     load = CreateLoad(normalized);
     $MapSet(loaderData.loads, normalized, load);
 
-    let metadata = {};
-
     function fulfill(address) {
         // Start the fetch.
         if ($SetSize(load.linkSets) !== 0)
-            CallFetch(loader, load, address, metadata);
+            CallFetch(loader, load, address);
     }
 
     function reject(exc) {
@@ -463,7 +461,7 @@ function StartModuleLoad(loader, referer, name) {
     var result;
     try {
         // Call the `resolve` hook.
-        result = loader.resolve(normalized, metadata);
+        result = loader.resolve(normalized, load.metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -472,10 +470,10 @@ function StartModuleLoad(loader, referer, name) {
 }
 
 // **`CallFetch`** - Call the fetch hook.  Handle any errors.
-function CallFetch(loader, load, address, metadata) {
+function CallFetch(loader, load, address) {
     function fulfill(fetchResult) {
         if ($SetSize(load.linkSets) !== 0)
-            CallTranslate(loader, load, metadata, fetchResult);
+            CallTranslate(loader, load, fetchResult);
     }
 
     function reject(exc) {
@@ -484,7 +482,7 @@ function CallFetch(loader, load, address, metadata) {
 
     var result;
     try {
-        result = loader.fetch(address, metadata);
+        result = loader.fetch(address, load.metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -492,10 +490,10 @@ function CallFetch(loader, load, address, metadata) {
 }
 
 // **`CallTranslate`** - This is called once a fetch succeeds.
-function CallTranslate(loader, load, metadata, src) {
+function CallTranslate(loader, load, src) {
     function fulfill(translatedSrc) {
         if ($SetSize(load.linkSets) !== 0)
-            CallInstantiate(loader, load, metadata, translatedSrc, address);
+            CallInstantiate(loader, load, translatedSrc, address);
     }
 
     function reject(exc) {
@@ -504,7 +502,7 @@ function CallTranslate(loader, load, metadata, src) {
 
     var result;
     try {
-        result = loader.translate(src, metadata);
+        result = loader.translate(src, load.metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -513,7 +511,7 @@ function CallTranslate(loader, load, metadata, src) {
 
 // **`CallInstantiate`** - This is called once the translate hook
 // succeeds. Continue module loading by calling the instantiate hook.
-function CallInstantiate(loader, load, metadata, src, address) {
+function CallInstantiate(loader, load, src, address) {
     function fulfill(instantiateResult) {
         if ($SetSize(load.linkSets) !== 0) {
             InstantiateSucceeded(loader, load, src, address,
@@ -528,7 +526,7 @@ function CallInstantiate(loader, load, metadata, src, address) {
     var result;
     try {
         // TODO - src = ToString(src) here?
-        result = loader.instantiate(src, metadata);
+        result = loader.instantiate(src, load.metadata);
     } catch (exc) {
         result = std_Promise_reject(exc);
     }
@@ -664,6 +662,9 @@ function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
 //>     many Loads.  Many `evalAsync()` calls can be waiting for a single Load,
 //>     if they depend on the same module.
 //>
+//>   * load.[[Metadata]] - An object which loader hooks may use for any purpose.
+//>     See Loader.prototype.resolve.
+//>
 //>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a Module or
 //>     Script parse. (???terminology)
 //>
@@ -769,6 +770,7 @@ function CreateLoad(fullName) {
         status: "loading",
         fullName: fullName,
         linkSets: $SetNew(),
+        metadata: {},
         body: null,
         linkingInfo: null,
         dependencies: null,
