@@ -500,12 +500,12 @@ function CallTranslate(loader, load, p) {
 // **`InstantiateSucceeded`** - This is called once the `instantiate` hook
 // succeeds. Continue module loading by interpreting the hook's result and
 // calling FinishLoad if necessary.
-function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
+function InstantiateSucceeded(loader, load, instantiateResult) {
     // Interpret `instantiateResult`.  See comment on the `instantiate()`
     // method.
     if (instantiateResult === undefined) {
-        let body = $ParseModule(loader, src, load.fullName, address);
-        FinishLoad(load, loader, address, body);
+        let body = $ParseModule(loader, load.source, load.fullName, load.address);
+        FinishLoad(load, loader, body);
     } else if (!IsObject(instantiateResult)) {
         throw $TypeError("instantiate hook must return an object or undefined");
     } else if ($IsModule(instantiateResult)) {
@@ -750,7 +750,7 @@ function CreateLoad(fullName) {
     };
 }
 
-//> #### FinishLoad(load, loader, address, body) Abstract Operation
+//> #### FinishLoad(load, loader, body) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `instantiate` hook),
 // and after the module has been parsed. FinishLoad does two things:
@@ -763,7 +763,7 @@ function CreateLoad(fullName) {
 // On success, this transitions the `Load` from `"loading"` status to
 // `"loaded"`.
 //
-function FinishLoad(load, loader, address, body) {
+function FinishLoad(load, loader, body) {
     $Assert(load.status === "loading");
     $Assert($SetSize(load.linkSets) !== 0);
 
@@ -785,7 +785,7 @@ function FinishLoad(load, loader, address, body) {
         let request = moduleRequests[i];
         let depLoad;
         try {
-            depLoad = StartModuleLoad(loader, request, refererName, address);
+            depLoad = StartModuleLoad(loader, request, refererName, load.address);
         } catch (exc) {
             return LoadFailed(load, exc);
         }
