@@ -803,8 +803,8 @@ function FinishLoad(load, loader, address, body) {
 
     let moduleRequests = $ModuleRequests(body);
 
-    // For each new dependency, create a new??? Load Record and add it to the
-    // same LinkSet.
+    // For each new dependency, create a new Load Record, if necessary, and add
+    // it to the same LinkSet.
     //
     // The module-specifiers in import-declarations are not necessarily
     // normalized module names.  We pass them to StartModuleLoad which will
