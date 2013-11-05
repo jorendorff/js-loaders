@@ -24,7 +24,7 @@
 //
 //   * the public `Loader` class;
 //   * the methods for loading and running code:
-//     `evalAsync`, `load`, and `import`;
+//     TODO - update this comment `evalAsync`, `load`, and `import`;
 //   * a method for compiling modules and putting them into the loader:
 //     `define`;
 //   * the methods for directly accessing the module map:
@@ -599,7 +599,7 @@ function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
 //>     succeed.  There is a many-to-many relation between Loads and LinkSets.
 //>     A single `evalAsync()` call can have a large dependency tree, involving
 //>     many Loads.  Many `evalAsync()` calls can be waiting for a single Load,
-//>     if they depend on the same module.
+//>     if they depend on the same module. TODO - update this comment
 //>
 //>   * load.[[Metadata]] - An object which loader hooks may use for any purpose.
 //>     See Loader.prototype.locate.
@@ -827,7 +827,7 @@ function LoadFailed(load, exc) {
 //> ### LinkSet Records
 //>
 //> A LinkSet Record represents a call to `loader.eval()`, `.evalAsync()`,
-//> `.load()`, or `.import()`.
+//> `.load()`, or `.import()`. TODO - update this comment
 //>
 //> Each LinkSet Record has the following fields:
 //>
@@ -962,6 +962,8 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 // **Timing and grouping of dependencies** - Consider
 //
 //     loader.evalAsync('module x from "x"; module y from "y";', {}, f);
+//
+// TODO - update this comment
 //
 // The above code implies that we wait to evaluate "x" until "y" has also
 // been fetched. Even if "x" turns out to be linkable and runnable, its
@@ -1908,7 +1910,7 @@ function create() {
         //
         // This is stored in the loader so that multiple calls to
         // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
-        // what they need only once.
+        // what they need only once. TODO - update this comment
         //
         loads: undefined,
 
@@ -1963,6 +1965,7 @@ function GetLoaderInternalData(value) {
 // **`UnpackOption`** - Used by several Loader methods to get options
 // off of an options object and, if defined, coerce them to strings.
 //
+// TODO - update this comment
 // `eval()` and `evalAsync()` accept an optional `options` object.
 // `options.address`, if present, is passed to the `translate` and
 // `instantiate` hooks as `options.actualAddress`, and to the `normalize` hook
