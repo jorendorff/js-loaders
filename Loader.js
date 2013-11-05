@@ -34,8 +34,7 @@
 //   * linking;
 //   * evaluation order;
 //   * error handling;
-//   * the browser's configuration method, `ondemand`;
-//   * the browser's custom loader hooks: `normalize`, `resolve`, and `fetch`.
+//   * the browser's custom loader hooks: `normalize`, `locate`, and `fetch`.
 //
 // Some parts are not implemented yet:
 //
@@ -448,7 +447,7 @@ function LoadModule(loader, normalized) {
     $MapSet(loaderData.loads, normalized, load);
 
     var p = new std_Promise(function (resolve, reject) {
-        resolve(loader.resolve(normalized, load.metadata));
+        resolve(loader.locate(normalized, load.metadata));
     });
     p = $PromiseThen(p, function (address) {
         if ($SetSize(load.linkSets) === 0)
@@ -560,7 +559,7 @@ function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
 //     of the hook property can be non-callable.  The hook can throw.  The hook
 //     can return an invalid return value.
 //
-//   - The `normalize`, `resolve`, and `instantiate` hooks may return objects
+//   - The `normalize`, `locate`, and `instantiate` hooks may return objects
 //     that are then destructured.  These objects could throw from a getter or
 //     proxy trap during destructuring.
 //
@@ -603,9 +602,9 @@ function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
 //>     if they depend on the same module.
 //>
 //>   * load.[[Metadata]] - An object which loader hooks may use for any purpose.
-//>     See Loader.prototype.resolve.
+//>     See Loader.prototype.locate.
 //>
-//>   * load.[[Address]] - The result of the resolve hook.
+//>   * load.[[Address]] - The result of the locate hook.
 //>
 //>   * load.[[Source]] - The result of the translate hook.
 //>
@@ -886,8 +885,8 @@ function LinkSetAddLoadByName(linkSet, fullName) {
 //> #### AddLoadToLinkSet(linkSet, load) Abstract Operation
 //>
 function AddLoadToLinkSet(linkSet, load) {
-    // This case can happen in `import`, for example if a `resolve` or
-    // `fetch` hook throws.
+    // This case can happen in `import`, for example if a `locate` hook
+    // throws. TODO - this is probably not true anymore
     if (load.status === "failed")
         return FinishLinkSet(linkSet, false, load.exception);
 
@@ -1709,7 +1708,7 @@ Module.prototype = null;
 //   * `normalize(name, referer)` - From a possibly relative module name,
 //     determine the full module name.
 //
-//   * `resolve(fullName, metadata)` - Given a full module name, determine
+//   * `locate(fullName, metadata)` - Given a full module name, determine
 //     the address to load.
 //
 //   * `fetch(address, metadata)` - Load a module from the given address.
@@ -1819,9 +1818,9 @@ function Loader(options={}) {
     // subclasses can add methods with the appropriate names and use `super()`
     // to invoke the base-class behavior.
     //
-    //> 15. For each name in the List (`"normalize"`, `"resolve"`, `"fetch"`,
+    //> 15. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
     //>     `"translate"`, `"instantiate"`),
-    let hooks = ["normalize", "resolve", "fetch", "translate", "instantiate"];
+    let hooks = ["normalize", "locate", "fetch", "translate", "instantiate"];
     for (let i = 0; i < hooks.length; i++) {
         let name = hooks[i];
         //     1.  Let hook be the result of calling the [[Get]] internal
@@ -2467,7 +2466,7 @@ def(Loader.prototype, {
     //>
     //> After calling this hook, if the full module name is in the registry or
     //> the load table, no new Load Record is created. Otherwise the loader
-    //> kicks off a new Load, starting by calling the `resolve` hook.
+    //> kicks off a new Load, starting by calling the `locate` hook.
     //>
     //> *Default behavior:*  Return the module name unchanged.
     //>
@@ -2480,7 +2479,7 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.resolve ( normalized, metadata )
+    //> #### Loader.prototype.locate ( normalized, metadata )
     //>
     //> Given a normalized module name, determine the resource address (URL,
     //> path, etc.) to load.
@@ -2500,12 +2499,12 @@ def(Loader.prototype, {
     //>
     //> *Default behavior:*  Return the module name unchanged.
     //>
-    //> NOTE The browser's `System.resolve` hook may be considerably more
+    //> NOTE The browser's `System.locate` hook may be considerably more
     //> complex.
     //>
-    //> When the resolve method is called, the following steps are taken:
+    //> When the locate method is called, the following steps are taken:
     //>
-    resolve: function resolve(normalized, metadata) {
+    locate: function locate(normalized, metadata) {
         //> 1. Return normalized.
         return normalized;
     },
@@ -2515,7 +2514,7 @@ def(Loader.prototype, {
     //> #### Loader.prototype.fetch ( address, metadata )
     //>
     //> Fetch the requested source from the given address (produced by the
-    //> `resolve` hook).
+    //> `locate` hook).
     //>
     //> This is the hook that must be overloaded in order to make the `import`
     //> keyword work.
