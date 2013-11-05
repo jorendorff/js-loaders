@@ -2118,74 +2118,33 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.define ( names, moduleBodies )
+    //> #### Loader.prototype.define ( name, source, options = undefined )
     //>
-    define: function define(names, moduleBodies) {
-        // ISSUE: Two separate iterables is dumb. Why not an iterable of pairs?
-        // Then you could pass in a Map, and the semantics below would not be so
-        // bizarre.
+    define: function define(name, source, options=undefined) {
         let loader = this;
         let loaderData = GetLoaderInternalData(this);
-
-        if (typeof names === "string" && typeof moduleBodies === "string") {
-            names = [names];
-            moduleBodies = [moduleBodies];
+        name = ToString(name);
+        let address = undefined;
+        let metadata = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+            metadata = options.metadata;
         }
+        if (metadata === undefined)
+            metadata = {};
 
-        return new std_Promise(function (resolver) {
-            let linkSet = undefined;
-            let loads = [];
-            try {
-                let nameSet = $SetNew();
-                for (let name of names) {
-                    name = ToString(name);
-                    if ($SetHas(nameSet, name))
-                        throw $TypeError("define(): argument 1 contains a duplicate entry '" + name + "'");
-                    $SetAdd(nameSet, name);
-                }
-                names = $SetElements(nameSet);
-                moduleBodies = [...moduleBodies];
-                if (names.length !== moduleBodies.length)
-                    throw $TypeError("define(): names and moduleBodies must be the same length");
-
-                if (names.length === 0) {
-                    resolver.resolve(undefined);
-                    return;
-                }
-
-                // Make a LinkSet.  Pre-populate it with phony Load objects for
-                // the given modules.  Kick off real Loads for any additional
-                // modules imported by the given moduleBodies.  Let the link
-                // set finish loading, and run the real linking algorithm.
-                for (let i = 0; i < names.length; i++) {
-                    let fullName = names[i];
-                    let load = CreateLoad(fullName);
-                    $MapSet(loaderData.loads, fullName, load);
-                    if (linkSet === undefined) {
-                        linkSet = CreateLinkSet(loader, load);
-                        $PromiseThen(linkSet.done,
-                                     _ => resolver.resolve(undefined),
-                                     exc => resolver.reject(exc));
-                    } else {
-                        AddLoadToLinkSet(linkSet, load);
-                    }
-                    $ArrayPush(loads, load);
-                }
-            } catch (exc) {
-                if (linkSet === undefined)
-                    resolver.reject(exc);
-                else
-                    FinishLinkSet(linkSet, false, exc);
-                return;
-            }
-
-            for (let i = 0; i < names.length; i++) {
-                // TODO: This status check is here because I think CallTranslate could
-                // cause the LinkSet to fail, which may or may not cause all the
-                // other loads to fail. Need to try to observe this happening.
-                if (loads[i].status === "loading")
-                    CallTranslate(loader, loads[i], {}, names[i], moduleBodies[i], null);
-            }
+        return new std_Promise(function (resolve, reject) {
+            // Make a LinkSet.  Pre-populate it with a Load object for the
+            // given module.  Start the Load process at the `translate` hook.
+            let load = CreateLoad(name);
+            let linkSet = CreateLinkSet(loader, load);
+            $MapSet(loaderData.loads, fullName, load);
+            $PromiseThen(linkSet.done,
+                         _ => resolve(undefined),
+                         reject);
+            let sourcePromise = std_Promise_fulfill(source);
+            CallTranslate(loader, load, sourcePromise);
         });
     },
     //>
