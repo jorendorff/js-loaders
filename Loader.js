@@ -473,6 +473,10 @@ function LoadModule(loader, normalized) {
             source: source
         });
     });
+    return CallTranslate(loader, load, p);
+}
+
+function CallTranslate(loader, load, p) {
     p = $PromiseThen(p, function (source) {
         if ($SetSize(load.linkSets) === 0)
             return;
@@ -490,7 +494,6 @@ function LoadModule(loader, normalized) {
     $PromiseThen(p, function (_) {}, function (exc) {
         LoadFailed(load, exc);
     });
-
     return load;
 }
 
@@ -2028,7 +2031,7 @@ def(Loader.prototype, {
     // of linking, and at least one `Load`.
 
 
-    //> #### Loader.prototype.module ( src, options )
+    //> #### Loader.prototype.module ( source )
     //>
     // **`module`** - Execute a top-level, anonymous module, without adding it
     // to the loader's module registry.
@@ -2038,18 +2041,20 @@ def(Loader.prototype, {
     //
     // Returns a future for the Module object.
     //
-    module: function module_(src, options) {
-        src = ToString(src);
+    module: function module_(source) {
         var loader = this;
-        var loaderData = GetLoaderInternalData(loader);
+        GetLoaderInternalData(loader);
+        source = ToString(source);
 
-        return new std_Promise(function (resolver) {
+        return new std_Promise(function (resolve, reject) {
             let address = UnpackOption(options, "address");
             let load = CreateLoad(null);
             $PromiseThen(CreateLinkSet(loader, load).done,
-                         _ => resolver.resolve(load.module),
-                         exc => resolver.reject(exc));
-            CallTranslate(loader, load, {}, null, src, address);
+                         _ => resolve(load.module),
+                         reject);
+            load.address = null;
+            var sourcePromise = Promise.fulfill(source);
+            CallTranslate(loader, load, sourcePromise);
         });
     },
     //>
