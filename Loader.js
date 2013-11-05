@@ -34,7 +34,8 @@
 //   * linking;
 //   * evaluation order;
 //   * error handling;
-//   * the browser's custom loader hooks: `normalize`, `locate`, and `fetch`.
+//   * the browser's custom loader hooks: `normalize`, `locate`, `fetch`,
+//     `translate`, and `instantiate`.
 //
 // Some parts are not implemented yet:
 //
