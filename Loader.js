@@ -2046,9 +2046,9 @@ def(Loader.prototype, {
         return new std_Promise(function (resolver) {
             let address = UnpackOption(options, "address");
             let load = CreateLoad(null);
-            let linkSet = CreateLinkSet(loader, load);
-            linkSet.done.then(_ => resolver.resolve(load.module),
-                              exc => resolver.reject(exc));
+            $PromiseThen(CreateLinkSet(loader, load).done,
+                         _ => resolver.resolve(load.module),
+                         exc => resolver.reject(exc));
             CallTranslate(loader, load, {}, null, src, address);
         });
     },
@@ -2085,7 +2085,9 @@ def(Loader.prototype, {
             } else {
                 // The module is now loading.  When it loads, it may have more
                 // imports, requiring further loads, so put it in a LinkSet.
-                CreateLinkSet(loader, load).done.then(success, exc => resolver.reject(exc));
+                $PromiseThen(CreateLinkSet(loader, load).done,
+                             success,
+                             exc => resolver.reject(exc));
             }
 
             function success() {
@@ -2154,9 +2156,10 @@ def(Loader.prototype, {
                     let load = CreateLoad(fullName);
                     $MapSet(loaderData.loads, fullName, load);
                     if (linkSet === undefined) {
-                        linkSet = CreateLinkSet(loader, load).done.then(
-                            _ => resolver.resolve(undefined),
-                            exc => resolver.reject(exc));
+                        linkSet = CreateLinkSet(loader, load);
+                        $PromiseThen(linkSet.done,
+                                     _ => resolver.resolve(undefined),
+                                     exc => resolver.reject(exc));
                     } else {
                         AddLoadToLinkSet(linkSet, load);
                     }
@@ -2205,14 +2208,15 @@ def(Loader.prototype, {
             }
 
             // Make a LinkSet.
-            let linkSet;
+            let linkSet = undefined;
             for (let i = 0; i < names.length; i++) {
                 let moduleName = names[i];
                 let load = StartModuleLoad(loader, moduleName, name, address);
                 if (linkSet === undefined) {
-                    linkSet = CreateLinkSet(loader, load).done.then(
-                        _ => resolver.resolve(undefined),
-                        exc => resolver.reject(exc));
+                    linkSet = CreateLinkSet(loader, load);
+                    $PromiseThen(linkSet.done,
+                                 _ => resolver.resolve(undefined),
+                                 exc => resolver.reject(exc));
                 } else {
                     AddLoadToLinkSet(linkSet, load);
                 }
