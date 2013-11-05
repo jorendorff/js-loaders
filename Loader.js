@@ -327,6 +327,7 @@ var $WeakMapGet = unmethod(WeakMap.prototype.get);
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
 var $WeakMapSet = unmethod(WeakMap.prototype.set);
 // * `$PromiseThen(p, fulfill, reject)` ~= p.then(fulfill, reject)
+var std_Promise = Promise;
 var $PromiseThen = unmethod(Promise.prototype.then);
 // * `$TypeError(msg)` ~= new TypeError(msg)
 var $TypeError = TypeError;
@@ -897,7 +898,7 @@ function LoadFailed(load, exc) {
 function CreateLinkSet(loader, startingLoad) {
     var loaderData = GetLoaderInternalData(linkSet.loader);
     var resolver;
-    var done = new Promise(r => { resolver = r; });
+    var done = new std_Promise(r => { resolver = r; });
     var linkSet = {
         loader: loader,
         done: done,
@@ -2072,7 +2073,7 @@ def(Loader.prototype, {
         var loader = this;
         var loaderData = GetLoaderInternalData(loader);
 
-        return new Promise(function (resolver) {
+        return new std_Promise(function (resolver) {
             let address = UnpackOption(options, "address");
             let load = CreateLoad(null);
             let linkSet = CreateLinkSet(loader, load);
@@ -2097,7 +2098,7 @@ def(Loader.prototype, {
     {
         var loader = this;
 
-        return new Promise(function (resolver) {
+        return new std_Promise(function (resolver) {
             // Unpack `options`.  Build the referer object that we will pass to
             // StartModuleLoad. (Implementation note: if a Promise's init
             // function throws, the new Promise is automatically
@@ -2155,7 +2156,7 @@ def(Loader.prototype, {
             moduleBodies = [moduleBodies];
         }
 
-        return new Promise(function (resolver) {
+        return new std_Promise(function (resolver) {
             let linkSet = undefined;
             let loads = [];
             try {
@@ -2225,7 +2226,7 @@ def(Loader.prototype, {
         if (names.length === 0)
             return Promise.resolve(undefined);
 
-        return new Promise(function (resolver) {
+        return new std_Promise(function (resolver) {
             let name, address;
             try {
                 name = UnpackOption(options, "module");
