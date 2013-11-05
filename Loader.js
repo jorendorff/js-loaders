@@ -450,7 +450,7 @@ function StartModuleLoad(loader, referer, name) {
     function fulfill(address) {
         // Start the fetch.
         if ($SetSize(load.linkSets) !== 0)
-            CallFetch(loader, load, address, metadata, normalized);
+            CallFetch(loader, load, address, metadata);
     }
 
     function reject(exc) {
@@ -471,11 +471,10 @@ function StartModuleLoad(loader, referer, name) {
 }
 
 // **`CallFetch`** - Call the fetch hook.  Handle any errors.
-function CallFetch(loader, load, address, metadata, normalized) {
+function CallFetch(loader, load, address, metadata) {
     function fulfill(fetchResult) {
         if ($SetSize(load.linkSets) !== 0) {
-            CallTranslate(loader, load, metadata, normalized,
-                          fetchResult.src, fetchResult.address);
+            CallTranslate(loader, load, metadata, fetchResult.src, fetchResult.address);
         }
     }
 
@@ -493,11 +492,10 @@ function CallFetch(loader, load, address, metadata, normalized) {
 }
 
 // **`CallTranslate`** - This is called once a fetch succeeds.
-function CallTranslate(loader, load, metadata, normalized, src, address) {
+function CallTranslate(loader, load, metadata, src, address) {
     function fulfill(translatedSrc) {
         if ($SetSize(load.linkSets) !== 0) {
-            CallInstantiate(loader, load, metadata, normalized,
-                            translatedSrc, address);
+            CallInstantiate(loader, load, metadata, translatedSrc, address);
         }
     }
 
@@ -516,10 +514,10 @@ function CallTranslate(loader, load, metadata, normalized, src, address) {
 
 // **`CallInstantiate`** - This is called once the translate hook
 // succeeds. Continue module loading by calling the instantiate hook.
-function CallInstantiate(loader, load, metadata, normalized, src, address) {
+function CallInstantiate(loader, load, metadata, src, address) {
     function fulfill(instantiateResult) {
         if ($SetSize(load.linkSets) !== 0) {
-            InstantiateSucceeded(loader, load, normalized, src, address,
+            InstantiateSucceeded(loader, load, src, address,
                                  instantiateResult);
         }
     }
@@ -541,23 +539,23 @@ function CallInstantiate(loader, load, metadata, normalized, src, address) {
 // **`InstantiateSucceeded`** - This is called once the `instantiate` hook
 // succeeds. Continue module loading by interpreting the hook's result and
 // calling FinishLoad if necessary.
-function InstantiateSucceeded(loader, load, normalized, src, address, instantiateResult) {
+function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
     try {
         // Interpret `instantiateResult`.  See comment on the `instantiate()`
         // method.
         if (instantiateResult === undefined) {
-            let body = $ParseModule(loader, src, normalized, address);
+            let body = $ParseModule(loader, src, load.fullName, address);
             FinishLoad(load, loader, address, body);
         } else if (!IsObject(instantiateResult)) {
             throw $TypeError("instantiate hook must return an object or undefined");
         } else if ($IsModule(instantiateResult)) {
-            if ($MapHas(loaderData.modules, normalized)) {
-                throw $TypeError("fetched module \"" + normalized + "\" " +
+            if ($MapHas(loaderData.modules, load.fullName)) {
+                throw $TypeError("fetched module \"" + load.fullName + "\" " +
                                  "but a module with that name is already " +
                                  "in the registry");
             }
             let mod = instantiateResult;
-            $MapSet(loaderData.modules, normalized, mod);
+            $MapSet(loaderData.modules, load.fullName, mod);
             OnEndRun(load, mod);
         } else {
             let mod = null;
