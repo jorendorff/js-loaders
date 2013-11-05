@@ -729,8 +729,7 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
 //>
 // A new `Load` begins in the `"loading"` state.
 //
-// If the argument fullName is `null`, we are loading a script. Otherwise we
-// are loading a module, and fullName is the full name of that module.
+// The argument fullName is either `undefined` or a normalized module name.
 //
 function CreateLoad(fullName) {
     return {
@@ -738,8 +737,8 @@ function CreateLoad(fullName) {
         fullName: fullName,
         linkSets: $SetNew(),
         metadata: {},
-        address: null,
-        src: null,
+        address: undefined,
+        src: undefined,
         body: null,
         linkingInfo: null,
         dependencies: null,
@@ -1499,7 +1498,7 @@ function LinkModules(linkSet) {
         let load = loads[i];
         let fullName = load.fullName;
         load.status = "linked";
-        if (fullName !== null)
+        if (fullName !== undefined)
             $MapSet(loaderData.modules, fullName, load.module);
     }
 }
@@ -2051,11 +2050,10 @@ def(Loader.prototype, {
 
         return new std_Promise(function (resolve, reject) {
             let address = UnpackOption(options, "address");
-            let load = CreateLoad(null);
+            let load = CreateLoad(undefined);
             $PromiseThen(CreateLinkSet(loader, load).done,
                          _ => resolve(load.module),
                          reject);
-            load.address = null;
             var sourcePromise = Promise.fulfill(source);
             CallTranslate(loader, load, sourcePromise);
         });
