@@ -2150,43 +2150,25 @@ def(Loader.prototype, {
     },
     //>
 
-    //> #### Loader.prototype.load ( names )
+    //> #### Loader.prototype.load ( name, options )
     //>
-    load: function load(names) {
+    load: function load(name, options) {
         let loader = this;
         let loaderData = GetLoaderInternalData(this);
 
-        if (typeof names === "string")
-            names = [names];
-
-        // loader.load([]) succeeds immediately.
-        if (names.length === 0)
-            return Promise.resolve(undefined);
-
-        return new std_Promise(function (resolver) {
-            let name, address;
-            try {
-                name = UnpackOption(options, "module");
-                address = UnpackOption(options, "address");
-            } catch (exn) {
-                resolver.resolve(exn);
-                return;
+        return new std_Promise(function (resolve, reject) {
+            name = ToString(name);
+            let address = undefined;
+            if (options !== undefined) {
+                options = ToObject(options);
+                address = options.address;
             }
 
-            // Make a LinkSet.
-            let linkSet = undefined;
-            for (let i = 0; i < names.length; i++) {
-                let moduleName = names[i];
-                let load = StartModuleLoad(loader, moduleName, name, address);
-                if (linkSet === undefined) {
-                    linkSet = CreateLinkSet(loader, load);
-                    $PromiseThen(linkSet.done,
-                                 _ => resolver.resolve(undefined),
-                                 exc => resolver.reject(exc));
-                } else {
-                    AddLoadToLinkSet(linkSet, load);
-                }
-            }
+            let load = StartModuleLoad(loader, name, undefined, address);
+            let linkSet = CreateLinkSet(loader, load);
+            $PromiseThen(linkSet.done,
+                         _ => resolve(undefined),
+                         reject);
         });
     },
 
