@@ -438,135 +438,75 @@ function StartModuleLoad(loader, referer, name) {
         return load;
     }
 
-    // From this point `StartModuleLoad` cannot throw.
+    return LoadModule(loader, normalized);
+}
 
-    // Create a `Load` object for this module load.  Once this object is in
-    // `loaderData.loads`, `LinkSets` may add themselves to its set of waiting
-    // link sets.  Errors must be reported using `LoadFailed(load, exc)`.
-    load = CreateLoad(normalized);
+function LoadModule(loader, normalized) {
+    var loaderData = GetLoaderInternalData(loader);
+    $Assert(!$MapHas(loaderData.loads, normalized));
+    var load = CreateLoad(normalized);
     $MapSet(loaderData.loads, normalized, load);
 
-    function fulfill(address) {
-        // Start the fetch.
-        if ($SetSize(load.linkSets) !== 0)
-            CallFetch(loader, load, address);
-    }
-
-    function reject(exc) {
-        // LoadFailed is responsible for rejecting promises, if necessary, and
-        // removing `load` from `loaderData.loads`.
+    var p = new std_Promise(function (resolve, reject) {
+        resolve(loader.resolve(normalized, load.metadata));
+    });
+    p = $PromiseThen(p, function (address) {
+        if ($SetSize(load.linkSets) === 0)
+            return;
+        load.address = address;
+        return loader.fetch(address, load.metadata);
+    });
+    p = $PromiseThen(p, function (src) {
+        if ($SetSize(load.linkSets) === 0)
+            return;
+        return loader.translate(src, load.metadata);
+    });
+    p = $PromiseThen(p, function (src) {
+        if ($SetSize(load.linkSets) === 0)
+            return;
+        load.src = src;
+        return loader.instantiate(src, load.metadata);
+    });
+    p = $PromiseThen(p, function (result) {
+        InstantiateSucceeded(loader, load, result);
+    });
+    $PromiseThen(p, function (_) {}, function (exc) {
         LoadFailed(load, exc);
-    }
+    });
 
-    var result;
-    try {
-        // Call the `resolve` hook.
-        result = loader.resolve(normalized, load.metadata);
-    } catch (exc) {
-        result = std_Promise_reject(exc);
-    }
-    $PromiseThen($ToPromise(result), fulfill, reject);
     return load;
-}
-
-// **`CallFetch`** - Call the fetch hook.  Handle any errors.
-function CallFetch(loader, load, address) {
-    function fulfill(fetchResult) {
-        if ($SetSize(load.linkSets) !== 0)
-            CallTranslate(loader, load, fetchResult);
-    }
-
-    function reject(exc) {
-        LoadFailed(load, exc);
-    }
-
-    var result;
-    try {
-        result = loader.fetch(address, load.metadata);
-    } catch (exc) {
-        result = std_Promise_reject(exc);
-    }
-    $PromiseThen($ToPromise(result), fulfill, reject);
-}
-
-// **`CallTranslate`** - This is called once a fetch succeeds.
-function CallTranslate(loader, load, src) {
-    function fulfill(translatedSrc) {
-        if ($SetSize(load.linkSets) !== 0)
-            CallInstantiate(loader, load, translatedSrc, address);
-    }
-
-    function reject(exc) {
-        LoadFailed(load, exc);
-    }
-
-    var result;
-    try {
-        result = loader.translate(src, load.metadata);
-    } catch (exc) {
-        result = std_Promise_reject(exc);
-    }
-    $PromiseThen($ToPromise(result), fulfill, reject);
-}
-
-// **`CallInstantiate`** - This is called once the translate hook
-// succeeds. Continue module loading by calling the instantiate hook.
-function CallInstantiate(loader, load, src, address) {
-    function fulfill(instantiateResult) {
-        if ($SetSize(load.linkSets) !== 0) {
-            InstantiateSucceeded(loader, load, src, address,
-                                 instantiateResult);
-        }
-    }
-
-    function reject(exc) {
-        LoadFailed(load, exc);
-    }
-
-    var result;
-    try {
-        // TODO - src = ToString(src) here?
-        result = loader.instantiate(src, load.metadata);
-    } catch (exc) {
-        result = std_Promise_reject(exc);
-    }
-    $PromiseThen($ToPromise(result), fulfill, reject);
 }
 
 // **`InstantiateSucceeded`** - This is called once the `instantiate` hook
 // succeeds. Continue module loading by interpreting the hook's result and
 // calling FinishLoad if necessary.
 function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
-    try {
-        // Interpret `instantiateResult`.  See comment on the `instantiate()`
-        // method.
-        if (instantiateResult === undefined) {
-            let body = $ParseModule(loader, src, load.fullName, address);
-            FinishLoad(load, loader, address, body);
-        } else if (!IsObject(instantiateResult)) {
-            throw $TypeError("instantiate hook must return an object or undefined");
-        } else if ($IsModule(instantiateResult)) {
-            if ($MapHas(loaderData.modules, load.fullName)) {
-                throw $TypeError("fetched module \"" + load.fullName + "\" " +
-                                 "but a module with that name is already " +
-                                 "in the registry");
-            }
-            let mod = instantiateResult;
-            $MapSet(loaderData.modules, load.fullName, mod);
-            OnEndRun(load, mod);
-        } else {
-            let mod = null;
-            let imports = instantiateResult.imports;
-
-            // P4 issue: "iterable" vs. "array"
-            if (imports !== undefined)
-                imports = [...imports];
-            let execute = instantiateResult.execute;
-
-            throw TODO;
+    // Interpret `instantiateResult`.  See comment on the `instantiate()`
+    // method.
+    if (instantiateResult === undefined) {
+        let body = $ParseModule(loader, src, load.fullName, address);
+        FinishLoad(load, loader, address, body);
+    } else if (!IsObject(instantiateResult)) {
+        throw $TypeError("instantiate hook must return an object or undefined");
+    } else if ($IsModule(instantiateResult)) {
+        if ($MapHas(loaderData.modules, load.fullName)) {
+            throw $TypeError("fetched module \"" + load.fullName + "\" " +
+                             "but a module with that name is already " +
+                             "in the registry");
         }
-    } catch (exc) {
-        LoadFailed(load, exc);
+        let mod = instantiateResult;
+        $MapSet(loaderData.modules, load.fullName, mod);
+        OnEndRun(load, mod);
+    } else {
+        let mod = null;
+        let imports = instantiateResult.imports;
+
+        // P4 issue: "iterable" vs. "array"
+        if (imports !== undefined)
+            imports = [...imports];
+        let execute = instantiateResult.execute;
+
+        throw TODO;
     }
 }
 
@@ -664,6 +604,10 @@ function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
 //>
 //>   * load.[[Metadata]] - An object which loader hooks may use for any purpose.
 //>     See Loader.prototype.resolve.
+//>
+//>   * load.[[Address]] - The result of the resolve hook.
+//>
+//>   * load.[[Source]] - The result of the translate hook.
 //>
 //>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a Module or
 //>     Script parse. (???terminology)
@@ -771,6 +715,8 @@ function CreateLoad(fullName) {
         fullName: fullName,
         linkSets: $SetNew(),
         metadata: {},
+        address: null,
+        src: null,
         body: null,
         linkingInfo: null,
         dependencies: null,
