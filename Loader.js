@@ -473,9 +473,8 @@ function StartModuleLoad(loader, referer, name) {
 // **`CallFetch`** - Call the fetch hook.  Handle any errors.
 function CallFetch(loader, load, address, metadata) {
     function fulfill(fetchResult) {
-        if ($SetSize(load.linkSets) !== 0) {
-            CallTranslate(loader, load, metadata, fetchResult.src, fetchResult.address);
-        }
+        if ($SetSize(load.linkSets) !== 0)
+            CallTranslate(loader, load, metadata, fetchResult);
     }
 
     function reject(exc) {
@@ -492,11 +491,10 @@ function CallFetch(loader, load, address, metadata) {
 }
 
 // **`CallTranslate`** - This is called once a fetch succeeds.
-function CallTranslate(loader, load, metadata, src, address) {
+function CallTranslate(loader, load, metadata, src) {
     function fulfill(translatedSrc) {
-        if ($SetSize(load.linkSets) !== 0) {
+        if ($SetSize(load.linkSets) !== 0)
             CallInstantiate(loader, load, metadata, translatedSrc, address);
-        }
     }
 
     function reject(exc) {
