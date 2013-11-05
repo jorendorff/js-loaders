@@ -411,7 +411,7 @@ function AsyncCall(fn, ...args) {
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function StartModuleLoad(loader, refererName, refererAddress) {
+function StartModuleLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
     // Call the `normalize` hook to get a normalized module name.  See the
