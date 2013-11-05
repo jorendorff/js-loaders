@@ -448,24 +448,41 @@ function LoadModule(loader, normalized) {
     $MapSet(loaderData.loads, normalized, load);
 
     var p = new std_Promise(function (resolve, reject) {
-        resolve(loader.locate(normalized, load.metadata));
+        resolve(loader.locate({
+            name: load.fullName,
+            metadata: load.metadata
+        }));
     });
     p = $PromiseThen(p, function (address) {
         if ($SetSize(load.linkSets) === 0)
             return;
         load.address = address;
-        return loader.fetch(address, load.metadata);
+        return loader.fetch({
+            name: load.fullName,
+            metadata: load.metadata,
+            address: address
+        });
     });
-    p = $PromiseThen(p, function (src) {
+    p = $PromiseThen(p, function (source) {
         if ($SetSize(load.linkSets) === 0)
             return;
-        return loader.translate(src, load.metadata);
+        return loader.translate({
+            name: load.fullName,
+            metadata: load.metadata,
+            address: load.address,
+            source: source
+        });
     });
-    p = $PromiseThen(p, function (src) {
+    p = $PromiseThen(p, function (source) {
         if ($SetSize(load.linkSets) === 0)
             return;
-        load.src = src;
-        return loader.instantiate(src, load.metadata);
+        load.source = source;
+        return loader.instantiate({
+            name: load.fullName,
+            metadata: load.metadata,
+            address: load.address,
+            source: source
+        });
     });
     p = $PromiseThen(p, function (result) {
         InstantiateSucceeded(loader, load, result);
@@ -2478,14 +2495,16 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.locate ( normalized, metadata )
+    //> #### Loader.prototype.locate ( load )
     //>
     //> Given a normalized module name, determine the resource address (URL,
     //> path, etc.) to load.
     //>
-    //> The metadata argument, provided by the Loader, is a new Object which
-    //> the hook may use for any purpose. The Loader does not use this
-    //> Object except to pass it to the subsequent loader hooks.
+    //> The loader passes an argument, load, which is an ordinary Object with
+    //> two own properties. `load.name` is the normalized name of the module to
+    //> be located.  `load.metadata` is a new Object which the hook may use for
+    //> any purpose. The Loader does not use this Object except to pass it to
+    //> the subsequent loader hooks.
     //>
     //> The hook returns either the resource address (any non-thenable value)
     //> or a thenable for the resource address. If the hook returns a thenable,
@@ -2503,20 +2522,27 @@ def(Loader.prototype, {
     //>
     //> When the locate method is called, the following steps are taken:
     //>
-    locate: function locate(normalized, metadata) {
-        //> 1. Return normalized.
-        return normalized;
+    locate: function locate(load) {
+        //> 1. Return the result of calling the [[Get]] internal method of load
+        //>    passing `"name"` and load as the arguments.
+        return load.name;
     },
     //>
 
 
-    //> #### Loader.prototype.fetch ( address, metadata )
+    //> #### Loader.prototype.fetch ( load )
     //>
     //> Fetch the requested source from the given address (produced by the
     //> `locate` hook).
     //>
     //> This is the hook that must be overloaded in order to make the `import`
     //> keyword work.
+    //>
+    //> The loader passes an argument, load, which is an ordinary Object with
+    //> three own properties. `load.name` and `load.metadata` are the same
+    //> values passed to the `locate` hook. `load.address` is the address of
+    //> the resource to fetch. (This is the value produced by the `locate`
+    //> hook.)
     //>
     //> The fetch hook returns either module source (any non-thenable value) or
     //> a thenable for module source.
@@ -2531,16 +2557,23 @@ def(Loader.prototype, {
     //>
     //> When the fetch method is called, the following steps are taken:
     //>
-    fetch: function fetch(address, metadata) {
+    fetch: function fetch(load) {
         //> 1. Throw a TypeError exception.
         throw $TypeError("Loader.prototype.fetch was called");
     },
     //>
 
 
-    //> #### Loader.prototype.translate ( src, metadata )
+    //> #### Loader.prototype.translate ( load )
     //>
-    //> Optionally translate src from some other language into ECMAScript.
+    //> Optionally translate the given source from some other language into
+    //> ECMAScript.
+    //>
+    //> The loader passes an argument, load, which is an ordinary Object with
+    //> four own properties. `load.name`, `load.metadata`, and `load.address`
+    //> are the same values passed to the `fetch` hook. `load.source` is the
+    //> source code to be translated. (This is the value produced by the
+    //> `fetch` hook.)
     //>
     //> The hook returns either an ECMAScript ModuleBody (any non-Promise
     //> value) or a thenable for a ModuleBody.
@@ -2548,21 +2581,30 @@ def(Loader.prototype, {
     //> *When this hook is called:* For all modules, including module bodies
     //> passed to `loader.module()` or `loader.define()`.
     //>
-    //> *Default behavior:*  Return src unchanged.
+    //> *Default behavior:*  Return the source unchanged.
     //>
     //> When the translate method is called, the following steps are taken:
     //>
-    translate: function translate(src, metadata) {
-        //> 1. Return src.
-        return src;
+    translate: function translate(load) {
+        //> 1. Return the result of calling the [[Get]] internal method of load
+        //>    passing `"source"` and load as the arguments.
+        return load.source;
     },
     //>
 
 
-    //> #### Loader.prototype.instantiate ( src, options )
+    //> #### Loader.prototype.instantiate ( load )
     //>
     //> Allow a loader to optionally provide interoperability with other module
-    //> systems.  There are three options.
+    //> systems.
+    //>
+    //> The loader passes an argument, load, which is an ordinary Object with
+    //> four own properties. `load.name`, `load.metadata`, and `load.address`
+    //> are the same values passed to the `fetch` and `translate` hooks.
+    //> `load.source` is the translated module source. (This is the value
+    //> produced by the `translate` hook.)
+    //>
+    //> There are three options.
     //>
     //>  1. The instantiate hook may return `undefined`. The loader then uses
     //>     the default linking behavior.  It parses src as a module body,
@@ -2605,7 +2647,7 @@ def(Loader.prototype, {
     //>
     //> When the instantiate method is called, the following steps are taken:
     //>
-    instantiate: function instantiate(src, metadata) {
+    instantiate: function instantiate(load) {
         //> 1. Return **undefined**.
     }
     //>
