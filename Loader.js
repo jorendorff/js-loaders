@@ -398,19 +398,19 @@ function AsyncCall(fn, ...args) {
 // 3.  In all other cases, either a new `Load` is started or we can join one
 //     already in flight.  `StartModuleLoad` returns the `Load` object.
 //
-// `referer` provides information about the context of the `import()` call
-// or import-declaration.  This information is passed to all the loader
-// hooks.
-//
 // `name` is the (pre-normalize) name of the module to be imported, as it
 // appears in the import-declaration or as the argument to
 // loader.import().
+//
+// `refererName` and `refererAddress` provide information about the context of
+// the `import()` call or import-declaration.  This information is passed to
+// all the loader hooks.
 //
 // TODO:  Suggest alternative name for `referer`.  It is really nothing to
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function StartModuleLoad(loader, referer, name) {
+function StartModuleLoad(loader, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
     // Call the `normalize` hook to get a normalized module name.  See the
@@ -418,7 +418,7 @@ function StartModuleLoad(loader, referer, name) {
     //
     // Errors that happen during this step propagate to the caller.
     //
-    let normalized = loader.normalize(request, referer);
+    let normalized = loader.normalize(request, refererName, refererAddress);
     normalized = ToString(normalized);
 
     // If the module has already been linked, we are done.
@@ -759,12 +759,11 @@ function FinishLoad(load, loader, address, body) {
     let dependencies = $MapNew();
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
-        let referer = {name: refererName, address: address};
         let depLoad;
         try {
-            depLoad = StartModuleLoad(loader, referer, request);
+            depLoad = StartModuleLoad(loader, request, refererName, address);
         } catch (exc) {
-            return load.fail(exc);
+            return LoadFailed(load, exc);
         }
         $MapSet(dependencies, request, depLoad.fullName);
 
@@ -1707,8 +1706,8 @@ Module.prototype = null;
 // The import process can be customized by assigning to (or subclassing and
 // overriding) any number of the five loader hooks:
 //
-//   * `normalize(name, referer)` - From a possibly relative module name,
-//     determine the full module name.
+//   * `normalize(name, refererName, refererAddress)` - From a possibly
+//     relative module name, determine the full module name.
 //
 //   * `locate(fullName, metadata)` - Given a full module name, determine
 //     the address to load.
@@ -2052,17 +2051,15 @@ def(Loader.prototype, {
         var loader = this;
 
         return new std_Promise(function (resolver) {
-            // Unpack `options`.  Build the referer object that we will pass to
-            // StartModuleLoad. (Implementation note: if a Promise's init
+            // Unpack `options`.  (Implementation note: if a Promise's init
             // function throws, the new Promise is automatically
             // rejected. UnpackOption and StartModuleLoad can throw.)
 
             let name = UnpackOption(options, "module");
             let address = UnpackOption(options, "address");
-            let referer = {name: name, address: address};
 
             // `StartModuleLoad` starts us along the pipeline.
-            let load = StartModuleLoad(loader, referer, moduleName);
+            let load = StartModuleLoad(loader, moduleName, name, address);
 
             if (load.status === "linked") {
                 // We already had this module in the registry.
@@ -2189,13 +2186,11 @@ def(Loader.prototype, {
                 return;
             }
 
-            let referer = {name: name, address: address};
-
             // Make a LinkSet.
             let linkSet;
             for (let i = 0; i < names.length; i++) {
                 let moduleName = names[i];
-                let load = StartModuleLoad(loader, referer, moduleName);
+                let load = StartModuleLoad(loader, moduleName, name, address);
                 if (linkSet === undefined) {
                     linkSet = CreateLinkSet(loader, load).done.then(
                         _ => resolver.resolve(undefined),
@@ -2454,7 +2449,7 @@ def(Loader.prototype, {
     // itself.)
     //
 
-    //> #### Loader.prototype.normalize ( name, referer )
+    //> #### Loader.prototype.normalize ( name, refererName, refererAddress )
     //>
     //> This hook receives the module name as written in the import
     //> declaration.  It returns a string, the full module name, which is used
@@ -2475,7 +2470,7 @@ def(Loader.prototype, {
     //>
     //> When the normalize method is called, the following steps are taken:
     //>
-    normalize: function normalize(name, referer) {
+    normalize: function normalize(name, refererName, refererAddress) {
         //> 1. Return name.
         return name;
     },
