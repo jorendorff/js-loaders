@@ -1756,18 +1756,18 @@ Module.prototype = null;
 // The import process can be customized by assigning to (or subclassing and
 // overriding) any number of the five loader hooks:
 //
-//   * `normalize(name, options)` - From a possibly relative module name,
+//   * `normalize(name, referer)` - From a possibly relative module name,
 //     determine the full module name.
 //
-//   * `resolve(fullName, options)` - Given a full module name, determine
+//   * `resolve(fullName, metadata)` - Given a full module name, determine
 //     the address to load.
 //
-//   * `fetch(address, options)` - Load a module from the given address.
+//   * `fetch(address, metadata)` - Load a module from the given address.
 //
-//   * `translate(src, options)` - Optionally translate a module from some
+//   * `translate(src, metadata)` - Optionally translate a module from some
 //     other language to JS.
 //
-//   * `instantiate(src, options)` - Optionally convert an AMD/npm/other module
+//   * `instantiate(src, metadata)` - Optionally convert an AMD/npm/other module
 //     to an ES Module object.
 
 
