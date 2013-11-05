@@ -2123,18 +2123,19 @@ def(Loader.prototype, {
     define: function define(name, source, options=undefined) {
         let loader = this;
         let loaderData = GetLoaderInternalData(this);
-        name = ToString(name);
-        let address = undefined;
-        let metadata = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-            metadata = options.metadata;
-        }
-        if (metadata === undefined)
-            metadata = {};
 
         return new std_Promise(function (resolve, reject) {
+            name = ToString(name);
+            let address = undefined;
+            let metadata = undefined;
+            if (options !== undefined) {
+                options = ToObject(options);
+                address = options.address;
+                metadata = options.metadata;
+            }
+            if (metadata === undefined)
+                metadata = {};
+
             // Make a LinkSet.  Pre-populate it with a Load object for the
             // given module.  Start the Load process at the `translate` hook.
             let load = CreateLoad(name);
