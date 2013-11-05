@@ -509,13 +509,16 @@ function InstantiateSucceeded(loader, load, src, address, instantiateResult) {
     } else if (!IsObject(instantiateResult)) {
         throw $TypeError("instantiate hook must return an object or undefined");
     } else if ($IsModule(instantiateResult)) {
-        if ($MapHas(loaderData.modules, load.fullName)) {
-            throw $TypeError("fetched module \"" + load.fullName + "\" " +
-                             "but a module with that name is already " +
-                             "in the registry");
-        }
         let mod = instantiateResult;
-        $MapSet(loaderData.modules, load.fullName, mod);
+        let name = load.fullName;
+        if (name !== undefined) {
+            if ($MapHas(loaderData.modules, name)) {
+                throw $TypeError("fetched module \"" + name + "\" " +
+                                 "but a module with that name is already " +
+                                 "in the registry");
+            }
+            $MapSet(loaderData.modules, name, mod);
+        }
         OnEndRun(load, mod);
     } else {
         let mod = null;
