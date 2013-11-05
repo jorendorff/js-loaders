@@ -796,6 +796,9 @@ function OnEndRun(load, mod) {
     load.status = "linked";
     load.module = mod;
     $Assert(load.exports === undefined);
+
+    let sets = $SetElements(load.linkSets);
+    $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < sets.length; i++)
         LinkSetOnLoad(sets[i], load);
 }
