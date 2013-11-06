@@ -162,68 +162,12 @@ function Assert(condition) {
 //   are never exposed to user code; they are for use with the following
 //   primitives only.)
 //
-// The following primitives extract information from a ModuleBody object.
+// The following primitive extracts information from a ModuleBody object.
 //
 // * `$ModuleRequests(body)` - Return an Array of strings, the module
 //   specifiers as they appear in import declarations and module declarations
 //   in the given module body, with duplicates removed. (This corresponds to
 //   the ModuleRequests static semantics operation.)
-//
-// * `ALL`, `MODULE` - Opaque constants related to `$GetLinkingInfo` (below).
-//
-// * `$GetLinkingInfo(body)` - Returns an Array of objects representing the
-//   import/export/module declarations in the given Module body.
-//
-//   The objects all look like this:
-//
-//       {
-//           // These are non-null for declarations which import a module or
-//           // import something from a module.
-//           importModule: string or null,
-//           importName: string or null or ALL or MODULE,
-//
-//           // This is non-null for declarations which create a module-level
-//           // binding.
-//           localName: string or null,
-//
-//           // This is non-null for declarations which export something. (It's
-//           // always null in a script because scripts can't have exports.)
-//           exportName: string or null or ALL
-//       }
-//
-//   The objects created for each kind of declaration are as follows:
-//
-//       module x from "A";
-//         {importModule: "A", importName: MODULE, localName: "x", exportName: null}
-//       import "A";
-//         {importModule: "A", importName: MODULE, localName: null, exportName: null}
-//       import x from "A";
-//         {importModule: "A", importName: "default", localName: "x", exportName: null}
-//       import {} from "A";
-//         {importModule: "A", importName: MODULE, localName: null, exportName: null}
-//       import {x1 as y1} from "A";
-//         {importModule: "A", importName: "x1", localName: "y1", exportName: null}
-//       export {x1 as y1} from "A";
-//         {importModule: "A", importName: "x1", localName: null, exportName: "y1"}
-//       export * from "A";
-//         {importModule: "A", importName, ALL, localName: null, exportName: ALL}
-//       export {x1 as y1};
-//         {importModule: null, importName: null, localName: "x1", exportName: "y1", isExplicit: true}
-//       unless the binding x1 was declared as an import, like `import {z as x1} from "A"`,
-//       in which case:
-//         {importModule: "A", importName: "z", localName: null, exportName: "y1", isExplicit: true}
-//       export *;
-//         is expressed as multiple elements of the preceding two forms, but
-//         with isExplicit: false.
-//       export x = EXPR;
-//         {importModule: null, importName: null, localName: "x", exportName: "x", isExplicit: true}
-//       export default = EXPR;
-//         {importModule: null, importName: null, localName: "default", exportName: "default"}
-//
-//   Multiple instances of `export *;` or `export * from "M";` are
-//   permitted, but all except the first are ignored.  They do not affect
-//   the output of $GetLinkingInfo. (That is, you don't get extra objects
-//   for each superfluous declaration.)
 //
 // The following primitives operate on Module objects.
 
@@ -631,15 +575,12 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
 //
 //         .status === "loaded"
 //         .body is a ModuleBody, or null
-//         .linkingInfo is an Array of objects representing all
-//             import, export, and module declarations in .body;
-//             see $GetLinkingInfo() for details
 //         .dependencies is a Map of strings (module requests)
 //             to strings (full module names)
 //         .factory is a callable object or null
 //
 //     Exactly one of `[.body, .factory]` is non-null.
-//     If .body is null, then .linkingInfo and .dependencies are null.
+//     If .body is null, then .dependencies is null.
 //
 //     The load leaves this state when a LinkSet successfully links the
 //     module and moves it into the loader's module registry.
@@ -735,7 +676,6 @@ function FinishLoad(load, loader, body) {
 
     load.status = "loaded";
     load.body = body;
-    load.linkingInfo = $GetLinkingInfo(body);
     load.dependencies = dependencies;
 
     // For determinism, finish linkable LinkSets in timestamp order.
