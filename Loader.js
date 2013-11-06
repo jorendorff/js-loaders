@@ -105,32 +105,8 @@ function $ToPromise(thing) {
 //   the only way objects of these types are created.  (StatementList objects
 //   are never exposed to user code; they are for use with the following
 //   primitives only.)
-
-// The following primitives operate on Module objects.
 //
-// * `$DefineConstant(module, name, value)` defines a constant binding in
-//   the toplevel declarative environment of `module`, with the given `name`
-//   and `value`.  This is only used to implement `module a from "A";`
-//   declarations, so `value` is always a Module object.
-//
-// * `$CreateImportBinding(module, name, export)` defines an import binding.
-//   `module` is the importing module. `name` is a string, the name of the
-//   local binding being bound.  `export` is a value returned by
-//   $GetModuleExport(), representing the location of the slot to be bound.
-//
-//   The effect of `$CreateImportBinding` is that in `module`'s scope,
-//   `name` becomes an alias for the binding indicated by `export`.
-//
-//   `name` must in fact be a name declared by an import declaration in
-//   `module`, and it must not already have been bound.
-//
-// * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
-//   either undefined or an array of Module objects, the modules whose bodies
-//   are to be evaluated before the given module's body.  A return value of
-//   undefined means the same thing as returning an empty array to the sole
-//   caller, EnsureEvaluated().
-//
-// * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
+// The following primitives extract information from a ModuleBody object.
 //
 // * `$ModuleRequests(body)` - Return an Array of strings, the module
 //   specifiers as they appear in import declarations and module declarations
@@ -193,13 +169,37 @@ function $ToPromise(thing) {
 //   the output of $GetLinkingInfo. (That is, you don't get extra objects
 //   for each superfluous declaration.)
 //
-// The following primitives operate on modules.
-//
+// The following primitives operate on Module objects.
+
 // * `$CreateModule()` returns a new `Module` object. The object is extensible.
 //   It must not be exposed to scripts until it has been populated and frozen.
 var $CreateModule = () => $ObjectCreate(null);
 
 // * `$IsModule(v)` returns true if `v` is a `Module` object.
+//
+// * `$DefineConstant(module, name, value)` defines a constant binding in
+//   the toplevel declarative environment of `module`, with the given `name`
+//   and `value`.  This is only used to implement `module a from "A";`
+//   declarations, so `value` is always a Module object.
+//
+// * `$CreateImportBinding(module, name, export)` defines an import binding.
+//   `module` is the importing module. `name` is a string, the name of the
+//   local binding being bound.  `export` is a value returned by
+//   $GetModuleExport(), representing the location of the slot to be bound.
+//
+//   The effect of `$CreateImportBinding` is that in `module`'s scope,
+//   `name` becomes an alias for the binding indicated by `export`.
+//
+//   `name` must in fact be a name declared by an import declaration in
+//   `module`, and it must not already have been bound.
+//
+// * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
+//   either undefined or an array of Module objects, the modules whose bodies
+//   are to be evaluated before the given module's body.  A return value of
+//   undefined means the same thing as returning an empty array to the sole
+//   caller, EnsureEvaluated().
+//
+// * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
 //
 // * `$ModuleBodyToModuleObject(body)` returns a `Module` object for
 //   the given ModuleBody `body`.
