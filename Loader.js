@@ -240,7 +240,8 @@ function $CreateModule() {
 //   data property of `iter`.
 //
 // * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
-//   using $SetLoaderIteratorPrivate.
+//   using $SetLoaderIteratorPrivate. If no value was previously stored,
+//   throw a TypeError.
 //
 // The following primitives deal with realms.
 //
