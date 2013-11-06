@@ -397,6 +397,8 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
         let mod = instantiateResult;
         let name = load.fullName;
         if (name !== undefined) {
+            var loaderData = GetLoaderInternalData(loader);
+
             if (callFunction(std_Map_has, loaderData.modules, name)) {
                 throw std_TypeError("fetched module \"" + name + "\" " +
                                     "but a module with that name is already " +
