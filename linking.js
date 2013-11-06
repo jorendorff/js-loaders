@@ -4,6 +4,12 @@
 // proposed spec, but it is incomplete. It lacks support for AMD-style modules
 // (that is, non-default instantiate hooks).
 
+var std_SyntaxError = SyntaxError;
+var std_ReferenceError = ReferenceError;
+
+function MapKeysToArray(map) {
+    return IteratorToArray(callFunction(std_Map_keys, map), std_Map_iterator_next);
+}
 
 
 // ## Module Linking
@@ -139,13 +145,13 @@ function ApparentExports(linkingInfo) {
     // The spec can specify a List. This returns an exportName-keyed Map
     // because the caller needs to look up exports by name quickly.
     //
-    let result = $MapNew();
+    let result = CreateMap();
     for (let i = 0; i < linkingInfo.length; i++) {
         let edge = linkingInfo[i];
         let name = edge.exportName;
         if (typeof name === "string") {
-            $Assert(!$MapHas(result, name));
-            $MapSet(result, name, edge);
+            Assert(!callFunction(std_Map_has, result, name));
+            callFunction(std_Map_set, result, name, edge);
         }
     }
     return result;
@@ -164,7 +170,7 @@ function ExportStarRequestNames(linkingInfo) {
     for (let i = 0; i < linkingInfo.length; i++) {
         let edge = linkingInfo[i];
         if (edge.importName === ALL)
-            $ArrayPush(names, edge);
+            callFunction(std_Array_push, names, edge);
     }
     return names;
 }
@@ -177,7 +183,7 @@ function GetModuleImports(linkingInfo) {
     for (let i = 0; i < linkingInfo.length; i++) {
         let edge = linkingInfo[i];
         if (edge.importModule !== null && edge.localName !== null)
-            $ArrayPush(imports, edge);
+            callFunction(std_Array_push, imports, edge);
     }
     return imports;
 }
@@ -196,15 +202,15 @@ function GetModuleImports(linkingInfo) {
 // that the set of exports is being computed right now, and detect cycles.
 //
 function GetExports(linkSet, load) {
-    $Assert(load.status === "loaded");
-    $Assert(load.fullName !== null);
+    Assert(load.status === "loaded");
+    Assert(load.fullName !== null);
 
     let mod = $ModuleBodyToModuleObject(load.body);
 
     //> 1. If load.[[Exports]] is `"pending"`, throw a SyntaxError exception.
     let exports = load.exports;
     if (exports === 0)
-        throw $SyntaxError("'export * from' cycle detected");
+        throw std_SyntaxError("'export * from' cycle detected");
 
     //> 2. If load.[[Exports]] is not **undefined**, then return load.[[Exports]].
     if (exports !== undefined)
@@ -234,11 +240,11 @@ function GetExports(linkSet, load) {
         let requestName = names[i];
 
         //>     1. Let fullName be GetDependencyFullName(load.[[Dependencies]], requestName).
-        let fullName = $MapGet(load.dependencies, requestName);
+        let fullName = callFunction(std_Map_get, load.dependencies, requestName);
 
         //>     2. Let depMod be GetModuleFromLoaderRegistry(linkSet.[[Loader]], fullName).
         let starExports;
-        let depMod = $MapGet(loaderData.modules, fullName);
+        let depMod = callFunction(std_Map_get, loaderData.modules, fullName);
         if (depMod !== undefined) {
             //>     3. If depMod is not **undefined**,
             //>         1. Let starExports be depMod.[[Exports]].
@@ -246,7 +252,7 @@ function GetExports(linkSet, load) {
         } else {
             //>     4. Else,
             //>         1. Let depLoad be GetLoadFromLoader(linkSet.[[Loader]], fullName).
-            let depLoad = $MapGet(loaderData.loads, fullName);
+            let depLoad = callFunction(std_Map_get, loaderData.loads, fullName);
 
             //>         2. If depLoad is undefined, throw a **SyntaxError** exception.
             //>         3. If depLoad.[[Status]] is `"loaded"`,
@@ -257,7 +263,7 @@ function GetExports(linkSet, load) {
             if (depLoad === undefined ||
                 (depLoad.status !== "loaded" && depLoad.status !== "linked"))
             {
-                throw $SyntaxError(
+                throw std_SyntaxError(
                     "module \"" + fullName + "\" was deleted from the loader");
             }
 
@@ -268,9 +274,9 @@ function GetExports(linkSet, load) {
             // and $GetModuleExportNames() into a single array.
             starExports = $GetModuleExportNames(depLoad.module);
             if (depLoad.status === "loaded") {
-                let moreExports = $MapKeys(GetExports(linkSet, depLoad));
+                let moreExports = MapKeysToArray(GetExports(linkSet, depLoad));
                 for (let j = 0; j < moreExports.length; j++)
-                    $ArrayPush(starExports, moreExports[j]);
+                    callFunction(std_Array_push, starExports, moreExports[j]);
             }
         }
 
@@ -281,10 +287,10 @@ function GetExports(linkSet, load) {
             // Implementation note: The spec detects this kind of error
             // earlier.  We detect it at the last minute.
             let existingExport = $GetModuleExport(mod, name);
-            if ($MapHas(exports, name) ||
+            if (callFunction(std_Map_has, exports, name) ||
                 (existingExport !== undefined && $IsExportImplicit(existingExport)))
             {
-                throw $SyntaxError(
+                throw std_SyntaxError(
                     "duplicate export '" + name + "' " +
                     "in module '" + load.fullName + "' " +
                     "due to 'export * from \"" + requestName + "\"'");
@@ -296,8 +302,11 @@ function GetExports(linkSet, load) {
             //>                [[ImportName]]: name, [[ExportName]]: name} to the end of
             //>                the List exports.
             if (existingExport === undefined) {
-                $MapSet(exports, name,
-                        {importModule: requestName, importName: name, exportName: name});
+                callFunction(std_Map_set, exports, name, {
+                    importModule: requestName,
+                    importName: name,
+                    exportName: name
+                });
             }
         }
     }
@@ -318,13 +327,13 @@ function GetExports(linkSet, load) {
 function FindModuleForLink(loader, fullName) {
     let loaderData = GetLoaderInternalData(loader);
     let fullName = deps[i];
-    let mod = $MapGet(loaderData.modules, fullName);
+    let mod = callFunction(std_Map_get, loaderData.modules, fullName);
     if (mod !== undefined)
         return mod;
 
-    let depLoad = $MapGet(loaderData.loads, fullName);
+    let depLoad = callFunction(std_Map_get, loaderData.loads, fullName);
     if (depLoad === undefined || depLoad.status !== "loaded") {
-        throw $SyntaxError(
+        throw std_SyntaxError(
             "module \"" + fullName + "\" was deleted from the loader");
     }
     return $ModuleBodyToModuleObject(depLoad.body);
@@ -353,10 +362,10 @@ function LinkExport(loader, load, edge, visited) {
         return existingExport;
 
     let request = edge.importModule;
-    let fullName = $MapGet(load.dependencies, request);
+    let fullName = callFunction(std_Map_get, load.dependencies, request);
     let origin = ResolveExport(loader, fullName, edge.importName, visited);
     if (origin === undefined) {
-        throw $ReferenceError(
+        throw std_ReferenceError(
             "can't export " + edge.importName + " from '" + request + "': " +
             "no matching export in module '" + fullName + "'");
     }
@@ -370,13 +379,13 @@ function ResolveExport(loader, fullName, exportName, visited) {
     // If fullName refers to an already-linked Module, return that
     // module's export binding for exportName.
     let loaderData = GetLoaderInternalData(loader);
-    let mod = $MapGet(loaderData.modules, fullName);
+    let mod = callFunction(std_Map_get, loaderData.modules, fullName);
     if (mod !== undefined)
         return $GetModuleExport(mod, exportName);
 
-    let load = $MapGet(loaderData.loads, fullName);
+    let load = callFunction(std_Map_get, loaderData.loads, fullName);
     if (load === undefined)
-        throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
+        throw std_SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
     if (load.status === "linked") {
         mod = $ModuleBodyToModuleObject(load.body);
@@ -387,7 +396,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
     // LinkExport recursively to resolve the upstream export first.  If not,
     // it's an error.
     if (load.status !== "loaded")
-        throw $SyntaxError("module \"" + fullName + "\" was deleted from the loader");
+        throw std_SyntaxError("module \"" + fullName + "\" was deleted from the loader");
 
     mod = $ModuleBodyToModuleObject(load.body);
     let exp = $GetModuleExport(mod, exportName);
@@ -397,16 +406,16 @@ function ResolveExport(loader, fullName, exportName, visited) {
     // The module `mod` does not have a locally apparent export for
     // `exportName`.  If it does not have an `export * from` for that name
     // either, return undefined.
-    let edge = $MapGet(load.exports, exportName);
+    let edge = callFunction(std_Map_get, load.exports, exportName);
     if (edge === undefined)
         return undefined;
 
     // Call LinkExport recursively to link the upstream export.
     for (let i = 0; i < visited.length; i++) {
         if (visited[i] === edge)
-            throw $SyntaxError("import cycle detected");
+            throw std_SyntaxError("import cycle detected");
     }
-    $ArrayPush(visited, edge);
+    callFunction(std_Array_push, visited, edge);
     exp = LinkExport(loader, load, edge, visited);
     visited.length--;
     return exp;
@@ -416,7 +425,7 @@ function ResolveExport(loader, fullName, exportName, visited) {
 //>
 function LinkImport(loader, load, edge) {
     let mod = $ModuleBodyToModuleObject(load.body);
-    let fullName = $MapGet(load.dependencies, edge.importModule);
+    let fullName = callFunction(std_Map_get, load.dependencies, edge.importModule);
     let sourceModule = FindModuleForLink(loader, fullName);
     let name = edge.importName;
     if (name === MODULE) {
@@ -424,8 +433,8 @@ function LinkImport(loader, load, edge) {
     } else {
         let exp = $GetModuleExport(sourceModule, name);
         if (exp === undefined) {
-            throw $ReferenceError("can't import name '" + name + "': " +
-                                  "no matching export in module '" + fullName + "'");
+            throw std_ReferenceError("can't import name '" + name + "': " +
+                                     "no matching export in module '" + fullName + "'");
         }
         $CreateImportBinding(mod, edge.localName, exp);
     }
@@ -438,13 +447,13 @@ function LinkImport(loader, load, edge) {
 //> commit all the modules in linkSet to the loader's module registry.
 //>
 function LinkModules(linkSet) {
-    let loads = $SetElements(linkSet.loads);
+    let loads = SetToArray(linkSet.loads);
 
     try {
         // Find which names are exported by each new module.
         for (let i = 0; i < loads.length; i++) {
             let load = loads[i];
-            $Assert(load.status === "loaded" || load.status === "linked");
+            Assert(load.status === "loaded" || load.status === "linked");
             if (load.status === "loaded")
                 GetExports(load);
         }
@@ -457,7 +466,7 @@ function LinkModules(linkSet) {
         for (let i = 0; i < loads.length; i++) {
             let load = loads[i];
             if (load.status === "loaded" && load.fullName !== null) {
-                let edges = $MapValues(load.exports);
+                let edges = MapValuesToArray(load.exports);
                 for (let j = 0; j < edges.length; j++) {
                     let edge = edges[j];
                     LinkExport(loader, load, edge, []);
@@ -491,9 +500,9 @@ function LinkModules(linkSet) {
         load.module = m;
 
         let deps = [];
-        var depNames = $MapValues(load.dependencies);
+        var depNames = MapValuesToArray(load.dependencies);
         for (let j = 0; j < depNames.length; j++)
-            $ArrayPush(deps, FindModuleForLink(depNames[j]));
+            callFunction(std_Array_push, deps, FindModuleForLink(depNames[j]));
         $SetDependencies(m, deps);
     }
 
@@ -505,7 +514,7 @@ function LinkModules(linkSet) {
         let fullName = load.fullName;
         load.status = "linked";
         if (fullName !== undefined)
-            $MapSet(loaderData.modules, fullName, load.module);
+            callFunction(std_Map_set, loaderData.modules, fullName, load.module);
     }
 }
 

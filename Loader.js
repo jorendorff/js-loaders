@@ -15,27 +15,134 @@
 // tests, but that will have to wait a week or two.
 
 
+// ## Prelude
+//
+// This implementation uses some ES builtins. User scripts may mutate or delete
+// those builtins, so we capture everything we need up front.
+//
+(function (global) {
+"use strict";
+
+var std_Function_call = Function.prototype.call;
+var std_Function_bind = Function.prototype.bind;
+var bind = std_Function_call.bind(std_Function_bind);
+var callFunction = bind(std_Function_call, std_Function_call);
+
+var std_Object_create = Object.create;
+var std_Object_defineProperty = Object.defineProperty;
+var std_Object_keys = Object.keys;
+var std_Object_preventExtensions = Object.preventExtensions;
+var std_Array_push = Array.prototype.push;
+var std_Array_sort = Array.prototype.sort;
+var std_Set = Set;
+var std_Set_get_size = Object.getOwnPropertyDescriptor(Set.prototype, "size").get;
+var std_Set_has = Set.prototype.has;
+var std_Set_add = Set.prototype.add;
+var std_Set_delete = Set.prototype.delete;
+var std_Set_iterator = Set.prototype["@@iterator"];
+var std_Set_iterator_next = new Set()["@@iterator"]().next;
+var std_Map = Map;
+var std_Map_has = Map.prototype.has;
+var std_Map_get = Map.prototype.get;
+var std_Map_set = Map.prototype.set;
+var std_Map_delete = Map.prototype.delete;
+var std_Map_entries = Map.prototype.entries;
+var std_Map_keys = Map.prototype.keys;
+var std_Map_values = Map.prototype.values;
+var std_Map_iterator_next = new Map().keys().next;
+var std_WeakMap = WeakMap;
+var std_WeakMap_has = WeakMap.prototype.has;
+var std_WeakMap_get = WeakMap.prototype.get;
+var std_WeakMap_set = WeakMap.prototype.set;
+var std_Promise = Promise;
+var std_Promise_fulfill = Promise.fulfill;
+var std_Promise_then = Promise.prototype.then;
+var std_Promise_catch = Promise.prototype.catch;
+var std_TypeError = TypeError;
+
+
+// A handful of utility functions built from ES standard facilities.
+
+// ES6 ToBoolean abstract operation.
+function ToBoolean(v) {
+    return !!v;
+}
+
+// ES6 ToString abstract operation.
+function ToString(v) {
+    return "" + v;
+}
+
+// Return true if Type(v) is Object.
+//
+// Perhaps surprisingly, process of elimination is the only correct way to
+// implement this.  See [ES5 11.4.3, "The `typeof`
+// Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
+//
+function IsObject(v) {
+    return v !== null &&
+           v !== undefined &&
+           typeof v !== "boolean" &&
+           typeof v !== "number" &&
+           typeof v !== "string" &&
+           typeof v !== "symbol";
+}
+
+// This implementation uses ES6 Set, Map, and WeakMap objects in some places
+// where the spec text refers to Lists and internal data properties.
+//
+// Bug: In implementations that support @@create, the `CreateSet()` function
+// given here would be affected by modifying the @@create method of the Set
+// builtin (which is a configurable property). This implementation will change
+// whenever @@create is implemented. The same is true for `CreateMap()` and
+// `CreateWeakMap()`.
+//
+function CreateSet() {
+    return new std_Set;
+}
+
+function CreateMap() {
+    return new std_Map;
+}
+
+function CreateWeakMap() {
+    return new std_WeakMap;
+}
+
+function IteratorToArray(iter, next) {
+    var a = [];
+    for (var x = callFunction(next, iter); !x.done; x = callFunction(next, iter))
+        callFunction(std_Array_push, a, x.value);
+    return a;
+}
+
+function SetToArray(set) {
+    return IteratorToArray(callFunction(std_Set_iterator, set));
+}
+
+function MapValuesToArray(map) {
+    return IteratorToArray(callFunction(std_Map_values, map), std_Map_iterator_next);
+}
+
+// `Assert(condition)` is your bog-standard assert function. In theory, it
+// does nothing. The given `condition` is always true.
+function Assert(condition) {
+    if (typeof assert === "function")
+        assert(condition);
+    else if (typeof assertEq === "function")
+        assertEq(condition, true);
+
+    if (condition !== true)
+        throw "assertion failed";
+}
+
+
 // ## Primitives
 //
 // We rely on the JavaScript implementation to provide a few primitives.  You
 // can skip over this stuff. On the other hand, it tells what sort of thing
 // we'll be doing here.
-(function (global) {
-"use strict";
 
-var std_Function_call = Function.prototype.call,
-    std_Function_bind = Function.prototype.bind,
-    bind = std_Function_call.bind(std_Function_bind),
-    callFunction = bind(std_Function_call, std_Function_call);
-
-// * `$Assert(condition)` is your bog-standard assert function. It does
-//   nothing. The given `condition` is always true.
-function $Assert(condition) {
-    assert(condition);
-}
-
-var std_Promise = Promise;
-var std_Promise_fulfill = Promise.fulfill;
 
 // Now on to the core JS language implementation primitives.
 //
@@ -122,7 +229,7 @@ var std_Promise_fulfill = Promise.fulfill;
 
 // * `$CreateModule()` returns a new `Module` object. The object is extensible.
 //   It must not be exposed to scripts until it has been populated and frozen.
-var $CreateModule = () => $ObjectCreate(null);
+var $CreateModule = () => std_Object_create(null);
 
 // * `$IsModule(v)` returns true if `v` is a `Module` object.
 //
@@ -203,119 +310,6 @@ var $CreateModule = () => $ObjectCreate(null);
 //
 
 
-// The remaining primitives are not very interesting. These are capabilities
-// that JS provides via builtin methods. We use primitives rather than the
-// builtin methods because user code can delete or replace the methods.
-//
-// * `$ObjectCreate(proto)` ~= Object.create(proto)
-var $ObjectCreate = Object.create;
-// * `$ObjectDefineProperty(obj, p, desc)` ~= Object.defineProperty(obj, p, desc)
-var $ObjectDefineProperty = Object.defineProperty;
-// * `$ObjectGetOwnPropertyNames(obj)` ~= Object.getOwnPropertyNames(obj)
-var $ObjectGetOwnPropertyNames = Object.getOwnPropertyNames;
-// * `$ObjectKeys(obj)` ~= Object.keys(obj)
-var $ObjectKeys = Object.keys;
-// * `$ObjectPreventExtensions(obj)` ~= Object.preventExtensions(obj)
-var $ObjectPreventExtensions = Object.preventExtensions;
-
-var unmethod = bind(std_Function_bind, std_Function_call)
-
-// * `$ArrayPush(arr, v)` ~= arr.push(v)
-var $ArrayPush = unmethod(Array.prototype.push);
-// * `$ArrayPop(arr)` ~= arr.pop()
-var $ArrayPop = unmethod(Array.prototype.pop);
-// * `$ArraySort(arr, cmp)` ~= arr.sort(cmp)
-var $ArraySort = unmethod(Array.prototype.sort);
-// * `$SetNew()` ~= new Set
-var std_Set = Set;
-var $SetNew = () => new std_Set;
-// * `$SetSize(set)` ~= set.size
-var $SetSize = unmethod(Object.getOwnPropertyDescriptor(Set.prototype, "size").get);
-// * `$SetHas(set, v)` ~= set.has(v)
-var $SetHas = unmethod(Set.prototype.has);
-// * `$SetAdd(set, v)` ~= set.add(v)
-var $SetAdd = unmethod(Set.prototype.add);
-// * `$SetDelete(set, v)` ~= set.delete(v)
-var $SetDelete = unmethod(Set.prototype.delete);
-// * `$SetElements(set)` ~= [...set]
-var $SetElements = set => [...set];
-// * `$MapNew()` ~= new Map
-var std_Map = Map;
-var $MapNew = () => new std_Map;
-// * `$MapHas(map, key)` ~= map.has(key)
-var $MapHas = unmethod(Map.prototype.has);
-// * `$MapGet(map, key)` ~= map.get(key)
-var $MapGet = unmethod(Map.prototype.get);
-// * `$MapSet(map, key, value)` ~= map.set(key, value)
-var $MapSet = unmethod(Map.prototype.set);
-// * `$MapDelete(map, key)` ~= map.delete(key)
-var $MapDelete = unmethod(Map.prototype.delete);
-
-function iteratorToArray(iter, next) {
-    var a = [];
-    for (var x = next(iter); !x.done; x = next(iter))
-        $ArrayPush(a, x.value);
-    return a;
-}
-// * `$MapEntriesIterator(map)` ~= map.entries()
-var $MapEntriesIterator = unmethod(Map.prototype.entries);
-// * `$MapKeys(map)` ~= [...map.keys()]
-var $MapKeys = map => iteratorToArray($MapKeysIterator(map), $MapIteratorNext);
-// * `$MapKeysIterator(map)` ~= map.keys()
-var $MapKeysIterator = unmethod(Map.prototype.keys);
-// * `$MapValues(map)` ~= [...map.values()]
-var $MapValues = map => iteratorToArray($MapValuesIterator(map), $MapIteratorNext);
-// * `$MapValuesIterator(map)` ~= map.values()
-var $MapValuesIterator = unmethod(Map.prototype.values);
-// * `$MapIteratorNext(map)` ~= mapiter.next()
-var $MapIteratorNext = unmethod(new Map().keys().next);
-// * `$WeakMapNew()` ~= new WeakMap
-var std_WeakMap = WeakMap;
-var $WeakMapNew = () => new std_WeakMap;
-// * `$WeakMapHas(map, key)` ~= map.has(key)
-var $WeakMapHas = unmethod(WeakMap.prototype.has);
-// * `$WeakMapGet(map, key)` ~= map.get(key)
-var $WeakMapGet = unmethod(WeakMap.prototype.get);
-// * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
-var $WeakMapSet = unmethod(WeakMap.prototype.set);
-// * `$PromiseThen(p, fulfill, reject)` ~= p.then(fulfill, reject)
-var $PromiseThen = unmethod(Promise.prototype.then);
-// * `$PromiseCatch(p, reject)` ~= p.catch(reject)
-var $PromiseCatch = unmethod(Promise.prototype.catch);
-// * `$TypeError(msg)` ~= new TypeError(msg)
-var $TypeError = TypeError;
-// * `$SyntaxError(msg)` ~= new SyntaxError(msg)
-var $SyntaxError = SyntaxError;
-
-
-// ## Utility functions
-
-// ES6 ToBoolean abstract operation.
-function ToBoolean(v) {
-    return !!v;
-}
-
-// ES6 ToString abstract operation.
-function ToString(v) {
-    return "" + v;
-}
-
-// Return true if Type(v) is Object.
-//
-// Perhaps surprisingly, process of elimination is the only correct way to
-// implement this.  See [ES5 11.4.3, "The `typeof`
-// Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
-//
-function IsObject(v) {
-    return v !== null &&
-           v !== undefined &&
-           typeof v !== "boolean" &&
-           typeof v !== "number" &&
-           typeof v !== "string" &&
-           typeof v !== "symbol";
-}
-
-
 
 
 //> # Modules: Semantics
@@ -366,18 +360,18 @@ function StartModuleLoad(loader, request, refererName, refererAddress) {
     normalized = ToString(normalized);
 
     // If the module has already been linked, we are done.
-    let existingModule = $MapGet(loaderData.modules, normalized);
+    let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
     if (existingModule !== undefined)
         return {status: "linked", fullName: normalized, module: existingModule};
 
     // If the module is already loaded, we are done.
-    let load = $MapGet(loaderData.loads, normalized);
+    let load = callFunction(std_Map_get, loaderData.loads, normalized);
     if (load !== undefined && load.status === "loaded")
         return load;
 
     // If the module is already loading, we are done.
     if (load !== undefined) {
-        $Assert(load.status === "loading");
+        Assert(load.status === "loading");
         return load;
     }
 
@@ -386,9 +380,9 @@ function StartModuleLoad(loader, request, refererName, refererAddress) {
 
 function LoadModule(loader, normalized) {
     var loaderData = GetLoaderInternalData(loader);
-    $Assert(!$MapHas(loaderData.loads, normalized));
+    Assert(!callFunction(std_Map_has, loaderData.loads, normalized));
     var load = CreateLoad(normalized);
-    $MapSet(loaderData.loads, normalized, load);
+    callFunction(std_Map_set, loaderData.loads, normalized, load);
 
     var p = new std_Promise(function (resolve, reject) {
         resolve(loader.locate({
@@ -396,8 +390,8 @@ function LoadModule(loader, normalized) {
             metadata: load.metadata
         }));
     });
-    p = $PromiseThen(p, function (address) {
-        if ($SetSize(load.linkSets) === 0)
+    p = callFunction(std_Promise_then, p, function (address) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         load.address = address;
         return loader.fetch({
@@ -406,8 +400,8 @@ function LoadModule(loader, normalized) {
             address: address
         });
     });
-    p = $PromiseThen(p, function (source) {
-        if ($SetSize(load.linkSets) === 0)
+    p = callFunction(std_Promise_then, p, function (source) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         return loader.translate({
             name: load.fullName,
@@ -420,8 +414,8 @@ function LoadModule(loader, normalized) {
 }
 
 function CallTranslate(loader, load, p) {
-    p = $PromiseThen(p, function (source) {
-        if ($SetSize(load.linkSets) === 0)
+    p = callFunction(std_Promise_then, p, function (source) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         load.source = source;
         return loader.instantiate({
@@ -431,10 +425,10 @@ function CallTranslate(loader, load, p) {
             source: source
         });
     });
-    p = $PromiseThen(p, function (result) {
+    p = callFunction(std_Promise_then, p, function (result) {
         InstantiateSucceeded(loader, load, result);
     });
-    $PromiseCatch(p, function (exc) {
+    callFunction(std_Promise_catch, p, function (exc) {
         LoadFailed(load, exc);
     });
     return load;
@@ -450,17 +444,17 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
         let body = $ParseModule(loader, load.source, load.fullName, load.address);
         FinishLoad(load, loader, body);
     } else if (!IsObject(instantiateResult)) {
-        throw $TypeError("instantiate hook must return an object or undefined");
+        throw std_TypeError("instantiate hook must return an object or undefined");
     } else if ($IsModule(instantiateResult)) {
         let mod = instantiateResult;
         let name = load.fullName;
         if (name !== undefined) {
-            if ($MapHas(loaderData.modules, name)) {
-                throw $TypeError("fetched module \"" + name + "\" " +
-                                 "but a module with that name is already " +
-                                 "in the registry");
+            if (callFunction(std_Map_has, loaderData.modules, name)) {
+                throw std_TypeError("fetched module \"" + name + "\" " +
+                                    "but a module with that name is already " +
+                                    "in the registry");
             }
-            $MapSet(loaderData.modules, name, mod);
+            callFunction(std_Map_set, loaderData.modules, name, mod);
         }
         OnEndRun(load, mod);
     } else {
@@ -678,7 +672,7 @@ function CreateLoad(fullName) {
     return {
         status: "loading",
         fullName: fullName,
-        linkSets: $SetNew(),
+        linkSets: CreateSet(),
         metadata: {},
         address: undefined,
         src: undefined,
@@ -706,12 +700,12 @@ function CreateLoad(fullName) {
 // `"loaded"`.
 //
 function FinishLoad(load, loader, body) {
-    $Assert(load.status === "loading");
-    $Assert($SetSize(load.linkSets) !== 0);
+    Assert(load.status === "loading");
+    Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
 
     let refererName = load.fullName;
     let fullNames = [];
-    let sets = $SetElements(load.linkSets);
+    let sets = SetToArray(load.linkSets);
 
     let moduleRequests = $ModuleRequests(body);
 
@@ -722,7 +716,7 @@ function FinishLoad(load, loader, body) {
     // normalized module names.  We pass them to StartModuleLoad which will
     // call the `normalize` hook.
     //
-    let dependencies = $MapNew();
+    let dependencies = CreateMap();
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
         let depLoad;
@@ -731,7 +725,7 @@ function FinishLoad(load, loader, body) {
         } catch (exc) {
             return LoadFailed(load, exc);
         }
-        $MapSet(dependencies, request, depLoad.fullName);
+        callFunction(std_Map_set, dependencies, request, depLoad.fullName);
 
         if (depLoad.status !== "linked") {
             for (let j = 0; j < sets.length; j++)
@@ -747,7 +741,7 @@ function FinishLoad(load, loader, body) {
     // For determinism, finish linkable LinkSets in timestamp order.
     // (NOTE: If it turns out that Futures fire in deterministic
     // order, then there's no point sorting this array here.)
-    $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
+    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < sets.length; i++)
         LinkSetOnLoad(sets[i], load);
 }
@@ -756,13 +750,13 @@ function FinishLoad(load, loader, body) {
 //>
 // Called when the `instantiate` hook returns a Module object.
 function OnEndRun(load, mod) {
-    $Assert(load.status === "loading");
+    Assert(load.status === "loading");
     load.status = "linked";
     load.module = mod;
-    $Assert(load.exports === undefined);
+    Assert(load.exports === undefined);
 
-    let sets = $SetElements(load.linkSets);
-    $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
+    let sets = SetToArray(load.linkSets);
+    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < sets.length; i++)
         LinkSetOnLoad(sets[i], load);
 }
@@ -773,19 +767,19 @@ function OnEndRun(load, mod) {
 //> fail.
 //>
 function LoadFailed(load, exc) {
-    $Assert(load.status === "loading");
+    Assert(load.status === "loading");
     load.status = "failed";
     load.exception = exc;
 
     // For determinism, flunk the attached LinkSets in timestamp order.
     // (NOTE: If it turns out that Futures fire in deterministic
     // order, then there's no point sorting this array here.)
-    let sets = $SetElements(load.linkSets);
-    $ArraySort(sets, (a, b) => b.timestamp - a.timestamp);
+    let sets = SetToArray(load.linkSets);
+    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < sets.length; i++)
         FinishLinkSet(sets[i], false, exc);
 
-    $Assert($SetSize(load.linkSets) === 0);
+    Assert(callFunction(std_Set_get_size, load.linkSets) === 0);
 }
 
 
@@ -818,7 +812,7 @@ function CreateLinkSet(loader, startingLoad) {
         loader: loader,
         done: done,
         resolver: resolver,
-        loads: $SetNew(),
+        loads: CreateSet(),
         timestamp: loaderData.linkSetCounter++,
 
         // Implementation note: `this.loadingCount` is not in the spec. This is
@@ -838,11 +832,11 @@ function CreateLinkSet(loader, startingLoad) {
 //>
 function LinkSetAddLoadByName(linkSet, fullName) {
     var loaderData = GetLoaderInternalData(linkSet.loader);
-    if (!$MapHas(loaderData.modules, fullName)) {
+    if (!callFunction(std_Map_has, loaderData.modules, fullName)) {
         // We add `depLoad` even if it is done loading, because the
         // association keeps the `Load` alive (`Load`s are
         // reference-counted; see `FinishLinkSet`).
-        let depLoad = $MapGet(loaderData.loads, fullName);
+        let depLoad = callFunction(std_Map_get, loaderData.loads, fullName);
         AddLoadToLinkSet(linkSet, depLoad);
     }
 }
@@ -855,15 +849,15 @@ function AddLoadToLinkSet(linkSet, load) {
     if (load.status === "failed")
         return FinishLinkSet(linkSet, false, load.exception);
 
-    if (!$SetHas(linkSet.loads, load)) {
-        $SetAdd(linkSet.loads, load);
-        $SetAdd(load.linkSets, linkSet);
+    if (!callFunction(std_Set_has, linkSet.loads, load)) {
+        callFunction(std_Set_add, linkSet.loads, load);
+        callFunction(std_Set_add, load.linkSets, linkSet);
         if (load.status === "loading") {
             linkSet.loadingCount++;
         } else {
             // Transitively add not-yet-linked dependencies.
-            $Assert(load.status == "loaded");
-            let fullNames = $MapValues(load.dependencies);
+            Assert(load.status == "loaded");
+            let fullNames = MapValuesToArray(load.dependencies);
             for (let i = 0; i < fullNames.length; i++)
                 LinkSetAddLoadByName(linkSet, fullNames[i]);
         }
@@ -876,8 +870,8 @@ function AddLoadToLinkSet(linkSet, load) {
 //> kicking off loads for all its dependencies.
 //>
 function LinkSetOnLoad(linkSet, load) {
-    $Assert($SetHas(linkSet.loads, load));
-    $Assert(load.status === "loaded" || load.status === "linked");
+    Assert(callFunction(std_Set_has, linkSet.loads, load));
+    Assert(load.status === "loaded" || load.status === "linked");
     if (--linkSet.loadingCount === 0) {
         // If all dependencies have loaded, link the modules and fire the
         // success callback.
@@ -898,22 +892,22 @@ function LinkSetOnLoad(linkSet, load) {
 //> the success callback or the error callback.
 //>
 function FinishLinkSet(linkSet, succeeded, exc) {
-    let loads = $SetElements(linkSet.loads);
+    let loads = SetToArray(linkSet.loads);
     let loaderData = GetLoaderInternalData(linkSet.loader);
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
 
         // Detach load from linkSet.
-        $Assert($SetHas(load.linkSets, linkSet));
-        $SetDelete(load.linkSets, linkSet);
+        Assert(callFunction(std_Set_has, load.linkSets, linkSet));
+        callFunction(std_Set_delete, load.linkSets, linkSet);
 
         // If load is not needed by any surviving LinkSet, drop it.
-        if ($SetSize(load.linkSets) === 0) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0) {
             let fullName = load.fullName;
             if (fullName !== null) {
-                let currentLoad = $MapGet(loaderData.loads, fullName);
+                let currentLoad = callFunction(std_Map_get, loaderData.loads, fullName);
                 if (currentLoad === load)
-                    $MapDelete(loaderData.loads, fullName);
+                    callFunction(std_Map_delete, loaderData.loads, fullName);
             }
         }
     }
@@ -1013,7 +1007,7 @@ function EnsureEvaluated(mod, seen, loaderData) {
     // when EnsureEvaluated finishes successfully.)
 
     //> 1. Append mod as the last element of seen.
-    $SetAdd(seen, mod);
+    callFunction(std_Set_add, seen, mod);
 
     //> 2. Let deps be mod.[[Dependencies]].
     //
@@ -1029,7 +1023,7 @@ function EnsureEvaluated(mod, seen, loaderData) {
             //>         1. If dep is not an element of seen, then
             //>             1. Call BuildSchedule with the arguments dep, seen,
             //>                and schedule.
-            if (!$SetHas(seen, dep))
+            if (!callFunction(std_Set_has, seen, dep))
                 EnsureEvaluated(dep, seen, loaderData);
         }
     }
@@ -1073,7 +1067,7 @@ function EnsureEvaluated(mod, seen, loaderData) {
 }
 
 function EnsureEvaluatedHelper(mod, loader) {
-    let seen = $SetNew();
+    let seen = CreateSet();
     let loaderData = GetLoaderInternalData(loader);
     EnsureEvaluated(mod, seen, loaderData);
 
@@ -1081,7 +1075,7 @@ function EnsureEvaluatedHelper(mod, loader) {
     // calls, drop this portion of the dependency graph.  (This loop cannot be
     // fused with the evaluation loop above; the meaning would change on error
     // for certain dependency graphs containing cycles.)
-    seen = $SetElements(seen);
+    seen = SetToArray(seen);
     for (let i = 0; i < seen.length; i++)
         $SetDependencies(seen[i], undefined);
 }
@@ -1134,7 +1128,7 @@ function Module(obj) {
     //> 1.  Let *keys* be the result of calling the ObjectKeys abstract
     //>     operation passing *obj* as the argument.
     //> 1.  ReturnIfAbrupt(*keys*).
-    var keys = $ObjectKeys(obj);
+    var keys = std_Object_keys(obj);
     //> 1.  For each *key* in *keys*, do
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
@@ -1153,7 +1147,7 @@ function Module(obj) {
         //>         abstract operation passing *mod*, *key*, and *desc* as
         //>         arguments.
         //>     1.  ReturnIfAbrupt(*r*).
-        $ObjectDefineProperty(mod, keys[i], {
+        std_Object_defineProperty(mod, keys[i], {
             configurable: false,
             enumerable: true,
             get: ConstantGetter(value),
@@ -1161,7 +1155,7 @@ function Module(obj) {
         });
     }
     //> 1.  Call the [[PreventExtensions]] internal method of *mod*.
-    $ObjectPreventExtensions(mod);
+    std_Object_preventExtensions(mod);
     //> 1.  Return *mod*.
     return mod;
 }
@@ -1183,7 +1177,7 @@ Module.prototype = null;
 // The simplest way to connect the two objects without exposing this internal
 // data to user code is to use a `WeakMap`.
 //
-let realmInternalDataMap = $WeakMapNew();
+let realmInternalDataMap = CreateWeakMap();
 
 //> ### The Realm Constructor
 //>
@@ -1202,19 +1196,19 @@ function Realm(options, initializer) {
     //> 1.  If Type(*R*) is not Object, throw a TypeError exception.
     //> 1.  If *R* does not have all of the internal properties of a Realm
     //>     object, throw a TypeError exception.
-    var realmData = $WeakMapGet(realmInternalDataMap, R);
+    var realmData = callFunction(std_WeakMap_get, realmInternalDataMap, R);
     if (realmData === undefined)
-        throw $TypeError("Realm object expected");
+        throw std_TypeError("Realm object expected");
 
     //> 1.  If *R*.[[Realm]] is not undefined, throw a TypeError
     //>     exception.
     if (realmData.realm !== undefined)
-        throw $TypeError("Realm object cannot be intitialized more than once");
+        throw std_TypeError("Realm object cannot be intitialized more than once");
 
     //> 1.  If *options* is not undefined and Type(*options*) is not Object,
     //>     throw a TypeError exception.
     if (options !== undefined && !IsObject(options))
-        throw $TypeError("options must be an object or undefined");
+        throw std_TypeError("options must be an object or undefined");
 
     //> 1.  Let *realm* be the result of CreateRealm(R).
     let realm = $CreateRealm(R);
@@ -1374,7 +1368,7 @@ var Realm_create = function create() {
     //> 1.  Let F be the this value.
     //> 2.  Let realm be the result of calling
     //>     OrdinaryCreateFromConstructor(F, "%RealmPrototype%", ([[Realm]])).
-    var realm = $ObjectCreate(this.prototype);
+    var realm = std_Object_create(this.prototype);
 
     // The fields are initially undefined but are populated when the
     // constructor runs.
@@ -1385,7 +1379,7 @@ var Realm_create = function create() {
         realm: undefined
 
     };
-    $WeakMapSet(realmInternalDataMap, realm, internalData);
+    callFunction(std_WeakMap_set, realmInternalDataMap, realm, internalData);
 
     //> 3.  Return realm.
     return realm;
@@ -1397,11 +1391,11 @@ def(Realm, {"@@create": Realm_create});
 function GetRealmInternalData(value) {
     // Realm methods could be placed on wrapper prototypes like String.prototype.
     if (typeof value !== "object")
-        throw $TypeError("Realm method or accessor called on incompatible primitive");
+        throw std_TypeError("Realm method or accessor called on incompatible primitive");
 
-    let internalData = $WeakMapGet(realmInternalDataMap, value);
+    let internalData = callFunction(std_WeakMap_get, realmInternalDataMap, value);
     if (internalData === undefined)
-        throw $TypeError("Realm method or accessor called on incompatible object");
+        throw std_TypeError("Realm method or accessor called on incompatible object");
     return internalData;
 }
 
@@ -1467,7 +1461,7 @@ function GetRealmInternalData(value) {
 // The simplest way to connect the two objects without exposing this internal
 // data to user code is to use a `WeakMap`.
 //
-let loaderInternalDataMap = $WeakMapNew();
+let loaderInternalDataMap = CreateWeakMap();
 
 //> When the `Loader` function is called with optional argument options the
 //> following steps are taken:
@@ -1485,18 +1479,18 @@ function Loader(options={}) {
     //> 2.  If Type(loader) is not Object, throw a TypeError exception.
     //> 3.  If loader does not have all of the internal properties of a Loader
     //>     Instance, throw a TypeError exception.
-    var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
+    var loaderData = callFunction(std_WeakMap_get, loaderInternalDataMap, loader);
     if (loaderData === undefined)
-        throw $TypeError("Loader object expected");
+        throw std_TypeError("Loader object expected");
 
     //> 4.  If loader.[[Modules]] is not undefined, throw a TypeError
     //>     exception.
     if (loaderData.modules !== undefined)
-        throw $TypeError("Loader object cannot be intitialized more than once");
+        throw std_TypeError("Loader object cannot be intitialized more than once");
 
     //> 5.  If Type(options) is not Object, throw a TypeError exception.
     if (!IsObject(options))
-        throw $TypeError("options must be an object or undefined");
+        throw std_TypeError("options must be an object or undefined");
 
     // Fallible operations.
 
@@ -1512,8 +1506,11 @@ function Loader(options={}) {
     //
     //> 9.  Else if Type(realm) is not Object or realm does not have all the
     //>     internal properties of a Realm object, throw a TypeError exception.
-    if (realm !== undefined && (!IsObject(realm) || !$WeakMapHas(realmInternalDataMap, realm))) {
-        throw $TypeError("options.realm is not a Realm object");
+    if (realm !== undefined &&
+        (!IsObject(realm) ||
+         !callFunction(std_WeakMap_has, realmInternalDataMap, realm)))
+    {
+        throw std_TypeError("options.realm is not a Realm object");
     }
 
     // Hooks provided via `options` are just ordinary properties of the new
@@ -1541,7 +1538,7 @@ function Loader(options={}) {
             //>             passing name and the Property Descriptor {[[Value]]:
             //>             hook, [[Writable]]: true, [[Enumerable]]: true,
             //>             [[Configurable]]: true} as arguments.
-            $ObjectDefineProperty(loader, name, {
+            std_Object_defineProperty(loader, name, {
                 configurable: true,
                 enumerable: true,
                 value: hook,
@@ -1552,9 +1549,9 @@ function Loader(options={}) {
 
     // Infallible initialization of internal data properties.
     //> 11. Set loader.[[Modules]] to a new empty List.
-    loaderData.modules = $MapNew();
+    loaderData.modules = CreateMap();
     //> 12. Set loader.[[Loads]] to a new empty List.
-    loaderData.loads = $MapNew();
+    loaderData.loads = CreateMap();
     //> 13. Set loader.[[Realm]] to realm.
     loaderData.realm = realm;
 
@@ -1593,7 +1590,7 @@ var Loader_create = function create() {
     //> 2.  Let loader be the result of calling
     //>     OrdinaryCreateFromConstructor(F, "%LoaderPrototype%", ([[Modules]],
     //>     [[Loads]], [[Realm]])).
-    var loader = $ObjectCreate(this.prototype);
+    var loader = std_Object_create(this.prototype);
 
     // The fields are initially undefined but are populated when the
     // constructor runs.
@@ -1632,7 +1629,7 @@ var Loader_create = function create() {
         // they were created".
         linkSetCounter: 0
     };
-    $WeakMapSet(loaderInternalDataMap, loader, internalData);
+    callFunction(std_WeakMap_set, loaderInternalDataMap, loader, internalData);
 
     //> 3.  Return loader.
     return loader;
@@ -1644,11 +1641,11 @@ def(Loader, {"@@create": Loader_create});
 function GetLoaderInternalData(value) {
     // Loader methods could be placed on wrapper prototypes like String.prototype.
     if (typeof value !== "object")
-        throw $TypeError("Loader method called on incompatible primitive");
+        throw std_TypeError("Loader method called on incompatible primitive");
 
-    let internalData = $WeakMapGet(loaderInternalDataMap, value);
+    let internalData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
     if (internalData === undefined)
-        throw $TypeError("Loader method called on incompatible object");
+        throw std_TypeError("Loader method called on incompatible object");
     return internalData;
 }
 
@@ -1725,18 +1722,20 @@ def(Loader.prototype, {
 
             let load = CreateLoad(undefined);
             let linkSet = CreateLinkSet(loader, load);
-            let p = $PromiseThen(linkSet.done,
+            let p = callFunction(std_Promise_then,
+                                 linkSet.done,
                                  function (_) {
                                      let mod = load.module;
                                      EnsureEvaluatedHelper(mod, loader);
                                      resolve(mod);
                                  });
-            $PromiseCatch(p, reject);
+            callFunction(std_Promise_catch, p, reject);
 
             var sourcePromise = std_Promise_fulfill(source);
             CallTranslate(loader, load, sourcePromise);
 
-            $PromiseThen(CreateLinkSet(loader, load).done,
+            callFunction(std_Promise_then,
+                         CreateLinkSet(loader, load).done,
                          function (_) { resolve(load.module); },
                          reject);
         });
@@ -1770,22 +1769,24 @@ def(Loader.prototype, {
             } else {
                 // The module is now loading.  When it loads, it may have more
                 // imports, requiring further loads, so put it in a LinkSet.
-                var p = $PromiseThen(CreateLinkSet(loader, load).done, success);
-                $PromiseCatch(p, reject);
+                var p = callFunction(std_Promise_then,
+                                     CreateLinkSet(loader, load).done,
+                                     success);
+                callFunction(std_Promise_catch, p, reject);
             }
 
             function success() {
-                $Assert(load.status === "linked");
+                Assert(load.status === "linked");
                 let mod = load.module;
                 if (mod === undefined) {
                     // TODO: can this happen?
-                    throw $TypeError("import(): module \"" + load.fullName +
-                                     "\" was deleted from the loader");
+                    throw std_TypeError("import(): module \"" + load.fullName +
+                                        "\" was deleted from the loader");
                 }
                 EnsureEvaluatedHelper(mod, loader);
                 return mod;
             }
-        });
+      <  });
     },
     //>
     //> The `length` property of the `import` method is **1**.
@@ -1814,8 +1815,9 @@ def(Loader.prototype, {
             // given module.  Start the Load process at the `translate` hook.
             let load = CreateLoad(name);
             let linkSet = CreateLinkSet(loader, load);
-            $MapSet(loaderData.loads, fullName, load);
-            $PromiseThen(linkSet.done,
+            callFunction(std_Map_set, loaderData.loads, fullName, load);
+            callFunction(std_Promise_then,
+                         linkSet.done,
                          function (_) { resolve(undefined); },
                          reject);
             let sourcePromise = std_Promise_fulfill(source);
@@ -1840,7 +1842,8 @@ def(Loader.prototype, {
 
             let load = StartModuleLoad(loader, name, undefined, address);
             let linkSet = CreateLinkSet(loader, load);
-            $PromiseThen(linkSet.done,
+            callFunction(std_Promise_then,
+                         linkSet.done,
                          function (_) { resolve(undefined); },
                          reject);
         });
@@ -1893,7 +1896,7 @@ def(Loader.prototype, {
         //>         3.  ReturnIfAbrupt(result).
         //>         4.  Return p.[[value]].
         //> 6.  Return undefined.
-        let m = $MapGet(loaderData.modules, name);
+        let m = callFunction(std_Map_get, loaderData.modules, name);
         if (m !== undefined)
             EnsureEvaluatedHelper(m, this);
         return m;
@@ -1921,7 +1924,7 @@ def(Loader.prototype, {
         //>     element of loader.[[Modules]],
         //>     1.  If p.[[key]] is equal to name, then return true.
         //> 6.  Return false.
-        return $MapHas(loaderData.modules, name);
+        return callFunction(std_Map_has, loaderData.modules, name);
     },
     //>
 
@@ -1945,7 +1948,7 @@ def(Loader.prototype, {
         //> 5.  If module does not have all the internal data properties of a
         //>     Module instance, throw a TypeError exception.
         if (!$IsModule(module))
-            throw $TypeError("Module object required");
+            throw std_TypeError("Module object required");
 
         //> 6.  Repeat for each Record {[[name]], [[value]]} p that is an
         //>     element of loader.[[Modules]],
@@ -1955,7 +1958,7 @@ def(Loader.prototype, {
         //> 7.  Let p be the Record {[[key]]: name, [[value]]: module}.
         //> 8.  Append p as the last record of loader.[[Modules]].
         //> 9.  Return loader.
-        $MapSet(loaderData.modules, name, module);
+        callFunction(std_Map_set, loaderData.modules, name, module);
         return this;
     },
     //>
@@ -2012,7 +2015,7 @@ def(Loader.prototype, {
         // `!loaderData.modules.has("A")`, even if "A" is currently loading (an
         // entry exists in `loaderData.loads`).  This is analogous to `.set()`.
         //
-        return $MapDelete(loaderData.modules, name);
+        return callFunction(std_Map_delete, loaderData.modules, name);
     },
     //>
     //
@@ -2053,7 +2056,7 @@ def(Loader.prototype, {
         //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
         //> 3.  Return the result of CreateLoaderIterator(loader, `"key+value"`).
-        return new LoaderIterator($MapEntriesIterator(loaderData.modules));
+        return new LoaderIterator(callFunction(std_Map_entries, loaderData.modules));
     },
     //>
 
@@ -2067,7 +2070,7 @@ def(Loader.prototype, {
         //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
         //> 3.  Return the result of CreateLoaderIterator(loader, `"key"`).
-        return new LoaderIterator($MapKeysIterator(loaderData.modules));
+        return new LoaderIterator(callFunction(std_Map_keys, loaderData.modules));
     },
     //>
 
@@ -2081,7 +2084,7 @@ def(Loader.prototype, {
         //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
         //> 3.  Return the result of CreateLoaderIterator(loader, `"value"`).
-        return new LoaderIterator($MapValuesIterator(loaderData.modules));
+        return new LoaderIterator(callFunction(std_Map_values, loaderData.modules));
     },
 
 
@@ -2185,7 +2188,7 @@ def(Loader.prototype, {
     //>
     fetch: function fetch(load) {
         //> 1. Throw a TypeError exception.
-        throw $TypeError("Loader.prototype.fetch was called");
+        throw std_TypeError("Loader.prototype.fetch was called");
     },
     //>
 
@@ -2365,7 +2368,7 @@ def(LoaderIterator.prototype, {
     // MapIterator.prototype.next.
     //
     next: function next() {
-        return $MapIteratorNext($GetLoaderIteratorPrivate(this));
+        return callFunction(std_Map_iterator_next, $GetLoaderIteratorPrivate(this));
     },
 
     //> ##### *LoaderIteratorPrototype* [ @@iterator ] ()
