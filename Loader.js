@@ -241,8 +241,8 @@ var $CreateModule = () => $ObjectCreate(null);
 //
 // The following primitives deal with realms.
 //
-// * `$CreateRealm()` creates a new realm for evaluating module and script code.
-//   This can be polyfilled in the browser using techniques like
+// * `$CreateRealm(realmObject)` creates a new realm for evaluating module and
+//   script code. This can be polyfilled in the browser using techniques like
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
 //
@@ -1753,8 +1753,6 @@ let realmInternalDataMap = $WeakMapNew();
 //>
 function Realm(options, initializer) {
     //> 1.  Let *R* be the this value.
-    //> 1.  If Type(*R*) is not Object, throw a TypeError exception.
-
     //
     // Bug: This calls Realm[@@create] directly.  The spec will instead make
     // `new Realm(options)` equivalent to
@@ -1763,6 +1761,7 @@ function Realm(options, initializer) {
     // We'll change that when symbols and @@create are implemented.
     var R = callFunction(Realm["@@create"], Realm);
 
+    //> 1.  If Type(*R*) is not Object, throw a TypeError exception.
     //> 1.  If *R* does not have all of the internal properties of a Realm
     //>     object, throw a TypeError exception.
     var realmData = $WeakMapGet(realmInternalDataMap, R);
@@ -1779,8 +1778,8 @@ function Realm(options, initializer) {
     if (options !== undefined && !IsObject(options))
         throw $TypeError("options must be an object or undefined");
 
-    //> 1.  Let *realm* be the result of CreateRealm().
-    let realm = $CreateRealm();
+    //> 1.  Let *realm* be the result of CreateRealm(R).
+    let realm = $CreateRealm(R);
 
     //> 1.  If options is undefined, then let options be a new Object.
     //> 1.  Else, if Type(*options*) is not Object, throw a TypeError
@@ -1956,23 +1955,6 @@ var Realm_create = function create() {
 
 def(Realm, {"@@create": Realm_create});
 
-
-//> #### CreateRealmObject ( )
-//>
-//> When the abstract operation CreateRealmObject is called, the following
-//> steps are taken:
-//>
-function CreateRealmObject() {
-    //> 1.  Let *R* be a new Realm object created by calling %RealmCreate%.
-    var R = callFunction(Realm_create, Realm);
-    //> 1.  Call the %Realm% constructor function with *R* as the **this**
-    //>     value.
-    callFunction(Realm, R);
-    //> 1.  Return *R*.
-    return R;
-}
-
-
 // Get the internal data for a given `Realm` object.
 function GetRealmInternalData(value) {
     // Realm methods could be placed on wrapper prototypes like String.prototype.
@@ -2084,12 +2066,15 @@ function Loader(options={}) {
     //>     of options with arguments `"realm"` and options.
     //> 7.  ReturnIfAbrupt(realm).
     var realm = options.realm;
-    //> 8.  If realm is undefined, let realm be the result of CreateRealmObject().
-    if (realm === undefined) {
-        realm = CreateRealmObject();
+    //> 8.  If realm is undefined, let realm be Realm.[[realmObject]] where
+    //>     Realm of the running execution context.
+    //
+    //  In the implementation we represent the implicit realm as undefined,
+    //  so we do nothing.
+    //
     //> 9.  Else if Type(realm) is not Object or realm does not have all the
     //>     internal properties of a Realm object, throw a TypeError exception.
-    } else if (!IsObject(realm) || !$WeakMapHas(realmInternalDataMap, realm)) {
+    if (realm !== undefined && (!IsObject(realm) || !$WeakMapHas(realmInternalDataMap, realm))) {
         throw $TypeError("options.realm is not a Realm object");
     }
 
