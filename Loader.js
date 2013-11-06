@@ -685,7 +685,7 @@ function FinishLoad(load, loader, body) {
     load.dependencies = dependencies;
 
     // For determinism, finish linkable LinkSets in timestamp order.
-    // (NOTE: If it turns out that Futures fire in deterministic
+    // (NOTE: If it turns out that Promises fire in a nondeterministic
     // order, then there's no point sorting this array here.)
     callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < sets.length; i++)
@@ -718,7 +718,7 @@ function LoadFailed(load, exc) {
     load.exception = exc;
 
     // For determinism, flunk the attached LinkSets in timestamp order.
-    // (NOTE: If it turns out that Futures fire in deterministic
+    // (NOTE: If it turns out that Promises fire in a nondeterministic
     // order, then there's no point sorting this array here.)
     let sets = SetToArray(load.linkSets);
     callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
