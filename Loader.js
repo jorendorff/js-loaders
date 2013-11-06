@@ -2053,7 +2053,6 @@ let loaderInternalDataMap = $WeakMapNew();
 //>
 function Loader(options={}) {
     //> 1.  Let loader be the this value.
-    //> 2.  If Type(loader) is not Object, throw a TypeError exception.
     //
     // Bug: This calls Loader[@@create] directly.  The spec will instead make
     // `new Loader(options)` equivalent to
@@ -2062,6 +2061,7 @@ function Loader(options={}) {
     // We'll change that when symbols and @@create are implemented.
     var loader = callFunction(Loader["@@create"], Loader);
 
+    //> 2.  If Type(loader) is not Object, throw a TypeError exception.
     //> 3.  If loader does not have all of the internal properties of a Loader
     //>     Instance, throw a TypeError exception.
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
