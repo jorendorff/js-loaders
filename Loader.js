@@ -34,16 +34,6 @@ function $Assert(condition) {
     assert(condition);
 }
 
-// * `$QueueTask(fn)` schedules a callback `fn` to be called in a later
-//   event loop turn.  Much like `setTimeout(fn, 0)`.  The HTML spec calls
-//   this "[queueing a
-//   task](http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#queue-a-task)".
-//   Here, it&rsquo;s mainly used to ensure that user callbacks are called
-//   from an empty stack.
-function $QueueTask(fn) {
-    setTimeout(fn, 0);
-}
-
 // * `$ToPromise(thing)` coerces `thing` to a Promise. If `thing` is *not*
 //   thenable, this is like Promise.fulfill(thing). Otherwise, this returns a
 //   real Promise wrapping `thing`. The real Promise guarantees that it won't
@@ -337,16 +327,6 @@ function IsObject(v) {
            typeof v !== "number" &&
            typeof v !== "string" &&
            typeof v !== "symbol";
-}
-
-// Schedule fn to be called with the given arguments during the next turn of
-// the event loop.
-//
-// (This is used to schedule calls to success and failure callbacks, since
-// the spec requires that those always be called from an empty stack.)
-//
-function AsyncCall(fn, ...args) {
-    $QueueTask(() => fn(...args));
 }
 
 
