@@ -2458,7 +2458,7 @@ def(Loader.prototype, {
 
         //> 3.  Let name be ToString(name).
         //> 4.  ReturnIfAbrupt(name).
-        name = $ToString(name);
+        name = ToString(name);
 
         //> 5.  Repeat for each Record {[[key]], [[value]]} p that is an
         //>     element of loader.[[Modules]],
@@ -2469,7 +2469,7 @@ def(Loader.prototype, {
         //>         3.  ReturnIfAbrupt(result).
         //>         4.  Return p.[[value]].
         //> 6.  Return undefined.
-        let m = $MapGet(loaderData.modules, ToString(name));
+        let m = $MapGet(loaderData.modules, name);
         if (m !== undefined)
             EnsureEvaluatedHelper(m, this);
         return m;
@@ -2491,13 +2491,13 @@ def(Loader.prototype, {
 
         //> 3.  Let name be ToString(name).
         //> 4.  ReturnIfAbrupt(name).
-        name = $ToString(name);
+        name = ToString(name);
 
         //> 5.  Repeat for each Record {[[name]], [[value]]} p that is an
         //>     element of loader.[[Modules]],
         //>     1.  If p.[[key]] is equal to name, then return true.
         //> 6.  Return false.
-        return $MapHas(loaderData.modules, ToString(name));
+        return $MapHas(loaderData.modules, name);
     },
     //>
 
