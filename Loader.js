@@ -332,6 +332,8 @@ var $WeakMapSet = unmethod(WeakMap.prototype.set);
 // * `$PromiseThen(p, fulfill, reject)` ~= p.then(fulfill, reject)
 var std_Promise = Promise;
 var $PromiseThen = unmethod(Promise.prototype.then);
+// * `$PromiseCatch(p, reject)` ~= p.catch(reject)
+var $PromiseCatch = unmethod(Promise.prototype.catch);
 // * `$TypeError(msg)` ~= new TypeError(msg)
 var $TypeError = TypeError;
 // * `$SyntaxError(msg)` ~= new SyntaxError(msg)
@@ -494,7 +496,7 @@ function CallTranslate(loader, load, p) {
     p = $PromiseThen(p, function (result) {
         InstantiateSucceeded(loader, load, result);
     });
-    $PromiseThen(p, function (_) {}, function (exc) {
+    $PromiseCatch(p, function (exc) {
         LoadFailed(load, exc);
     });
     return load;
@@ -2305,7 +2307,7 @@ def(Loader.prototype, {
                                      EnsureEvaluatedHelper(mod, loader);
                                      resolve(mod);
                                  });
-            $PromiseThen(p, function (_) {}, reject);
+            $PromiseCatch(p, reject);
 
             var sourcePromise = std_Promise_fulfill(source);
             CallTranslate(loader, load, sourcePromise);
@@ -2318,53 +2320,46 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.import ( moduleName, options )
+    //> #### Loader.prototype.import ( name, options )
     //>
 
     // **`import`** - Asynchronously load, link, and evaluate a module and any
     // dependencies it imports.  Return a promise for the `Module` object.
     //
-    import: function import_(moduleName,
-                             options = undefined)
-    {
+    import: function import_(name, options = undefined) {
         var loader = this;
+        let loaderData = GetLoaderInternalData(this);
 
-        return new std_Promise(function (resolver) {
-            // Unpack `options`.  (Implementation note: if a Promise's init
-            // function throws, the new Promise is automatically
-            // rejected. UnpackOption and StartModuleLoad can throw.)
-
-            let name = UnpackOption(options, "module");
-            let address = UnpackOption(options, "address");
+        return new std_Promise(function (resolve, reject) {
+            let address = undefined;
+            if (options !== undefined) {
+                options = ToObject(options);
+                address = options.address;
+            }
 
             // `StartModuleLoad` starts us along the pipeline.
-            let load = StartModuleLoad(loader, moduleName, name, address);
+            let load = StartModuleLoad(loader, name, undefined, address);
 
             if (load.status === "linked") {
                 // We already had this module in the registry.
-                resolver.resolve(load.module);
+                resolve(load.module);
             } else {
                 // The module is now loading.  When it loads, it may have more
                 // imports, requiring further loads, so put it in a LinkSet.
-                $PromiseThen(CreateLinkSet(loader, load).done,
-                             success,
-                             exc => resolver.reject(exc));
+                var p = $PromiseThen(CreateLinkSet(loader, load).done, success);
+                $PromiseCatch(p, reject);
             }
 
             function success() {
                 $Assert(load.status === "linked");
-                let m = load.module;
-                try {
-                    if (m === undefined) {
-                        throw $TypeError("import(): module \"" + load.fullName +
-                                         "\" was deleted from the loader");
-                    }
-                    EnsureEvaluatedHelper(m, loader);
-                } catch (exc) {
-                    resolver.reject(exc);
-                    return;
+                let mod = load.module;
+                if (mod === undefined) {
+                    // TODO: can this happen?
+                    throw $TypeError("import(): module \"" + load.fullName +
+                                     "\" was deleted from the loader");
                 }
-                resolver.resolve(m);
+                EnsureEvaluatedHelper(mod, loader);
+                return mod;
             }
         });
     },
