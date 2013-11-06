@@ -173,7 +173,10 @@ function Assert(condition) {
 
 // * `$CreateModule()` returns a new `Module` object. The object is extensible.
 //   It must not be exposed to scripts until it has been populated and frozen.
-var $CreateModule = () => std_Object_create(null);
+//
+function $CreateModule() {
+    return std_Object_create(null);
+}
 
 // * `$IsModule(v)` returns true if `v` is a `Module` object.
 //
