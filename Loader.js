@@ -2073,8 +2073,6 @@ def(Loader.prototype, {
         });
     },
     //>
-    //> The `length` property of the `module` method is **2**.
-    //>
 
 
     //> #### Loader.prototype.import ( moduleName, options )
