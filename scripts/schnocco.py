@@ -133,6 +133,12 @@ def format(sections, config):
         docs_segments.append(docs_text)
 
         code_html = pygments.highlight(code_text, lexer, formatter)
+
+        # Amazingly, pygments strips trailing blank lines. Rather than
+        # painstakingly correcting for this insult, just tack on an extra
+        # newline.
+        code_html += "\n"
+
         codespan_html = '<span class="src"><code>' + code_html + '</code></span>'
         code_segments.append(codespan_html)
 
