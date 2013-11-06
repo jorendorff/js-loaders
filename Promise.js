@@ -1,415 +1,599 @@
-// Copyright (C) 2013:
-//    Alex Russell <slightlyoff@chromium.org>
-//    Yehuda Katz
-//
-// Use of this source code is governed by
-//    http://www.apache.org/licenses/LICENSE-2.0
-
-// FIXME(slightlyoff):
-//    - Document "npm test"
-//    - Change global name from "Promise" to something less conflicty
-(function(global, browserGlobal, underTest) {
 "use strict";
 
-// FIXME(slighltyoff):
-//  * aggregates + tests
-//  * check on fast-forwarding
+// <div "lines added by jorendorff to make this stuff work in the SM shell">
+var window = this,
+    require = x => window[x],
+    assert = function (c) { assertEq(c, true); },
+    exports = {},
+    process = {
+        _queue: [],
+        nextTick: function (cb) { this._queue.push(cb); },
+        pumpEvents: function () {
+            while (this._queue.length > 0) {
+                var cb = this._queue.shift();
+                cb();
+            }
+        }
+    };
+// </div>
 
-underTest = !!underTest;
+let assert = require("assert");
 
-//
-// Async Utilities
-//
+// NOTE: This is not meant to be used by real code; it's used as a sanity check for the spec. If you were writing a
+// polyfill there are much simpler and more performant ways. This implementation's focus is on 100% correctness in all
+// subtle details.
 
-// Borrowed from RSVP.js
-var async;
+// ## Abstract Operations for Promise Objects
 
-var MutationObserver = browserGlobal.MutationObserver ||
-                       browserGlobal.WebKitMutationObserver;
-var Promise;
-
-if (typeof process !== 'undefined' &&
-  {}.toString.call(process) === '[object process]') {
-  async = function(callback, binding) {
-    process.nextTick(function() {
-      callback.call(binding);
-    });
-  };
-} else if (MutationObserver) {
-  var queue = [];
-
-  var observer = new MutationObserver(function() {
-    var toProcess = queue.slice();
-    queue = [];
-    toProcess.forEach(function(tuple) {
-      tuple[0].call(tuple[1]);
-    });
-  });
-
-  var element = document.createElement('div');
-  observer.observe(element, { attributes: true });
-
-  // Chrome Memory Leak: https://bugs.webkit.org/show_bug.cgi?id=93661
-  window.addEventListener('unload', function(){
-    observer.disconnect();
-    observer = null;
-  });
-
-  async = function(callback, binding) {
-    queue.push([callback, binding]);
-    element.setAttribute('drainQueue', 'drainQueue');
-  };
-} else {
-  async = function(callback, binding) {
-    setTimeout(function() {
-      callback.call(binding);
-    }, 1);
-  };
+function CastToPromise(C, x) {
+    if (IsPromise(x) === true) {
+        let constructor = get_slot(x, "[[PromiseConstructor]]");
+        if (SameValue(constructor, C) === true) {
+            return x;
+        }
+    }
+    let deferred = GetDeferred(C);
+    Call(deferred["[[Resolve]]"], x);
+    return deferred["[[Promise]]"];
 }
 
-//
-// Object Model Utilities
-//
-
-// defineProperties utilities
-var _readOnlyProperty = function(v) {
-    return {
-      enumerable: true,
-      configurable: false,
-      get: v
-    };
-};
-
-var _method = function(v, e, c, w) {
-    return {
-      enumerable:   !!(e || 0),
-      configurable: !!(c || 1),
-      writable:     !!(w || 1),
-      value:           v || function() {}
-    };
-};
-
-var _pseudoPrivate = function(v) { return _method(v, 0, 1, 0); };
-var _public = function(v) { return _method(v, 1); };
-
-//
-// Promises Utilities
-//
-
-var isThenable = function(any) {
-  try {
-    var f = any.then;
-    if (typeof f == "function") {
-      return true;
+function GetDeferred(C) {
+    if (IsConstructor(C) === false) {
+        throw new TypeError("Tried to construct a promise from a non-constructor.");
     }
-  } catch (e) { /*squelch*/ }
-  return false;
-};
 
-var AlreadyResolved = function(name) {
-  Error.call(this, name);
-};
-AlreadyResolved.prototype = Object.create(Error.prototype);
+    let deferred = { "[[Promise]]": undefined, "[[Resolve]]": undefined, "[[Reject]]": undefined };
 
-var Backlog = function() {
-  var bl = [];
-  bl.pump = function(value) {
-    async(function() {
-      var l = bl.length;
-      var x = 0;
-      while(x < l) {
-        x++;
-        bl.shift()(value);
-      }
-    });
-  };
-  return bl;
-};
+    let resolver = make_DeferredConstructionFunction();
 
-//
-// Resolver Constuctor
-//
+    set_slot(resolver, "[[Deferred]]", deferred);
 
-var Resolver = function(future,
-                        fulfillCallbacks,
-                        rejectCallbacks,
-                        setValue,
-                        setError,
-                        setState) {
-  var isResolved = false;
+    let promise = ES6New(C, resolver);
 
-  var resolver = this;
-  var fulfill = function(value) {
-    // console.log("queueing fulfill with:", value);
-    async(function() {
-      setState("fulfilled");
-      setValue(value);
-      // console.log("fulfilling with:", value);
-      fulfillCallbacks.pump(value);
-    });
-  };
-  var reject = function(reason) {
-    // console.log("queuing reject with:", reason);
-    async(function() {
-      setState("rejected");
-      setError(reason);
-      // console.log("rejecting with:", reason);
-      rejectCallbacks.pump(reason);
-    });
-  };
-  var resolve = function(value) {
-    if (isThenable(value)) {
-      value.then(resolve, reject);
-      return;
+    if (IsCallable(deferred["[[Resolve]]"]) === false) {
+        throw new TypeError("Tried to construct a promise from a constructor which does not pass a callable resolve " +
+                            "argument.");
     }
-    fulfill(value);
-  };
-  var ifNotResolved = function(func, name) {
-    return function(value) {
-      if (!isResolved) {
-        isResolved = true;
-        func(value);
-      } else {
-        if (typeof console != "undefined") {
-          console.error("Cannot resolve a Promise multiple times.");
-        }
-      }
-    };
-  };
 
-  // Indirectly resolves the Promise, chaining any passed Promise's resolution
-  this.resolve = ifNotResolved(resolve, "resolve");
+    if (IsCallable(deferred["[[Reject]]"]) === false) {
+        throw new TypeError("Tried to construct a promise from a constructor which does not pass a callable reject " +
+                            "argument.");
+    }
 
-  // Directly fulfills the future, no matter what value's type is
-  this.fulfill = ifNotResolved(fulfill, "fulfill");
+    deferred["[[Promise]]"] = promise;
 
-  // Rejects the future
-  this.reject = ifNotResolved(reject, "reject");
+    return deferred;
+}
 
-  this.cancel  = function() { resolver.reject(new Error("Cancel")); };
-  this.timeout = function() { resolver.reject(new Error("Timeout")); };
+function IsPromise(x) {
+    if (!TypeIsObject(x)) {
+        return false;
+    }
 
-  if (underTest) {
-    Object.defineProperties(this, {
-      _isResolved: _readOnlyProperty(function() { return isResolved; }),
-    });
-  }
+    if (!has_slot(x, "[[PromiseStatus]]")) {
+        return false;
+    }
 
-  setState("pending");
-};
+    if (get_slot(x, "[[PromiseStatus]]") === undefined) {
+        return false;
+    }
 
-//
-// Promise Constuctor
-//
+    return true;
+}
 
-var Promise = function(init) {
-  var fulfillCallbacks = new Backlog();
-  var rejectCallbacks = new Backlog();
-  var value;
-  var error;
-  var state = "pending";
+function MakePromiseReactionFunction(deferred, handler) {
+    let F = make_PromiseReactionFunction();
+    set_slot(F, "[[Deferred]]", deferred);
+    set_slot(F, "[[Handler]]", handler);
+    return F;
+}
 
-  if (underTest) {
-    Object.defineProperties(this, {
-      _value: _readOnlyProperty(function() { return value; }),
-      _error: _readOnlyProperty(function() { return error; }),
-      _state: _readOnlyProperty(function() { return state; }),
-    });
-  }
+function PromiseReject(promise, reason) {
+    if (get_slot(promise, "[[PromiseStatus]]") !== "pending") {
+        return;
+    }
 
-  Object.defineProperties(this, {
-    _addAcceptCallback: _pseudoPrivate(
-      function(cb) {
-        // console.log("adding fulfill callback:", cb);
-        fulfillCallbacks.push(cb);
-        if (state == "fulfilled") {
-          fulfillCallbacks.pump(value);
-        }
-      }
-    ),
-    _addRejectCallback: _pseudoPrivate(
-      function(cb) {
-        // console.log("adding reject callback:", cb);
-        rejectCallbacks.push(cb);
-        if (state == "rejected") {
-          rejectCallbacks.pump(error);
-        }
-      }
-    ),
-  });
-  var r = new Resolver(this,
-                       fulfillCallbacks, rejectCallbacks,
-                       function(v) { value = v; },
-                       function(e) { error = e; },
-                       function(s) { state = s; })
-  try {
-    if (init) { init(r); }
-  } catch(e) {
-    r.reject(e);
-  }
-};
+    let reactions = get_slot(promise, "[[RejectReactions]]");
+    set_slot(promise, "[[Result]]", reason);
+    set_slot(promise, "[[ResolveReactions]]", undefined);
+    set_slot(promise, "[[RejectReactions]]", undefined);
+    set_slot(promise, "[[PromiseStatus]]", "has-rejection");
+    TriggerPromiseReactions(reactions, reason);
+}
 
-//
-// Consructor
-//
+function PromiseResolve(promise, resolution) {
+    if (get_slot(promise, "[[PromiseStatus]]") !== "pending") {
+        return;
+    }
 
-var isCallback = function(any) {
-  return (typeof any == "function");
-};
+    let reactions = get_slot(promise, "[[ResolveReactions]]");
+    set_slot(promise, "[[Result]]", resolution);
+    set_slot(promise, "[[ResolveReactions]]", undefined);
+    set_slot(promise, "[[RejectReactions]]", undefined);
+    set_slot(promise, "[[PromiseStatus]]", "has-resolution");
+    TriggerPromiseReactions(reactions, resolution);
+}
 
-// Used in .then()
-var wrap = function(callback, resolver, disposition) {
-  if (!isCallback(callback)) {
-    // If we don't get a callback, we want to forward whatever resolution we get
-    return resolver[disposition].bind(resolver);
-  }
+function ThenableToPromise(C, x) {
+    if (IsPromise(x)) {
+        return x;
+    }
 
-  return function() {
+    if (!TypeIsObject(x)) {
+        return x;
+    }
+
+    let deferred = GetDeferred(C);
+
+    let then;
     try {
-      var r = callback.apply(null, arguments);
-      resolver.resolve(r);
-    } catch(e) {
-      // Exceptions reject the resolver
-      resolver.reject(e);
+        then = Get(x, "then");
+    } catch (thenE) {
+        return RejectIfAbrupt(thenE, deferred);
     }
-  };
-};
 
-var addCallbacks = function(onfulfill, onreject, scope) {
-  if (isCallback(onfulfill)) {
-    scope._addAcceptCallback(onfulfill);
-  }
-  if (isCallback(onreject)) {
-    scope._addRejectCallback(onreject);
-  }
-  return scope;
-};
+    if (IsCallable(then) === false) {
+        return x;
+    }
 
-//
-// Prototype properties
-//
+    try {
+        then.call(x, deferred["[[Resolve]]"], deferred["[[Reject]]"]);
+    } catch (thenCallResultE) {
+        return RejectIfAbrupt(thenCallResultE, deferred);
+    }
+    return deferred["[[Promise]]"];
+}
 
-Promise.prototype = Object.create(null, {
-  "then": _public(function(onfulfill, onreject) {
-    // The logic here is:
-    //    We return a new Promise whose resolution merges with the return from
-    //    onfulfill() or onerror(). If onfulfill() returns a Promise, we forward
-    //    the resolution of that future to the resolution of the returned
-    //    Promise.
-    var f = this;
-    return new Promise(function(r) {
-      addCallbacks(wrap(onfulfill, r, "resolve"),
-                   wrap(onreject, r, "reject"), f);
+function TriggerPromiseReactions(reactions, argument) {
+    reactions.forEach(function (reaction) {
+        QueueAMicrotask(function () {
+            Call(reaction, argument);
+        })
     });
-  }),
-  "catch": _public(function(onreject) {
-    var f = this;
-    return new Promise(function(r) {
-      addCallbacks(null, wrap(onreject, r, "reject"), f);
-    });
-  }),
+}
+
+// ## Built-in Functions for Promise Objects
+
+function make_DeferredConstructionFunction() {
+    let F = function (resolve, reject) {
+        let deferred = get_slot(F, "[[Deferred]]");
+
+        deferred["[[Resolve]]"] = resolve;
+        deferred["[[Reject]]"] = reject;
+    };
+
+    make_slots(F, ["[[Deferred]]"]);
+
+    return F;
+}
+
+function make_PromiseDotAllCountdownFunction() {
+    let F = function (x) {
+        let index = get_slot(F, "[[Index]]");
+        let values = get_slot(F, "[[Values]]");
+        let deferred = get_slot(F, "[[Deferred]]");
+        let countdownHolder = get_slot(F, "[[CountdownHolder]]");
+
+        try {
+            Object.defineProperty(values, index, {
+                value: x,
+                writable: true,
+                enumerable: true,
+                configurable: true
+            });
+        } catch (resultE) {
+            return RejectIfAbrupt(resultE, deferred);
+        }
+
+        countdownHolder["[[Countdown]]"] = countdownHolder["[[Countdown]]"] - 1;
+
+        if (countdownHolder["[[Countdown]]"] === 0) {
+            Call(deferred["[[Resolve]]"], values);
+        }
+    };
+
+    make_slots(F, ["[[Index]]", "[[Values]]", "[[Deferred]]", "[[CountdownHolder]]"]);
+
+    return F;
+}
+
+function make_PromiseReactionFunction() {
+    let F = function (x) {
+        let deferred = get_slot(F, "[[Deferred]]");
+        let handler = get_slot(F, "[[Handler]]");
+
+        let handlerResult;
+        try {
+            handlerResult = handler.call(undefined, x);
+        } catch (handlerResultE) {
+            Call(deferred["[[Reject]]"], handlerResultE);
+            return;
+        }
+
+        if (!TypeIsObject(handlerResult)) {
+            Call(deferred["[[Resolve]]"], handlerResult);
+            return;
+        }
+
+        if (SameValue(handlerResult, deferred["[[Promise]]"]) === true) {
+            let selfResolutionError = new TypeError("Tried to resolve a promise with itself!");
+            Call(deferred["[[Reject]]"], selfResolutionError);
+        }
+
+        let then;
+        try {
+            then = Get(handlerResult, "then");
+        } catch (thenE) {
+            Call(deferred["[[Reject]]"], thenE);
+            return;
+        }
+
+        if (IsCallable(then) === false) {
+            Call(deferred["[[Resolve]]"], handlerResult);
+            return;
+        }
+
+        try {
+            then.call(handlerResult, deferred["[[Resolve]]"], deferred["[[Reject]]"]);
+        } catch (thenCallResultE) {
+            Call(deferred["[[Reject]]"], thenCallResultE);
+        }
+    };
+
+    make_slots(F, ["[[Deferred]]", "[[Handler]]"]);
+
+    return F;
+}
+
+function make_PromiseResolutionHandlerFunction() {
+    let F = function (x) {
+        let C = get_slot(F, "[[PromiseConstructor]]");
+        let fulfillmentHandler = get_slot(F, "[[FulfillmentHandler]]");
+        let rejectionHandler = get_slot(F, "[[RejectionHandler]]");
+
+        let coerced = ThenableToPromise(C, x);
+        if (IsPromise(coerced)) {
+            return coerced.then(fulfillmentHandler, rejectionHandler);
+        }
+
+        return fulfillmentHandler(x);
+    };
+
+    make_slots(F, ["[[PromiseConstructor]]", "[[FulfillmentHandler]]", "[[RejectionHandler]]"]);
+
+    return F;
+}
+
+function make_RejectPromiseFunction() {
+    let F = function (reason) {
+        let promise = get_slot(F, "[[Promise]]");
+
+        return PromiseReject(promise, reason);
+    };
+
+    make_slots(F, ["[[Promise]]"]);
+
+    return F;
+}
+
+function make_ResolvePromiseFunction() {
+    let F = function (resolution) {
+        let promise = get_slot(F, "[[Promise]]");
+
+        return PromiseResolve(promise, resolution);
+    };
+
+    make_slots(F, ["[[Promise]]"]);
+
+    return F;
+}
+
+// ## The Promise Constructor
+
+// ### Promise
+
+let PercentPromisePercent = Promise;
+
+function Promise(resolver) {
+    let promise = this;
+
+    // <div "code added by jorendorff to cope with lack of @@create support in spidermonkey">
+    if (!has_slot(promise, "[[PromiseStatus]]") &&
+        Object.keys(promise).length == 0 &&
+        Object.getPrototypeOf(promise) === Promise.prototype)
+    {
+        promise = Promise["@@create"]();
+    }
+    // </div>
+
+    if (!TypeIsObject(promise)) {
+        throw new TypeError("Promise constructor called on non-object");
+    }
+
+    if (!has_slot(promise, "[[PromiseStatus]]")) {
+        throw new TypeError("Promise constructor called on an object not initialized as a promise.");
+    }
+
+    if (get_slot(promise, "[[PromiseStatus]]") !== undefined) {
+        throw new TypeError("Promise constructor called on a promise that has already been constructed.");
+    }
+
+    if (!IsCallable(resolver)) {
+        throw new TypeError("Promise constructor called with non-callable resolver function");
+    }
+
+    set_slot(promise, "[[PromiseStatus]]", "pending");
+    set_slot(promise, "[[ResolveReactions]]", []);
+    set_slot(promise, "[[RejectReactions]]", []);
+
+    let resolve = make_ResolvePromiseFunction();
+    set_slot(resolve, "[[Promise]]", promise);
+
+    let reject = make_RejectPromiseFunction();
+    set_slot(reject, "[[Promise]]", promise);
+
+    try {
+        resolver.call(undefined, resolve, reject);
+    } catch (e) {
+        PromiseReject(promise, e);
+    }
+
+    return promise;
+}
+
+// ## Properties of the Promise constructor
+
+Object.defineProperty(Promise, "@@create", {
+    value: function () {
+        let F = this;
+
+        // This is basically OrdinaryCreateFromConstructor(...).
+        let obj = Object.create(Promise.prototype);
+
+        make_slots(obj, ["[[PromiseStatus]]", "[[PromiseConstructor]]", "[[Result]]",  "[[ResolveReactions]]",
+                         "[[RejectReactions]]"]);
+
+        set_slot(obj, "[[PromiseConstructor]]", F);
+
+        return obj;
+    },
+    writable: false,
+    enumerable: false,
+    configurable: true
 });
 
-//
-// Statics
-//
+define_method(Promise, "all", function (iterable) {
+    let C = this;
+    let deferred = GetDeferred(C);
 
-Promise.isThenable = isThenable;
+    let values = ArrayCreate(0);
+    let countdownHolder = { "[[Countdown]]": 0 };
+    let index = 0;
 
-var toPromiseList = function(list) {
-  return Array.prototype.slice.call(list).map(Promise.resolve);
-};
+    for (let nextValue of iterable) {
+        let nextPromise = C.cast(nextValue);
 
-Promise.any = function(/*...futuresOrValues*/) {
-  var futures = toPromiseList(arguments);
-  return new Promise(function(r) {
-    if (!futures.length) {
-      r.reject("No futures passed to Promise.any()");
-    } else {
-      var resolved = false;
-      var firstSuccess = function(value) {
-        if (resolved) { return; }
-        resolved = true;
-        r.resolve(value);
-      };
-      var firstFailure = function(reason) {
-        if (resolved) { return; }
-        resolved = true;
-        r.reject(reason);
-      };
-      futures.forEach(function(f, idx) {
-        f.then(firstSuccess, firstFailure);
-      });
+        let countdownFunction = make_PromiseDotAllCountdownFunction();
+        set_slot(countdownFunction, "[[Index]]", index);
+        set_slot(countdownFunction, "[[Values]]", values);
+        set_slot(countdownFunction, "[[Deferred]]", deferred);
+        set_slot(countdownFunction, "[[CountdownHolder]]", countdownHolder);
+
+        nextPromise.then(countdownFunction, deferred["[[Reject]]"]);
+
+        index = index + 1;
+        countdownHolder["[[Countdown]]"] = countdownHolder["[[Countdown]]"] + 1;
     }
-  });
-};
 
-Promise.every = function(/*...futuresOrValues*/) {
-  var futures = toPromiseList(arguments);
-  return new Promise(function(r) {
-    if (!futures.length) {
-      r.reject("No futures passed to Promise.every()");
-    } else {
-      var values = new Array(futures.length);
-      var count = 0;
-      var accumulate = function(idx, v) {
-        count++;
-        values[idx] = v;
-        if (count == futures.length) {
-          r.resolve(values);
-        }
-      };
-      futures.forEach(function(f, idx) {
-        f.then(accumulate.bind(null, idx), r.reject);
-      });
+    if (index === 0) {
+        Call(deferred["[[Resolve]]"], values);
     }
-  });
-};
 
-Promise.some = function() {
-  var futures = toPromiseList(arguments);
-  return new Promise(function(r) {
-    if (!futures.length) {
-      r.reject("No futures passed to Promise.some()");
-    } else {
-      var count = 0;
-      var accumulateFailures = function(e) {
-        count++;
-        if (count == futures.length) {
-          r.reject();
-        }
-      };
-      futures.forEach(function(f, idx) {
-        f.then(r.resolve, accumulateFailures);
-      });
+    return deferred["[[Promise]]"];
+});
+
+define_method(Promise, "resolve", function (x) {
+    let C = this;
+    let deferred = GetDeferred(C);
+    Call(deferred["[[Resolve]]"], x);
+    return deferred["[[Promise]]"];
+});
+
+define_method(Promise, "reject", function (r) {
+    let C = this;
+    let deferred = GetDeferred(C);
+    Call(deferred["[[Reject]]"], r);
+    return deferred["[[Promise]]"];
+});
+
+define_method(Promise, "cast", function (x) {
+    let C = this;
+    return CastToPromise(C, x);
+});
+
+define_method(Promise, "race", function (iterable) {
+    let C = this;
+    let deferred = GetDeferred(C);
+
+    for (let nextValue of iterable) {
+        let nextPromise = C.cast(nextValue);
+        nextPromise.then(deferred["[[Resolve]]"], deferred["[[Reject]]"]);
     }
-  });
+
+    return deferred["[[Promise]]"];
+});
+
+define_method(Promise.prototype, "then", function (onFulfilled, onRejected) {
+    let promise = this;
+    let C = Get(promise, "constructor");
+    let deferred = GetDeferred(C);
+
+    let rejectionHandler = deferred["[[Reject]]"];
+    if (IsCallable(onRejected)) {
+        rejectionHandler = onRejected;
+    }
+
+    let fulfillmentHandler = deferred["[[Resolve]]"];
+    if (IsCallable(onFulfilled)) {
+        fulfillmentHandler = onFulfilled;
+    }
+    let resolutionHandler = make_PromiseResolutionHandlerFunction();
+    set_slot(resolutionHandler, "[[PromiseConstructor]]", C);
+    set_slot(resolutionHandler, "[[FulfillmentHandler]]", fulfillmentHandler);
+    set_slot(resolutionHandler, "[[RejectionHandler]]", rejectionHandler);
+
+    let resolutionReaction = MakePromiseReactionFunction(deferred, resolutionHandler);
+    let rejectionReaction = MakePromiseReactionFunction(deferred, rejectionHandler);
+
+    if (get_slot(promise, "[[PromiseStatus]]") === "pending") {
+        get_slot(promise, "[[ResolveReactions]]").push(resolutionReaction);
+        get_slot(promise, "[[RejectReactions]]").push(rejectionReaction);
+    }
+
+    if (get_slot(promise, "[[PromiseStatus]]") === "has-resolution") {
+        QueueAMicrotask(function () {
+            let resolution = get_slot(promise, "[[Result]]");
+            Call(resolutionReaction, resolution);
+        });
+    }
+
+    if (get_slot(promise, "[[PromiseStatus]]") === "has-rejection") {
+        QueueAMicrotask(function () {
+            let reason = get_slot(promise, "[[Result]]");
+            Call(rejectionReaction, reason);
+        });
+    }
+
+    return deferred["[[Promise]]"];
+});
+
+define_method(Promise.prototype, "catch", function (onRejected) {
+    return this.then(undefined, onRejected);
+});
+
+
+//////
+// ES/environment functions
+
+function TypeIsObject(x) {
+    return (typeof x === "object" && x !== null) || typeof x === "function";
+}
+
+function IsCallable(x) {
+    return typeof x === "function";
+}
+
+function IsConstructor(x) {
+    // The actual steps include testing whether `x` has a `[[Construct]]` internal method.
+    // This is NOT possible to determine in pure JS, so this is just an approximation.
+    return typeof x === "function";
+}
+
+function Get(obj, prop) {
+    return obj[prop];
+}
+
+function SameValue(x, y) {
+    return Object.is(x, y);
+}
+
+function ArrayCreate(n) {
+    return new Array(n);
+}
+
+function QueueAMicrotask(func) {
+    process.nextTick(function () {
+        func();
+    });
+}
+
+function ES6New(Constructor) {
+    return Constructor.apply(Constructor["@@create"](), Array.prototype.slice.call(arguments, 1));
+}
+
+function RejectIfAbrupt(argument, deferred) {
+    // Usage: pass it exceptions; it only handles that case.
+    // Always use `return` before it, i.e. `try { ... } catch (e) { return RejectIfAbrupt(e, deferred); }`.
+    Call(deferred["[[Reject]]"], argument);
+    return deferred["[[Promise]]"];
+}
+
+function Call(function_, argument) {
+    function_.call(undefined, argument);
+}
+
+//////
+// Internal helpers (for clarity)
+
+function define_method(object, methodName, method) {
+    Object.defineProperty(object, methodName, {
+        value: method,
+        configurable: true,
+        writable: true
+    });
+}
+
+let internalDataProperties = new WeakMap();
+
+// Using "slot" since it is shorter and since per recent es-discuss emails Allen will probably rename internal data
+// property to slot, or similar.
+function get_slot(obj, name) {
+    assert(internalDataProperties.has(obj));
+    assert(name in internalDataProperties.get(obj));
+
+    return internalDataProperties.get(obj)[name];
+}
+
+function set_slot(obj, name, value) {
+    assert(internalDataProperties.has(obj));
+    assert(name in internalDataProperties.get(obj));
+
+    internalDataProperties.get(obj)[name] = value;
+}
+
+function has_slot(obj, name) {
+    return internalDataProperties.has(obj) && name in internalDataProperties.get(obj);
+}
+
+function make_slots(obj, names) {
+    assert(!internalDataProperties.has(obj));
+
+    let slots = Object.create(null);
+    names.forEach(function (name) {
+        slots[name] = undefined;
+    });
+
+    internalDataProperties.set(obj, slots);
+}
+
+//////
+// Promises/A+ specification test adapter
+
+// A `done` function is useful for tests, to ensure no assertion errors are ignored.
+exports.done = function (promise, onFulfilled, onRejected) {
+    promise.then(onFulfilled, onRejected).catch(function (reason) {
+        process.nextTick(function () {
+            throw reason;
+        });
+    });
 };
 
-Promise.fulfill = function(value) {
-  return new Promise(function(r) {
-    r.fulfill(value);
-  });
+exports.deferred = function () {
+    let resolvePromise, rejectPromise;
+    let promise = ES6New(Promise, function (resolve, reject) {
+        resolvePromise = resolve;
+        rejectPromise = reject;
+    });
+
+    return {
+        promise: promise,
+        resolve: resolvePromise,
+        reject: rejectPromise
+    };
 };
 
-Promise.resolve = function(value) {
-  return new Promise(function(r) {
-    r.resolve(value);
-  });
-};
+exports.resolved = Promise.resolve.bind(Promise);
 
-Promise.reject = function(reason) {
-  return new Promise(function(r) {
-    r.reject(reason);
-  });
-};
+exports.rejected = Promise.reject.bind(Promise);
 
-//
-// Export
-//
-
-global.Promise = Promise;
-
-})(this,
-  (typeof window !== 'undefined') ? window : {},
-  this.runningUnderTest||false);
+exports.Promise = Promise;
