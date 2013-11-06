@@ -1,46 +1,18 @@
 // # Loader.js - ES6 module loaders illustrated
 //
-// This is a sample implementation of the ES6 module loader.
+// This is a sample implementation of the ES6 module loader.  The code is
+// interleaved with comments containing draft specification language for the
+// ES6 module system.
 //
 // Source code is on github:
 // [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
-//
-//
-// ## References
-//
-//   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
-//     by Yehuda Katz
-//
-// You can join the conversation on the [es-discuss mailing
-// list](https://mail.mozilla.org/listinfo/es-discuss), [in the github issue
-// tracker](https://github.com/jorendorff/js-loaders/issues), or on IRC, in the
-// `#jslang` channel on [irc.mozilla.org](https://wiki.mozilla.org/IRC).
-//
-//
+
+
 // ## Current status
 //
-// This implementation of ES6 module loaders is incomplete and untested.  Some
-// parts are in decent shape:
-//
-//   * the public `Loader` class;
-//   * the methods for loading and running code:
-//     TODO - update this comment `evalAsync`, `load`, and `import`;
-//   * a method for compiling modules and putting them into the loader:
-//     `define`;
-//   * the methods for directly accessing the module map:
-//     `get`, `has`, `set`, and `delete`;
-//   * the loader hooks and the loading pipeline that calls them;
-//   * dependency loading;
-//   * linking;
-//   * evaluation order;
-//   * error handling;
-//   * the browser's custom loader hooks: `normalize`, `locate`, `fetch`,
-//     `translate`, and `instantiate`.
-//
-// Some parts are not implemented yet:
-//
-//   * making the loader hooks all asynchronous;
-//   * backward-compatibility support for AMD-style modules ("factory-made modules").
+// This code does not work yet. We're focusing on producing a coherent spec
+// document. I'm also very interested in standing the system up and running
+// tests, but that will have to wait a week or two.
 
 
 // ## Primitives
@@ -62,31 +34,8 @@ function $Assert(condition) {
     assert(condition);
 }
 
-// * `$QueueTask(fn)` schedules a callback `fn` to be called in a later
-//   event loop turn.  Much like `setTimeout(fn, 0)`.  The HTML spec calls
-//   this "[queueing a
-//   task](http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#queue-a-task)".
-//   Here, it&rsquo;s mainly used to ensure that user callbacks are called
-//   from an empty stack.
-function $QueueTask(fn) {
-    setTimeout(fn, 0);
-}
-
-// * `$ToPromise(thing)` coerces `thing` to a Promise. If `thing` is *not*
-//   thenable, this is like Promise.fulfill(thing). Otherwise, this returns a
-//   real Promise wrapping `thing`. The real Promise guarantees that it won't
-//   call the callbacks multiple times, call both of them, or call them
-//   synchronously, no matter what `thing.then()` tries to do.
-var std_Promise_isThenable = Promise.isThenable;
-var std_Promise_resolve = Promise.resolve;
+var std_Promise = Promise;
 var std_Promise_fulfill = Promise.fulfill;
-var std_Promise_reject = Promise.reject;
-function $ToPromise(thing) {
-    if (std_Promise_isThenable(thing))
-        return std_Promise_resolve(thing);  // BUG - not hardened, need Promise.cast
-    else
-        return std_Promise_fulfill(thing);
-}
 
 // Now on to the core JS language implementation primitives.
 //
@@ -330,7 +279,6 @@ var $WeakMapGet = unmethod(WeakMap.prototype.get);
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
 var $WeakMapSet = unmethod(WeakMap.prototype.set);
 // * `$PromiseThen(p, fulfill, reject)` ~= p.then(fulfill, reject)
-var std_Promise = Promise;
 var $PromiseThen = unmethod(Promise.prototype.then);
 // * `$PromiseCatch(p, reject)` ~= p.catch(reject)
 var $PromiseCatch = unmethod(Promise.prototype.catch);
@@ -365,16 +313,6 @@ function IsObject(v) {
            typeof v !== "number" &&
            typeof v !== "string" &&
            typeof v !== "symbol";
-}
-
-// Schedule fn to be called with the given arguments during the next turn of
-// the event loop.
-//
-// (This is used to schedule calls to success and failure callbacks, since
-// the spec requires that those always be called from an empty stack.)
-//
-function AsyncCall(fn, ...args) {
-    $QueueTask(() => fn(...args));
 }
 
 
