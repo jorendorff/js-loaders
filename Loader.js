@@ -1774,8 +1774,9 @@ function Realm(options, initializer) {
     if (realmData.realm !== undefined)
         throw $TypeError("Realm object cannot be intitialized more than once");
 
-    //> 1.  If Type(*options*) is not Object, throw a TypeError exception.
-    if (!IsObject(options))
+    //> 1.  If *options* is not undefined and Type(*options*) is not Object,
+    //>     throw a TypeError exception.
+    if (options !== undefined && !IsObject(options))
         throw $TypeError("options must be an object or undefined");
 
     //> 1.  Let *realm* be the result of CreateRealm().
@@ -1963,7 +1964,7 @@ def(Realm, {"@@create": Realm_create});
 //>
 function CreateRealmObject() {
     //> 1.  Let *R* be a new Realm object created by calling %RealmCreate%.
-    var R = Realm_create();
+    var R = callFunction(Realm_create, Realm);
     //> 1.  Call the %Realm% constructor function with *R* as the **this**
     //>     value.
     callFunction(Realm, R);
