@@ -173,12 +173,12 @@ def write(source_filename, sections_html, config):
             + '</html>\n')
 
     dest = destination(source_filename)
-    print("docco: {} -> {}".format(source_filename, dest))
+    print("schnocco: {} -> {}".format(source_filename, dest))
     with codecs.open(dest, 'w', encoding='utf-8') as out:
         out.write(html)
  
 def main():
-    """ Finally, let's define the interface to run Docco from the command line.
+    """ Finally, let's define the interface to run Schnocco from the command line.
     Parse options using argparse. """
 
     parser = argparse.ArgumentParser(description="make a big HTML mess")
