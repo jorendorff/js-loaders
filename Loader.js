@@ -1791,7 +1791,7 @@ function Realm(options, initializer) {
     //> 1.  If *evalHooks* is undefined then let *evalHooks* be a new Object.
     //> 1.  Else, if Type(*evalHooks*) is not Object, throw a TypeError
     //>     exception.
-    let evalHooks = UnpackOption(options, "eval", () => {});
+    let evalHooks = UnpackOption(options, "eval", () => ({}));
 
     //> 1.  Let *directEval* be the result of calling the [[Get]] internal
     //>     method of *evalHooks* passing `"direct"` and **true** as arguments.
@@ -1799,7 +1799,7 @@ function Realm(options, initializer) {
     //> 1.  If *directEval* is undefined then let *directEval* be a new Object.
     //> 1.  Else, if Type(*directEval*) is not Object, throw a TypeError
     //>     exception.
-    let directEval = UnpackOption(evalHooks, "direct", () => {});
+    let directEval = UnpackOption(evalHooks, "direct", () => ({}));
 
     //> 1.  Let *translate* be the result of calling the [[Get]] internal
     //>     method of *directEval* passing `"translate"` and **true** as
