@@ -2154,7 +2154,7 @@ def(Loader.prototype, {
             let linkSet = CreateLinkSet(loader, load);
             $MapSet(loaderData.loads, fullName, load);
             $PromiseThen(linkSet.done,
-                         _ => resolve(undefined),
+                         function (_) { resolve(undefined); },
                          reject);
             let sourcePromise = std_Promise_fulfill(source);
             CallTranslate(loader, load, sourcePromise);
@@ -2166,7 +2166,7 @@ def(Loader.prototype, {
     //>
     load: function load(name, options) {
         let loader = this;
-        let loaderData = GetLoaderInternalData(this);
+        GetLoaderInternalData(this);
 
         return new std_Promise(function (resolve, reject) {
             name = ToString(name);
@@ -2179,7 +2179,7 @@ def(Loader.prototype, {
             let load = StartModuleLoad(loader, name, undefined, address);
             let linkSet = CreateLinkSet(loader, load);
             $PromiseThen(linkSet.done,
-                         _ => resolve(undefined),
+                         function (_) { resolve(undefined); },
                          reject);
         });
     },
