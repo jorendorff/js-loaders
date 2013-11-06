@@ -1932,7 +1932,7 @@ function DefaultIndirectEval(realm) {
 //> The @@create method of the builtin Realm constructor performs the
 //> following steps:
 //>
-function Realm_create() {
+var Realm_create = function create() {
     //> 1.  Let F be the this value.
     //> 2.  Let realm be the result of calling
     //>     OrdinaryCreateFromConstructor(F, "%RealmPrototype%", ([[Realm]])).
@@ -1951,9 +1951,9 @@ function Realm_create() {
 
     //> 3.  Return realm.
     return realm;
-}
+};
 
-def(Loader, {"@@create": create});
+def(Realm, {"@@create": Realm_create});
 
 
 //> #### CreateRealmObject ( )
@@ -2164,7 +2164,7 @@ def(global, {Module: Module, Loader: Loader});
 //> The @@create method of the builtin Loader constructor performs the
 //> following steps:
 //>
-function create() {
+var Loader_create = function create() {
     //> 1.  Let F be the this value.
     //> 2.  Let loader be the result of calling
     //>     OrdinaryCreateFromConstructor(F, "%LoaderPrototype%", ([[Modules]],
@@ -2212,9 +2212,9 @@ function create() {
 
     //> 3.  Return loader.
     return loader;
-}
+};
 
-def(Loader, {"@@create": create});
+def(Loader, {"@@create": Loader_create});
 
 // Get the internal data for a given `Loader` object.
 function GetLoaderInternalData(value) {
