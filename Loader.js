@@ -99,6 +99,13 @@ function $ToPromise(thing) {
 //
 //   Note that this does not run any of the code in `src`.
 //
+// * `$ParseScript(src)` parses the string `src` as an ES6 Script.
+//   `$ParseScript` detects ES "early errors" and throws `SyntaxError` or
+//   `ReferenceError`. On success it returns a StatementList object. This is
+//   the only way objects of these types are created.  (StatementList objects
+//   are never exposed to user code; they are for use with the following
+//   primitives only.)
+
 // The following primitives operate on Module objects.
 //
 // * `$DefineConstant(module, name, value)` defines a constant binding in
@@ -234,8 +241,8 @@ var $CreateModule = () => $ObjectCreate(null);
 //
 // The following primitives deal with realms.
 //
-// * `$RealmNew()` creates a new realm for evaluating module and script code. This
-//   can be polyfilled in the browser using techniques like
+// * `$CreateRealm()` creates a new realm for evaluating module and script code.
+//   This can be polyfilled in the browser using techniques like
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
 //
@@ -245,10 +252,6 @@ var $CreateModule = () => $ObjectCreate(null);
 // * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
 //   $EvaluateModuleBody.
 //
-// * `$DefineBuiltins(realm, obj)` builds a full copy of the ES builtins on `obj`
-//   for the given realm, so for example you get a fresh new `obj.Array`
-//   constructor and methods like `obj.Array.prototype.push`. You even get
-//   `obj.Loader`, a copy of `Loader`.
 
 
 // The remaining primitives are not very interesting. These are capabilities
@@ -1643,18 +1646,17 @@ function EnsureEvaluatedHelper(mod, loader) {
         $SetDependencies(seen[i], undefined);
 }
 
+function ConstantGetter(value) {
+    return function () { return value; };
+}
 
-
-
-//> # Modules: Built-in objects
-//>
-//> ## Module objects
-//>
-//> Module instances are ordinary objects.
+// ## The Module factory
 //
-// A Module object:
+// The `Module` factory function reflectively creates module instance objects.
 //
-//   * has null [[Prototype]] initially, or perhaps no [[Prototype]] at all
+// A module instance object:
+//
+//   * has null [[Prototype]].
 //
 //   * has an [[Environment]] internal data property whose value is a
 //     Declarative Environment Record (consisting of all bindings declared at
@@ -1673,18 +1675,44 @@ function EnsureEvaluatedHelper(mod, loader) {
 //   * has accessor properties that correspond exactly to the [[Exports]], and no
 //     other properties.
 //
-//   * is inextensible by the time it is exposed to ECMAScript code.
+//   * is non-extensible by the time it is exposed to ECMAScript code.
 
-function ConstantGetter(value) {
-    return function () { return value; };
-}
 
+//> ## Module Objects
+//>
+//> ### The Module Factory Function
+//>
+//> #### Module ( obj )
+//> 
+//> When the `Module` function is called with optional argument *obj*, the
+//> following steps are taken:
+//>
 function Module(obj) {
+    //> 1.  Let *mod* be the result of calling the CreateLinkedModuleInstance
+    //>     abstract operation.
     var mod = $CreateModule();
+    //> 1.  Let *keys* be the result of calling the ObjectKeys abstract
+    //>     operation passing *obj* as the argument.
+    //> 1.  ReturnIfAbrupt(*keys*).
     var keys = $ObjectKeys(obj);
+    //> 1.  For each *key* in *keys*, do
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
+        //>     1.  Let *value* be the result of calling the [[Get]] internal
+        //>         method of *obj* passing *key* and *true* as arguments.
         var value = obj[key];
+        //>     1.  ReturnIfAbrupt(*value*).
+        //>     1.  Let *thrower* be the %ThrowTypeError% intrinsic function
+        //>         Object.
+        //>     1.  Let *F* be the result of calling the CreateConstantGetter
+        //>         abstract operation passing *value* as the argument.
+        //>     1.  Let *desc* be the PropertyDescriptor {[[Configurable]]:
+        //>         **false**, [[Enumerable]]: **true**, [[Get]]: *F*, [[Set]]:
+        //>         *thrower*}.
+        //>     1.  Let *r* be the result of calling the DefinePropertyOrThrow
+        //>         abstract operation passing *mod*, *key*, and *desc* as
+        //>         arguments.
+        //>     1.  ReturnIfAbrupt(*r*).
         $ObjectDefineProperty(mod, keys[i], {
             configurable: false,
             enumerable: true,
@@ -1692,11 +1720,267 @@ function Module(obj) {
             set: undefined
         });
     }
+    //> 1.  Call the [[PreventExtensions]] internal method of *mod*.
     $ObjectPreventExtensions(mod);
+    //> 1.  Return *mod*.
     return mod;
 }
 
+// The `Module` function is not a constructor so its `prototype` is `null`.
 Module.prototype = null;
+
+// ## The Realm class
+
+//> ## Realm Objects
+
+// Implementation note: Since ES6 does not have support for private state or
+// private methods, the "internal data properties" of Realm objects are stored
+// on a separate object which is not accessible from user code.
+//
+// So what the specification refers to as `realm.[[Realm]]` is implemented
+// as `GetRealmInternalData(realm).realm`.
+//
+// The simplest way to connect the two objects without exposing this internal
+// data to user code is to use a `WeakMap`.
+//
+let realmInternalDataMap = $WeakMapNew();
+
+//> ### The Realm Constructor
+//>
+//> #### new Realm ( options, initializer )
+//>
+function Realm(options, initializer) {
+    //> 1.  Let *R* be the this value.
+    //> 1.  If Type(*R*) is not Object, throw a TypeError exception.
+
+    //
+    // Bug: This calls Realm[@@create] directly.  The spec will instead make
+    // `new Realm(options)` equivalent to
+    // `Realm.[[Call]](Realm[@@create](), List [options])`.
+    // In other words, Realm[@@create] will be called *before* Realm.
+    // We'll change that when symbols and @@create are implemented.
+    var R = callFunction(Realm["@@create"], Realm);
+
+    //> 1.  If *R* does not have all of the internal properties of a Realm
+    //>     object, throw a TypeError exception.
+    var realmData = $WeakMapGet(realmInternalDataMap, R);
+    if (realmData === undefined)
+        throw $TypeError("Realm object expected");
+
+    //> 1.  If *R*.[[Realm]] is not undefined, throw a TypeError
+    //>     exception.
+    if (realmData.realm !== undefined)
+        throw $TypeError("Realm object cannot be intitialized more than once");
+
+    //> 1.  If Type(*options*) is not Object, throw a TypeError exception.
+    if (!IsObject(options))
+        throw $TypeError("options must be an object or undefined");
+
+    //> 1.  Let *realm* be the result of CreateRealm().
+    let realm = $CreateRealm();
+
+    //> 1.  If options is undefined, then let options be a new Object.
+    //> 1.  Else, if Type(*options*) is not Object, throw a TypeError
+    //>     exception.
+
+    //> 1.  Let *evalHooks* be the result of calling the [[Get]] internal
+    //>     method of *options* passing `"eval"` and **true** as arguments.
+    //> 1.  ReturnIfAbrupt(*evalHooks*).
+    //> 1.  If *evalHooks* is undefined then let *evalHooks* be a new Object.
+    //> 1.  Else, if Type(*evalHooks*) is not Object, throw a TypeError
+    //>     exception.
+    let evalHooks = UnpackOption(options, "eval", () => {});
+
+    //> 1.  Let *directEval* be the result of calling the [[Get]] internal
+    //>     method of *evalHooks* passing `"direct"` and **true** as arguments.
+    //> 1.  ReturnIfAbrupt(*directEval*).
+    //> 1.  If *directEval* is undefined then let *directEval* be a new Object.
+    //> 1.  Else, if Type(*directEval*) is not Object, throw a TypeError
+    //>     exception.
+    let directEval = UnpackOption(evalHooks, "direct", () => {});
+
+    //> 1.  Let *translate* be the result of calling the [[Get]] internal
+    //>     method of *directEval* passing `"translate"` and **true** as
+    //>     arguments.
+    //> 1.  ReturnIfAbrupt(*translate*).
+    //> 1.  If *translate* is undefined then let *translate* be the result of
+    //>     calling DefaultDirectEvalTranslate(*realm*).
+    //> 1.  Else, if IsCallable(*translate*) is **false**, throw a TypeError
+    //>     exception.
+    //> 1.  Set *realm*.[[translateDirectEvalHook]] to *translate*.
+    realm.translateDirectEvalHook = UnpackOption(directEval, "translate", () => DefaultDirectEvalTranslate(realm));
+
+    //> 1.  Let *fallback* be the result of calling the [[Get]] internal
+    //>     method of *directEval* passing `"fallback"` and **true** as
+    //>     arguments.
+    //> 1.  ReturnIfAbrupt(*fallback*).
+    //> 1.  If *fallback* is undefined then let *fallback* be the result of
+    //>     calling DefaultDirectEvalFallback(*realm*).
+    //> 1.  Else, if IsCallable(*fallback*) is **false**, throw a TypeError
+    //>     exception.
+    //> 1.  Set *realm*.[[fallbackDirectEvalHook]] to *fallback*.
+    realm.fallbackDirectEvalHook = UnpackOption(directEval, "fallback", () => DefaultEvalFallback(realm));
+
+    //> 1.  Let *indirectEval* be the result of calling the [[Get]] internal
+    //>     method of *options* passing `"indirect"` and **true** as
+    //>     arguments.
+    //> 1.  ReturnIfAbrupt(*indirectEval*).
+    //> 1.  If *indirectEval* is undefined then let *indirectEval* be the
+    //>     result of calling DefaultIndirectEval(*realm*).
+    //> 1.  Else, if IsCallable(*indirectEval*) is **false**, throw a TypeError
+    //>     exception.
+    //> 1.  Set *realm*.[[indirectEvalHook]] to *indirectEval*.
+    realm.indirectEvalHook = UnpackOption(evalHooks, "indirect", () => DefaultIndirectEval(realm));
+
+    //> 1.  Let *Function* be the result of calling the [[Get]] internal
+    //>     method of *options* passing `"Function"` and **true** as
+    //>     arguments.
+    //> 1.  ReturnIfAbrupt(*Function*).
+    //> 1.  If *Function* is undefined then let *Function* be the result of
+    //>     calling DefaultFunction(*realm*).
+    //> 1.  Else, if IsCallable(*Function*) is **false**, throw a TypeError
+    //>     exception.
+    //> 1.  Set *realm*.[[FunctionHook]] to *Function*.
+    realm.FunctionHook = UnpackOption(options, "Function", () => DefaultFunction(realm));
+
+    //> 1.  Set *R*.[[Realm]] to *realm*.
+    realmData.realm = realm;
+
+    //> 1.  If *initializer* is not undefined then the following steps are
+    //>     taken:
+    if (initializer !== undefined) {
+        //>     1.  If IsCallable(*initializer*) is **false**, throw a
+        //>         TypeError exception.
+        //>     1.  Let *builtins* be a new Object.
+        //>     1.  Call the DefineBuiltinProperties abstract operation passing
+        //>         *realm* and *builtins* as arguments.
+        //>     1.  Let *r* be the result of calling the *initializer* function
+        //>         passing *R* as the **this** value and *builtins* as the
+        //>         single argument.
+        //>     1.  ReturnIfAbrupt(*r*).
+        callFunction(initializer, R, realm.builtins);
+    }
+
+    //> 1.  Return *R*.
+    return R;
+}
+
+//> ### Properties of the Realm Prototype Object
+//>
+
+def(Realm.prototype, {
+
+    //> #### Realm.prototype.global
+    //>
+    //> `Realm.prototype.global` is an accessor property whose set accessor
+    //> function is undefined. Its get accessor function performs the following
+    //> steps:
+    //>
+    get global() {
+        //> 1. Let R be this Realm object.
+        //> 1. If R does not have all the internal properties of a Realm object,
+        //     throw a TypeError exception.
+        let internalData = GetRealmInternalData(this);
+        //> 1. Return R.[[Realm]].[[globalThis]].
+        return internalData.realm.global;
+    },
+    //>
+
+    //> #### Realm.prototype.eval ( source )
+    //>
+    //> The following steps are taken:
+    //>
+    eval: function(source) {
+        //> 1.  Let *R* be this Realm object.
+        //> 1.  If *R* does not have all the internal properties of a Realm
+        //>     object, throw a TypeError exception.
+        let internalData = GetRealmInternalData(this);
+        //> 1.  Return *R*.[[Realm]].[[indirectEval]](*source*).
+        return internalData.realm.indirectEval(source);
+    }
+
+});
+
+//> #### DefaultIndirectEval ( realm )
+//>
+//> When the abstract operation DefaultIndirectEval is called with parameter
+//> *realm*, the following steps are taken:
+//>
+function DefaultIndirectEval(realm) {
+    //> 1.  Let *F* be a new built-in function object as defined in TODO.
+    //> 1.  Set the value of *F*'s [[Realm]] internal slot to *realm*.
+    //> 1.  Return *F*.
+    return f;
+
+    //> #### Default Indirect Eval Function
+    //>
+    //> A default indirect eval function is a function that performs an indirect
+    //> top-level `eval` of a script source.
+    //>
+    //> 1. 
+    function f(source) {
+        //> 1. Let *script* be the result of parsing *source* as a *Script*.
+        //> 1. ReturnIfAbrupt(*script*).
+        throw TODO;
+    }
+}
+
+//> #### Realm [ @@create ] ( )
+//>
+//> The @@create method of the builtin Realm constructor performs the
+//> following steps:
+//>
+function Realm_create() {
+    //> 1.  Let F be the this value.
+    //> 2.  Let realm be the result of calling
+    //>     OrdinaryCreateFromConstructor(F, "%RealmPrototype%", ([[Realm]])).
+    var realm = $ObjectCreate(this.prototype);
+
+    // The fields are initially undefined but are populated when the
+    // constructor runs.
+    var internalData = {
+
+        // **`realmData.realm`** is an ECMAScript Realm. It determines the
+        // global scope and intrinsics of all code this Realm object runs.
+        realm: undefined
+
+    };
+    $WeakMapSet(realmInternalDataMap, realm, internalData);
+
+    //> 3.  Return realm.
+    return realm;
+}
+
+def(Loader, {"@@create": create});
+
+
+//> #### CreateRealmObject ( )
+//>
+//> When the abstract operation CreateRealmObject is called, the following
+//> steps are taken:
+//>
+function CreateRealmObject() {
+    //> 1.  Let *R* be a new Realm object created by calling %RealmCreate%.
+    var R = Realm_create();
+    //> 1.  Call the %Realm% constructor function with *R* as the **this**
+    //>     value.
+    callFunction(Realm, R);
+    //> 1.  Return *R*.
+    return R;
+}
+
+
+// Get the internal data for a given `Realm` object.
+function GetRealmInternalData(value) {
+    // Realm methods could be placed on wrapper prototypes like String.prototype.
+    if (typeof value !== "object")
+        throw $TypeError("Realm method or accessor called on incompatible primitive");
+
+    let internalData = $WeakMapGet(realmInternalDataMap, value);
+    if (internalData === undefined)
+        throw $TypeError("Realm method or accessor called on incompatible object");
+    return internalData;
+}
 
 
 // ## The Loader class
@@ -1776,7 +2060,7 @@ function Loader(options={}) {
     // We'll change that when symbols and @@create are implemented.
     var loader = callFunction(Loader["@@create"], Loader);
 
-    //> 3.  If loader does not have all of the internal properties of a Module
+    //> 3.  If loader does not have all of the internal properties of a Loader
     //>     Instance, throw a TypeError exception.
     var loaderData = $WeakMapGet(loaderInternalDataMap, loader);
     if (loaderData === undefined)
@@ -1793,45 +2077,18 @@ function Loader(options={}) {
 
     // Fallible operations.
 
-    //> 6.  Let realmOption be the result of calling the [[Get]] internal method
+    //> 6.  Let realm be the result of calling the [[Get]] internal method
     //>     of options with arguments `"realm"` and options.
-    //> 7.  ReturnIfAbrupt(realmOption).
-    var realmOption = options.realm;
-
-    let realm;
-    //> 8.  If realmOption is undefined,
-    if (realmOption === undefined) {
-        //>     1.  Let realm to the result of CreateRealm().
-        realm = $CreateRealm();
-    //> 9.  Else if Type(realmOption) is Object and realmOption has all the
-    //>     internal properties of a Loader instance,
-    } else if (IsObject(realmOption) && $WeakMapHas(loaderInternalDataMap, realmOption)) {
-        //>     1. Let realm be realmOption.[[Realm]].
-        let realmLoaderData = $WeakMapGet(loaderInternalDataMap, realmOption);
-        realm = realmLoaderData.realm;
-    //> 10. Else,
-    } else {
-        //>     1.  Let realmDesc be ObjectToRealmDescriptor(realmOption).
-        //>     2.  ReturnIfAbrupt(realmDesc);
-        //>     3.  Let realm be the result of CreateRealm(realmDesc).
-        throw TODO;
+    //> 7.  ReturnIfAbrupt(realm).
+    var realm = options.realm;
+    //> 8.  If realm is undefined, let realm be the result of CreateRealmObject().
+    if (realm === undefined) {
+        realm = CreateRealmObject();
+    //> 9.  Else if Type(realm) is not Object or realm does not have all the
+    //>     internal properties of a Realm object, throw a TypeError exception.
+    } else if (!IsObject(realm) || !$WeakMapHas(realmInternalDataMap, realm)) {
+        throw $TypeError("options.realm is not a Realm object");
     }
-
-    //> 11. Let builtins be the result of performing ObjectCreate(%ObjectPrototype%).
-    var builtins = {};
-    //> 12. Call DefineBuiltins(realm, builtins).
-    $DefineBuiltins(loaderData.realm, builtins);
-    //> 13. Let result be the result of calling the [[DefineOwnProperty]]
-    //>     internal method of loader passing `"builtins`" and the Property
-    //>     Descriptor {[[Value]]: builtins, [[Writable]]: true,
-    //>     [[Enumerable]]: true, [[Configurable]]: true} as arguments.
-    //> 14. ReturnIfAbrupt(13).
-    $ObjectDefineProperty(loader, "builtins", {
-        configurable: true,
-        enumerable: true,
-        value: builtins,
-        writable: true
-    });
 
     // Hooks provided via `options` are just ordinary properties of the new
     // Loader object.
@@ -1842,22 +2099,22 @@ function Loader(options={}) {
     // subclasses can add methods with the appropriate names and use `super()`
     // to invoke the base-class behavior.
     //
-    //> 15. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
+    //> 10. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
     //>     `"translate"`, `"instantiate"`),
     let hooks = ["normalize", "locate", "fetch", "translate", "instantiate"];
     for (let i = 0; i < hooks.length; i++) {
         let name = hooks[i];
-        //     1.  Let hook be the result of calling the [[Get]] internal
-        //         method of options with arguments name and options.
-        //     2.  ReturnIfAbrupt(hook).
+        //>     1.  Let hook be the result of calling the [[Get]] internal
+        //>         method of options with arguments name and options.
+        //>     2.  ReturnIfAbrupt(hook).
         var hook = options[name];
-        //     3.  If hook is not undefined,
+        //>     3.  If hook is not undefined,
         if (hook !== undefined) {
-            //         1.  Let result be the result of calling the
-            //             [[DefineOwnProperty]] internal method of loader
-            //             passing name and the Property Descriptor {[[Value]]:
-            //             hook, [[Writable]]: true, [[Enumerable]]: true,
-            //             [[Configurable]]: true} as arguments.
+            //>         1.  Let result be the result of calling the
+            //>             [[DefineOwnProperty]] internal method of loader
+            //>             passing name and the Property Descriptor {[[Value]]:
+            //>             hook, [[Writable]]: true, [[Enumerable]]: true,
+            //>             [[Configurable]]: true} as arguments.
             $ObjectDefineProperty(loader, name, {
                 configurable: true,
                 enumerable: true,
@@ -1868,14 +2125,14 @@ function Loader(options={}) {
     }
 
     // Infallible initialization of internal data properties.
-    //> 16. Set loader.[[Modules]] to a new empty List.
+    //> 11. Set loader.[[Modules]] to a new empty List.
     loaderData.modules = $MapNew();
-    //> 17. Set loader.[[Loads]] to a new empty List.
+    //> 12. Set loader.[[Loads]] to a new empty List.
     loaderData.loads = $MapNew();
-    //> 18. Set loader.[[Realm]] to realm.
+    //> 13. Set loader.[[Realm]] to realm.
     loaderData.realm = realm;
 
-    //> 19. Return loader.
+    //> 14. Return loader.
     return loader;
 }
 
@@ -2008,20 +2265,6 @@ function UnpackOption(options, name) {
 }
 
 def(Loader.prototype, {
-
-    //> #### Loader.prototype.global
-    //>
-    //> `Loader.prototype.global` is an accessor property whose set accessor
-    //> function is undefined. Its get accessor function performs the following
-    //> steps:
-    //>
-    get global() {
-        //> 1. Let L be this Loader.
-        //> 2. Return L.[[Realm]].[[globalThis]].
-        return GetLoaderInternalData(this).realm.global;
-    },
-    //>
-
 
     // ### Loading and running code
     //
