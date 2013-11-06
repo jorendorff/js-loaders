@@ -2044,18 +2044,32 @@ def(Loader.prototype, {
     // Returns a future for the Module object.
     //
     module: function module_(source) {
-        var loader = this;
-        GetLoaderInternalData(loader);
-        source = ToString(source);
+        let loader = this;
+        GetLoaderInternalData(this);
 
         return new std_Promise(function (resolve, reject) {
-            let address = UnpackOption(options, "address");
+            let address = undefined;
+            if (options !== undefined) {
+                options = ToObject(options);
+                address = options.address;
+            }
+
             let load = CreateLoad(undefined);
-            $PromiseThen(CreateLinkSet(loader, load).done,
-                         _ => resolve(load.module),
-                         reject);
-            var sourcePromise = Promise.fulfill(source);
+            let linkSet = CreateLinkSet(loader, load);
+            let p = $PromiseThen(linkSet.done,
+                                 function (_) {
+                                     let mod = load.module;
+                                     EnsureEvaluatedHelper(mod, loader);
+                                     resolve(mod);
+                                 });
+            $PromiseThen(p, function (_) {}, reject);
+
+            var sourcePromise = std_Promise_fulfill(source);
             CallTranslate(loader, load, sourcePromise);
+
+            $PromiseThen(CreateLinkSet(loader, load).done,
+                         function (_) { resolve(load.module); },
+                         reject);
         });
     },
     //>
