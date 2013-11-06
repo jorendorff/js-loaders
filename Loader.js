@@ -1,46 +1,18 @@
 // # Loader.js - ES6 module loaders illustrated
 //
-// This is a sample implementation of the ES6 module loader.
+// This is a sample implementation of the ES6 module loader.  The code is
+// interleaved with comments containing draft specification language for the
+// ES6 module system.
 //
 // Source code is on github:
 // [jorendorff/js-loaders](https://github.com/jorendorff/js-loaders).
-//
-//
-// ## References
-//
-//   * [ES6 Module Use Cases](https://gist.github.com/wycats/51c96e3adcdb3a68cbc3)
-//     by Yehuda Katz
-//
-// You can join the conversation on the [es-discuss mailing
-// list](https://mail.mozilla.org/listinfo/es-discuss), [in the github issue
-// tracker](https://github.com/jorendorff/js-loaders/issues), or on IRC, in the
-// `#jslang` channel on [irc.mozilla.org](https://wiki.mozilla.org/IRC).
-//
-//
+
+
 // ## Current status
 //
-// This implementation of ES6 module loaders is incomplete and untested.  Some
-// parts are in decent shape:
-//
-//   * the public `Loader` class;
-//   * the methods for loading and running code:
-//     TODO - update this comment `evalAsync`, `load`, and `import`;
-//   * a method for compiling modules and putting them into the loader:
-//     `define`;
-//   * the methods for directly accessing the module map:
-//     `get`, `has`, `set`, and `delete`;
-//   * the loader hooks and the loading pipeline that calls them;
-//   * dependency loading;
-//   * linking;
-//   * evaluation order;
-//   * error handling;
-//   * the browser's custom loader hooks: `normalize`, `locate`, `fetch`,
-//     `translate`, and `instantiate`.
-//
-// Some parts are not implemented yet:
-//
-//   * making the loader hooks all asynchronous;
-//   * backward-compatibility support for AMD-style modules ("factory-made modules").
+// This code does not work yet. We're focusing on producing a coherent spec
+// document. I'm also very interested in standing the system up and running
+// tests, but that will have to wait a week or two.
 
 
 // ## Primitives
