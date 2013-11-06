@@ -34,21 +34,8 @@ function $Assert(condition) {
     assert(condition);
 }
 
-// * `$ToPromise(thing)` coerces `thing` to a Promise. If `thing` is *not*
-//   thenable, this is like Promise.fulfill(thing). Otherwise, this returns a
-//   real Promise wrapping `thing`. The real Promise guarantees that it won't
-//   call the callbacks multiple times, call both of them, or call them
-//   synchronously, no matter what `thing.then()` tries to do.
-var std_Promise_isThenable = Promise.isThenable;
-var std_Promise_resolve = Promise.resolve;
+var std_Promise = Promise;
 var std_Promise_fulfill = Promise.fulfill;
-var std_Promise_reject = Promise.reject;
-function $ToPromise(thing) {
-    if (std_Promise_isThenable(thing))
-        return std_Promise_resolve(thing);  // BUG - not hardened, need Promise.cast
-    else
-        return std_Promise_fulfill(thing);
-}
 
 // Now on to the core JS language implementation primitives.
 //
@@ -292,7 +279,6 @@ var $WeakMapGet = unmethod(WeakMap.prototype.get);
 // * `$WeakMapSet(map, key, value)` ~= map.set(key, value)
 var $WeakMapSet = unmethod(WeakMap.prototype.set);
 // * `$PromiseThen(p, fulfill, reject)` ~= p.then(fulfill, reject)
-var std_Promise = Promise;
 var $PromiseThen = unmethod(Promise.prototype.then);
 // * `$PromiseCatch(p, reject)` ~= p.catch(reject)
 var $PromiseCatch = unmethod(Promise.prototype.catch);
