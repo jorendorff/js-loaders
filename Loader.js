@@ -233,6 +233,12 @@ function $CreateModule() {
 //   bindings and import bindings from the module. The module may be re-linked
 //   later.
 //
+// * `$EvaluateModuleBody(realm, mod)` runs the body of the given module in the
+//   context of a given realm. Returns undefined.
+//
+// * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
+//   $EvaluateModuleBody.
+//
 // Loader iterators require a little private state. (These can be implemented
 // using a WeakMap, but primitive functions would be more efficient.)
 //
@@ -249,12 +255,6 @@ function $CreateModule() {
 //   script code. This can be polyfilled in the browser using techniques like
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
-//
-// * `$EvaluateModuleBody(realm, mod)` runs the body of the given module in the
-//   context of a given realm. Returns undefined.
-//
-// * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
-//   $EvaluateModuleBody.
 //
 
 
