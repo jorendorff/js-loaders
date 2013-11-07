@@ -1655,9 +1655,94 @@ function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
         var sourcePromise = std_Promise_fulfill(source);
         CallTranslate(loader, load, sourcePromise);
 
+        var p = callFunction(std_Promise_then,
+                             CreateLinkSet(loader, load).done,
+                             function (_) {
+                                 EnsureEvaluatedHelper(mod, loader);
+                                 resolve(load.module);
+                             });
+        callFunction(std_Promise_catch, p, reject);
+    };
+}
+
+function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options) {
+    return function (resolve, reject) {
+        let address = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+        }
+
+        // `StartModuleLoad` starts us along the pipeline.
+        let load = StartModuleLoad(loader, name, undefined, address);
+
+        if (load.status === "linked") {
+            // We already had this module in the registry.
+            resolve(load.module);
+        } else {
+            // The module is now loading.  When it loads, it may have more
+            // imports, requiring further loads, so put it in a LinkSet.
+            var p = callFunction(std_Promise_then,
+                                 CreateLinkSet(loader, load).done,
+                                 success);
+            callFunction(std_Promise_catch, p, reject);
+        }
+
+        function success() {
+            Assert(load.status === "linked");
+            let mod = load.module;
+            if (mod === undefined) {
+                // TODO: can this happen?
+                throw std_TypeError("import(): module \"" + load.fullName +
+                                    "\" was deleted from the loader");
+            }
+            EnsureEvaluatedHelper(mod, loader);
+            return mod;
+        }
+    };
+}
+
+function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options) {
+    return function (resolve, reject) {
+        name = ToString(name);
+        let address = undefined;
+        let metadata = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+            metadata = options.metadata;
+        }
+        if (metadata === undefined)
+            metadata = {};
+
+        // Make a LinkSet.  Pre-populate it with a Load object for the
+        // given module.  Start the Load process at the `translate` hook.
+        let load = CreateLoad(name);
+        let linkSet = CreateLinkSet(loader, load);
+        callFunction(std_Map_set, loaderData.loads, fullName, load);
         callFunction(std_Promise_then,
-                     CreateLinkSet(loader, load).done,
-                     function (_) { resolve(load.module); },
+                     linkSet.done,
+                     function (_) { resolve(undefined); },
+                     reject);
+        let sourcePromise = std_Promise_fulfill(source);
+        CallTranslate(loader, load, sourcePromise);
+    };
+}
+
+function MakeClosure_AsyncLoadModule(loader, name, options) {
+    return function (resolve, reject) {
+        name = ToString(name);
+        let address = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+        }
+
+        let load = StartModuleLoad(loader, name, undefined, address);
+        let linkSet = CreateLinkSet(loader, load);
+        callFunction(std_Promise_then,
+                     linkSet.done,
+                     function (_) { resolve(undefined); },
                      reject);
     };
 }
@@ -1685,10 +1770,9 @@ def(Loader.prototype, {
     // Returns a future for the Module object.
     //
     module: function module_(source) {
-        let loader = this;
+        var loader = this;
         GetLoaderInternalData(this);
-
-        let f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source);
+        var f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source);
         return new std_Promise(f);
     },
     //>
@@ -1702,42 +1786,9 @@ def(Loader.prototype, {
     //
     import: function import_(name, options = undefined) {
         var loader = this;
-        let loaderData = GetLoaderInternalData(this);
-
-        return new std_Promise(function (resolve, reject) {
-            let address = undefined;
-            if (options !== undefined) {
-                options = ToObject(options);
-                address = options.address;
-            }
-
-            // `StartModuleLoad` starts us along the pipeline.
-            let load = StartModuleLoad(loader, name, undefined, address);
-
-            if (load.status === "linked") {
-                // We already had this module in the registry.
-                resolve(load.module);
-            } else {
-                // The module is now loading.  When it loads, it may have more
-                // imports, requiring further loads, so put it in a LinkSet.
-                var p = callFunction(std_Promise_then,
-                                     CreateLinkSet(loader, load).done,
-                                     success);
-                callFunction(std_Promise_catch, p, reject);
-            }
-
-            function success() {
-                Assert(load.status === "linked");
-                let mod = load.module;
-                if (mod === undefined) {
-                    // TODO: can this happen?
-                    throw std_TypeError("import(): module \"" + load.fullName +
-                                        "\" was deleted from the loader");
-                }
-                EnsureEvaluatedHelper(mod, loader);
-                return mod;
-            }
-      <  });
+        var loaderData = GetLoaderInternalData(this);
+        var f = MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options);
+        return new std_Promise(f);
     },
     //>
     //> The `length` property of the `import` method is **1**.
@@ -1746,59 +1797,28 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.define ( name, source, options = undefined )
     //>
-    define: function define(name, source, options=undefined) {
-        let loader = this;
-        let loaderData = GetLoaderInternalData(this);
-
-        return new std_Promise(function (resolve, reject) {
-            name = ToString(name);
-            let address = undefined;
-            let metadata = undefined;
-            if (options !== undefined) {
-                options = ToObject(options);
-                address = options.address;
-                metadata = options.metadata;
-            }
-            if (metadata === undefined)
-                metadata = {};
-
-            // Make a LinkSet.  Pre-populate it with a Load object for the
-            // given module.  Start the Load process at the `translate` hook.
-            let load = CreateLoad(name);
-            let linkSet = CreateLinkSet(loader, load);
-            callFunction(std_Map_set, loaderData.loads, fullName, load);
-            callFunction(std_Promise_then,
-                         linkSet.done,
-                         function (_) { resolve(undefined); },
-                         reject);
-            let sourcePromise = std_Promise_fulfill(source);
-            CallTranslate(loader, load, sourcePromise);
-        });
+    define: function define(name, source, options = undefined) {
+        var loader = this;
+        var loaderData = GetLoaderInternalData(this);
+        var f = MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options);
+        return new std_Promise(f);
     },
     //>
-
-    //> #### Loader.prototype.load ( name, options )
+    //> The `length` property of the `define` method is **2**.
     //>
-    load: function load(name, options) {
-        let loader = this;
+
+
+    //> #### Loader.prototype.load ( name, options = undefined )
+    //>
+    load: function load(name, options = undefined) {
+        var loader = this;
         GetLoaderInternalData(this);
-
-        return new std_Promise(function (resolve, reject) {
-            name = ToString(name);
-            let address = undefined;
-            if (options !== undefined) {
-                options = ToObject(options);
-                address = options.address;
-            }
-
-            let load = StartModuleLoad(loader, name, undefined, address);
-            let linkSet = CreateLinkSet(loader, load);
-            callFunction(std_Promise_then,
-                         linkSet.done,
-                         function (_) { resolve(undefined); },
-                         reject);
-        });
+        var f = MakeClosure_AsyncLoadModule(loader, name, options);
+        return new std_Promise(f);
     },
+    //>
+    //> The `length` property of the `load` method is **1**.
+    //>
 
 
     // ### Module registry
