@@ -1915,22 +1915,22 @@ def(Loader.prototype, {
     },
     //>
     //
-    // **The `Module` type check in `.set()`:** If the module argument is not
-    // actually a `Module`, `set` fails. This enforces an invariant of the
-    // module registry: all the values are `Module` instances. *Rationale:* We
-    // use `Module`-specific intrinsics on them, particularly
-    // `$GetModuleExport`.
+    // **The Module type check in set()** &ndash; If the module argument is not
+    // actually a Module instance object, `set` fails. This enforces an
+    // invariant of the module registry: all the values are `Module`
+    // instances. *Rationale:* We use `Module`-specific intrinsics on them,
+    // particularly `$GetModuleExport`.
     //
-    // **`.set()` and already-linked modules:** If there is already a module in
-    // the registry with the given full name, `set` replaces it, but any
-    // scripts or modules that are linked to the old module remain linked to
-    // it. *Rationale:* Re-linking already-linked modules might not work, since
-    // the new module may export a different set of names. Also, the new module
-    // may be linked to the old one! This is a convenient way to monkeypatch
-    // modules. Once modules are widespread, this technique can be used for
-    // polyfilling.
+    // **set() and already-linked modules** &ndash; If there is already a
+    // module in the registry with the given full name, `set` replaces it, but
+    // any scripts or modules that are linked to the old module remain linked
+    // to it. *Rationale:* Re-linking already-linked modules might not work,
+    // since the new module may export a different set of names. Also, the new
+    // module may be linked to the old one! This is a convenient way to
+    // monkeypatch modules. Once modules are widespread, this technique can be
+    // used for polyfilling.
     //
-    // **`.set()` and concurrent loads:** If a Load Record for `name` is in
+    // **set() and concurrent loads** &ndash; If a Load Record for `name` is in
     // `this.loads`, `.set()` succeeds, with no immediate effect on the pending
     // load; but if that load is eventually linked, an error will occur at the
     // end of the link phase, just before any of the new linked modules are
@@ -1971,7 +1971,7 @@ def(Loader.prototype, {
     },
     //>
     //
-    // **`.delete()` and concurrent loads:** Calling `.delete()` has no
+    // **delete() and concurrent loads** &ndash; Calling `.delete()` has no
     // immediate effect on in-flight loads, but it can cause such a load to
     // fail later.
     //
@@ -1981,9 +1981,9 @@ def(Loader.prototype, {
     // with something compatible), then when loading finishes, it will find
     // that a module it was counting on has vanished.  Linking will fail.
     //
-    // **`.delete()` and already-linked modules:** `loader.delete("A")` removes
-    // only `A` from the registry, and not other modules linked against `A`,
-    // for several reasons:
+    // **delete() and already-linked modules** &ndash; `loader.delete("A")`
+    // removes only `A` from the registry, and not other modules linked against
+    // `A`, for several reasons:
     //
     // 1. What a module is linked against is properly an implementation
     //    detail, which the "remove everything" behavior would leak.
