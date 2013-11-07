@@ -1199,35 +1199,35 @@ function ConstantGetter(value) {
 //>
 //> #### Module ( obj )
 //> 
-//> When the `Module` function is called with optional argument *obj*, the
+//> When the `Module` function is called with optional argument obj, the
 //> following steps are taken:
 //>
 function Module(obj) {
-    //> 1.  Let *mod* be the result of calling the CreateLinkedModuleInstance
+    //> 1.  Let mod be the result of calling the CreateLinkedModuleInstance
     //>     abstract operation.
     var mod = $CreateModule();
-    //> 1.  Let *keys* be the result of calling the ObjectKeys abstract
-    //>     operation passing *obj* as the argument.
-    //> 1.  ReturnIfAbrupt(*keys*).
+    //> 1.  Let keys be the result of calling the ObjectKeys abstract
+    //>     operation passing obj as the argument.
+    //> 1.  ReturnIfAbrupt(keys).
     var keys = std_Object_keys(obj);
-    //> 1.  For each *key* in *keys*, do
+    //> 1.  For each key in keys, do
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
-        //>     1.  Let *value* be the result of calling the [[Get]] internal
-        //>         method of *obj* passing *key* and *true* as arguments.
+        //>     1.  Let value be the result of calling the [[Get]] internal
+        //>         method of obj passing key and true as arguments.
         var value = obj[key];
-        //>     1.  ReturnIfAbrupt(*value*).
-        //>     1.  Let *thrower* be the %ThrowTypeError% intrinsic function
+        //>     1.  ReturnIfAbrupt(value).
+        //>     1.  Let thrower be the %ThrowTypeError% intrinsic function
         //>         Object.
-        //>     1.  Let *F* be the result of calling the CreateConstantGetter
-        //>         abstract operation passing *value* as the argument.
-        //>     1.  Let *desc* be the PropertyDescriptor {[[Configurable]]:
-        //>         **false**, [[Enumerable]]: **true**, [[Get]]: *F*, [[Set]]:
-        //>         *thrower*}.
-        //>     1.  Let *r* be the result of calling the DefinePropertyOrThrow
-        //>         abstract operation passing *mod*, *key*, and *desc* as
-        //>         arguments.
-        //>     1.  ReturnIfAbrupt(*r*).
+        //>     1.  Let F be the result of calling the CreateConstantGetter
+        //>         abstract operation passing value as the argument.
+        //>     1.  Let desc be the PropertyDescriptor {[[Configurable]]:
+        //>         false, [[Enumerable]]: true, [[Get]]: F, [[Set]]:
+        //>         thrower}.
+        //>     1.  Let status be the result of calling the
+        //>         DefinePropertyOrThrow abstract operation passing mod, key,
+        //>         and desc as arguments.
+        //>     1.  ReturnIfAbrupt(status).
         std_Object_defineProperty(mod, keys[i], {
             configurable: false,
             enumerable: true,
@@ -1235,9 +1235,9 @@ function Module(obj) {
             set: undefined
         });
     }
-    //> 1.  Call the [[PreventExtensions]] internal method of *mod*.
+    //> 1.  Call the [[PreventExtensions]] internal method of mod.
     std_Object_preventExtensions(mod);
-    //> 1.  Return *mod*.
+    //> 1.  Return mod.
     return mod;
 }
 
