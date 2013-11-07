@@ -912,10 +912,7 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options
         let load = CreateLoad(name);
         let linkSet = CreateLinkSet(loader, load);
         callFunction(std_Map_set, loaderData.loads, name, load);
-        callFunction(std_Promise_then,
-                     linkSet.done,
-                     function (_) { resolve(undefined); },
-                     reject);
+        resolve(linkSet.done);
         let sourcePromise = std_Promise_fulfill(source);
         CallTranslate(loader, load, sourcePromise);
     };
@@ -932,10 +929,16 @@ function MakeClosure_AsyncLoadModule(loader, name, options) {
 
         let load = StartModuleLoad(loader, name, undefined, address);
         let linkSet = CreateLinkSet(loader, load);
-        callFunction(std_Promise_then,
-                     linkSet.done,
-                     function (_) { resolve(undefined); },
-                     reject);
+        resolve(linkSet.done);
+    };
+}
+
+function MakeClosure_EvaluateLoadedModule(loader, load, resolve) {
+    return function (_) {
+        Assert(load.status === "linked");
+        var module = load.module;
+        EnsureEvaluatedHelper(module, loader);
+        resolve(module);
     };
 }
 
@@ -949,25 +952,13 @@ function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
 
         let load = CreateLoad(undefined);
         let linkSet = CreateLinkSet(loader, load);
-        let p = callFunction(std_Promise_then,
-                             linkSet.done,
-                             function (_) {
-                                 let mod = load.module;
-                                 EnsureEvaluatedHelper(mod, loader);
-                                 resolve(mod);
-                             });
+        var successCallback =
+            MakeClosure_EvaluateLoadedModule(loader, load, resolve);
+        let p = callFunction(std_Promise_then, linkSet.done, successCallback);
         callFunction(std_Promise_catch, p, reject);
 
         var sourcePromise = std_Promise_fulfill(source);
         CallTranslate(loader, load, sourcePromise);
-
-        var p = callFunction(std_Promise_then,
-                             CreateLinkSet(loader, load).done,
-                             function (_) {
-                                 EnsureEvaluatedHelper(mod, loader);
-                                 resolve(load.module);
-                             });
-        callFunction(std_Promise_catch, p, reject);
     };
 }
 
@@ -988,22 +979,11 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, option
         } else {
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
-            var p = callFunction(std_Promise_then,
-                                 CreateLinkSet(loader, load).done,
-                                 success);
+            var successCallback =
+                MakeClosure_EvaluateModuleLoader(loader, load, resolve);
+            var linkSet = CreateLinkSet(loader, load);
+            var p = callFunction(std_Promise_then, linkSet.done, successCallback);
             callFunction(std_Promise_catch, p, reject);
-        }
-
-        function success() {
-            Assert(load.status === "linked");
-            let mod = load.module;
-            if (mod === undefined) {
-                // TODO: can this happen?
-                throw std_TypeError("import(): module \"" + load.name +
-                                    "\" was deleted from the loader");
-            }
-            EnsureEvaluatedHelper(mod, loader);
-            return mod;
         }
     };
 }
