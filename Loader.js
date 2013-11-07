@@ -1462,27 +1462,6 @@ function GetRealmInternalData(value) {
 //>     asynchronous loads of modules or scripts.
 
 
-// ### Loader hooks
-//
-// The import process can be customized by assigning to (or subclassing and
-// overriding) any number of the five loader hooks:
-//
-//   * `normalize(name, refererName, refererAddress)` - From a possibly
-//     relative module name, determine the full module name.
-//
-//   * `locate(fullName, metadata)` - Given a full module name, determine
-//     the address to load.
-//
-//   * `fetch(address, metadata)` - Load a module from the given address.
-//
-//   * `translate(src, metadata)` - Optionally translate a module from some
-//     other language to JS.
-//
-//   * `instantiate(src, metadata)` - Optionally convert an AMD/npm/other module
-//     to an ES Module object.
-
-
-
 //> ### The Loader Constructor
 //>
 //> #### Loader ( options )
