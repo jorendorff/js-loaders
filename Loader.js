@@ -1686,17 +1686,6 @@ def(Loader, {"@@create": Loader_create});
 // **`UnpackOption`** - Used by several Loader methods to get options
 // off of an options object and, if defined, coerce them to strings.
 //
-// TODO - update this comment
-// `eval()` and `evalAsync()` accept an optional `options` object.
-// `options.address`, if present, is passed to the `translate` and
-// `instantiate` hooks as `options.actualAddress`, and to the `normalize` hook
-// for each dependency, as `options.referer.address`.  The default loader hooks
-// ignore it, though.
-//
-// (`options.address` may also be stored in the script and used for
-// `Error().fileName`, `Error().stack`, and developer tools; but such use
-// is outside the scope of the language standard.)
-//
 function UnpackOption(options, name) {
     if (options === undefined)
         return null;
@@ -1716,6 +1705,16 @@ def(Loader.prototype, {
     // These are implemented in terms of slightly lower-level building blocks.
     // Each of these methods creates a `LinkSet` object, which is in charge
     // of linking, and at least one `Load`.
+
+    // **options.address** &ndash; Several Loader methods accept an `options`
+    // parameter.  For these methods, `options.address`, if present, is passed
+    // to the `translate` and `instantiate` hooks as `load.address`, and to the
+    // `normalize` hook for each dependency, as `refererAddress`.  The default
+    // loader hooks ignore it, though.
+    //
+    // Implementations may also store `options.address` in the compiled module
+    // body and use it for `Error().fileName`, `Error().stack`, and developer
+    // tools; but such use is outside the scope of the language specification.
 
 
     //> #### Loader.prototype.define ( name, source, options = undefined )
