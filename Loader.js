@@ -1277,6 +1277,12 @@ function Realm(options, initializer) {
     //> 1.  If Type(realmObject) is not Object, throw a TypeError exception.
     //> 1.  If realmObject does not have all of the internal properties of a
     //>     Realm object, throw a TypeError exception.
+    if (!IsObject(realmObject) ||
+        !callFunction(std_WeakMap_has, realmInternalDataMap, this))
+    {
+        throw std_TypeError("not a Realm object");
+    }
+
     var realmData = callFunction(std_WeakMap_get, realmInternalDataMap, realmObject);
     if (realmData === undefined)
         throw std_TypeError("Realm object expected");
@@ -1426,6 +1432,12 @@ def(Realm.prototype, {
         //> 1. Let realmObject be this Realm object.
         //> 1. If realmObject does not have all the internal properties of a
         //>    Realm object, throw a TypeError exception.
+        if (!IsObject(this) ||
+            !callFunction(std_WeakMap_has, realmInternalDataMap, this))
+        {
+            throw std_TypeError("not a Realm object");
+        }
+
         let internalData = GetRealmInternalData(this);
 
         //> 1. Return realmObject.[[Realm]].[[globalThis]].
@@ -1439,8 +1451,15 @@ def(Realm.prototype, {
     //>
     eval: function(source) {
         //> 1.  Let realmObject be this Realm object.
-        //> 1.  If realmObject does not have all the internal properties of a
-        //>     Realm object, throw a TypeError exception.
+        //> 1.  If Type(realmObject) is not Object or realmObject does not have
+        //>     all the internal properties of a Realm object, throw a
+        //>     TypeError exception.
+        if (!IsObject(this) ||
+            !callFunction(std_WeakMap_has, realmInternalDataMap, this))
+        {
+            throw std_TypeError("not a Realm object");
+        }
+
         let internalData = GetRealmInternalData(this);
 
         //> 1.  Return the result of calling the IndirectEval abstract operation
@@ -1457,9 +1476,9 @@ def(Realm.prototype, {
 //>
 var Realm_create = function create() {
     //> 1.  Let F be the this value.
-    //> 2.  Let realm be the result of calling
+    //> 2.  Let realmObject be the result of calling
     //>     OrdinaryCreateFromConstructor(F, "%RealmPrototype%", ([[Realm]])).
-    var realm = std_Object_create(this.prototype);
+    var realmObject = std_Object_create(this.prototype);
 
     // The fields are initially undefined but are populated when the
     // constructor runs.
@@ -1470,10 +1489,10 @@ var Realm_create = function create() {
         realm: undefined
 
     };
-    callFunction(std_WeakMap_set, realmInternalDataMap, realm, internalData);
+    callFunction(std_WeakMap_set, realmInternalDataMap, realmObject, internalData);
 
     //> 3.  Return realm.
-    return realm;
+    return realmObject;
 };
 
 def(Realm, {"@@create": Realm_create});
@@ -1574,22 +1593,29 @@ function Loader(options={}) {
     if (!IsObject(options))
         throw std_TypeError("options must be an object or undefined");
 
-    //> 6.  Let realm be the result of calling the [[Get]] internal method
-    //>     of options with arguments `"realm"` and options.
-    //> 7.  ReturnIfAbrupt(realm).
-    var realm = options.realm;
-    //> 8.  If realm is undefined, let realm be Realm.[[realmObject]] where
-    //>     Realm of the running execution context.
-    //> 9.  Else if Type(realm) is not Object or realm does not have all the
-    //>     internal properties of a Realm object, throw a TypeError exception.
-    if (realm !== undefined &&
-        (!IsObject(realm) ||
-         !callFunction(std_WeakMap_has, realmInternalDataMap, realm)))
+    //> 6.  Let realmObject be the result of calling the [[Get]] internal
+    //>     method  of options with arguments `"realm"` and options.
+    //> 7.  ReturnIfAbrupt(realmObject).
+
+    var realmObject = options.realm;
+    var realm;
+
+    //> 8.  If realmObject is undefined, let realm be the Realm of the running
+    //>     execution context.
+    //> 9.  Else if Type(realmObject) is not Object or realmObject does not
+    //>     have all the internal properties of a Realm object, throw a
+    //>     TypeError exception.
+    if (realmObject !== undefined &&
+        (!IsObject(realmObject) ||
+         !callFunction(std_WeakMap_has, realmInternalDataMap, realmObject)))
     {
         throw std_TypeError("options.realm is not a Realm object");
+    } else {
+        //> 10. Else let realm be realmObject.[[Realm]].
+        realm = GetRealmInternalData(realmObject).realm;
     }
 
-    //> 10. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
+    //> 11. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
     //>     `"translate"`, `"instantiate"`),
     let hooks = ["normalize", "locate", "fetch", "translate", "instantiate"];
     for (let i = 0; i < hooks.length; i++) {
@@ -1615,14 +1641,14 @@ function Loader(options={}) {
         }
     }
 
-    //> 11. Set loader.[[Modules]] to a new empty List.
+    //> 12. Set loader.[[Modules]] to a new empty List.
     loaderData.modules = CreateMap();
-    //> 12. Set loader.[[Loads]] to a new empty List.
+    //> 13. Set loader.[[Loads]] to a new empty List.
     loaderData.loads = CreateMap();
-    //> 13. Set loader.[[Realm]] to realm.
+    //> 14. Set loader.[[Realm]] to realm.
     loaderData.realm = realm;
 
-    //> 14. Return loader.
+    //> 15. Return loader.
     return loader;
 }
 //
@@ -1736,16 +1762,58 @@ def(Loader, {"@@create": Loader_create});
 // **`UnpackOption`** - Used by several Loader methods to get options
 // off of an options object and, if defined, coerce them to strings.
 //
-function UnpackOption(options, name) {
-    if (options === undefined)
-        return null;
-    let value = options[name];
-    if (value === undefined)
-        return null;
-    return ToString(value);
+function UnpackOption(options, name, thunk) {
+    let value;
+    return (options === undefined || ((value = options[name]) === undefined))
+         ? (thunk ? thunk() : undefined)
+         : value;
 }
 
 def(Loader.prototype, {
+
+    //> #### Loader.prototype.realm
+    //>
+    //> `Loader.prototype.realm` is an accessor property whose set accessor
+    //> function is undefined. Its get accessor function performs the following
+    //> steps:
+    //>
+    get realm() {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If Type(loader) is not Object or loader does not have all the
+        //>     internal properties of a Loader object, throw a TypeError
+        //>     exception.
+        if (!IsObject(this) ||
+            !callFunction(std_WeakMap_has, loaderInternalDataMap, this))
+        {
+            throw std_TypeError("not a Loader object");
+        }
+
+        //> 1.  Return loader.[[Realm]].[[realmObject]].
+        return GetLoaderInternalData(this).realm.realmObject;
+    },
+    //>
+
+    //> #### Loader.prototype.global
+    //>
+    //> `Loader.prototype.global` is an accessor property whose set accessor
+    //> function is undefined. Its get accessor function performs the following
+    //> steps:
+    //>
+    get global() {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If Type(loader) is not Object or loader does not have all the
+        //>     internal properties of a Loader object, throw a TypeError
+        //>     exception.
+        if (!IsObject(this) ||
+            !callFunction(std_WeakMap_has, loaderInternalDataMap, this))
+        {
+            throw std_TypeError("not a Loader object");
+        }
+
+        //> 1.  Return loader.[[Realm]].[[globalThis]].
+        return GetLoaderInternalData(this).realm.globalThis;
+    },
+    //>
 
     // ### Loading and running code
     //
