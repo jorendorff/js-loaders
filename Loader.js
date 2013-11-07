@@ -332,7 +332,7 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //>   * load.[[Status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
 //>
-//>   * load.[[FullName]] - The normalized name of the module being loaded, or
+//>   * load.[[Name]] - The normalized name of the module being loaded, or
 //>     **undefined** if loading an anonymous module.
 //>
 //>   * load.[[LinkSets]] - A List of all LinkSets that require this load to
@@ -438,16 +438,16 @@ function $GetLoaderIteratorPrivate(iter) {
 //         .exception is an exception value
 //
 
-//> #### CreateLoad(fullName) Abstract Operation
+//> #### CreateLoad(name) Abstract Operation
 //>
 // A new `Load` begins in the `"loading"` state.
 //
-// The argument fullName is either `undefined` or a normalized module name.
+// The argument name is either `undefined` or a normalized module name.
 //
-function CreateLoad(fullName) {
+function CreateLoad(name) {
     return {
         status: "loading",
-        fullName: fullName,
+        name: name,
         linkSets: CreateSet(),
         metadata: {},
         address: undefined,
@@ -479,8 +479,7 @@ function FinishLoad(load, loader, body) {
     Assert(load.status === "loading");
     Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
 
-    let refererName = load.fullName;
-    let fullNames = [];
+    let refererName = load.name;
     let sets = SetToArray(load.linkSets);
 
     let moduleRequests = $ModuleRequests(body);
@@ -501,7 +500,7 @@ function FinishLoad(load, loader, body) {
         } catch (exc) {
             return LoadFailed(load, exc);
         }
-        callFunction(std_Map_set, dependencies, request, depLoad.fullName);
+        callFunction(std_Map_set, dependencies, request, depLoad.name);
 
         if (depLoad.status !== "linked") {
             for (let j = 0; j < sets.length; j++)
@@ -604,7 +603,7 @@ function StartModuleLoad(loader, request, refererName, refererAddress) {
     // If the module has already been linked, we are done.
     let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
     if (existingModule !== undefined)
-        return {status: "linked", fullName: normalized, module: existingModule};
+        return {status: "linked", name: normalized, module: existingModule};
 
     // If the module is already loaded, we are done.
     let load = callFunction(std_Map_get, loaderData.loads, normalized);
@@ -628,7 +627,7 @@ function LoadModule(loader, normalized) {
 
     var p = new std_Promise(function (resolve, reject) {
         resolve(loader.locate({
-            name: load.fullName,
+            name: load.name,
             metadata: load.metadata
         }));
     });
@@ -637,7 +636,7 @@ function LoadModule(loader, normalized) {
             return;
         load.address = address;
         return loader.fetch({
-            name: load.fullName,
+            name: load.name,
             metadata: load.metadata,
             address: address
         });
@@ -646,7 +645,7 @@ function LoadModule(loader, normalized) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         return loader.translate({
-            name: load.fullName,
+            name: load.name,
             metadata: load.metadata,
             address: load.address,
             source: source
@@ -661,7 +660,7 @@ function CallTranslate(loader, load, p) {
             return;
         load.source = source;
         return loader.instantiate({
-            name: load.fullName,
+            name: load.name,
             metadata: load.metadata,
             address: load.address,
             source: source
@@ -683,13 +682,13 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
     // Interpret `instantiateResult`.  See comment on the `instantiate()`
     // method.
     if (instantiateResult === undefined) {
-        let body = $ParseModule(loader, load.source, load.fullName, load.address);
+        let body = $ParseModule(loader, load.source, load.name, load.address);
         FinishLoad(load, loader, body);
     } else if (!IsObject(instantiateResult)) {
         throw std_TypeError("instantiate hook must return an object or undefined");
     } else if ($IsModule(instantiateResult)) {
         let mod = instantiateResult;
-        let name = load.fullName;
+        let name = load.name;
         if (name !== undefined) {
             var loaderData = GetLoaderInternalData(loader);
 
@@ -833,19 +832,19 @@ function CreateLinkSet(loader, startingLoad) {
     return linkSet;
 }
 
-//> #### LinkSetAddLoadByName(linkSet, fullName) Abstract Operation
+//> #### LinkSetAddLoadByName(linkSet, name) Abstract Operation
 //>
-//> If a module with the given fullName is loading
-//> or loaded but not linked, add the `Load` to the given linkSet.
+//> If a module with the given normalized name is loading or loaded but not
+//> linked, add the `Load` to the given linkSet.
 //>
-function LinkSetAddLoadByName(linkSet, fullName) {
+function LinkSetAddLoadByName(linkSet, name) {
     var loaderData = GetLoaderInternalData(linkSet.loader);
-    if (!callFunction(std_Map_has, loaderData.modules, fullName)) {
+    if (!callFunction(std_Map_has, loaderData.modules, name)) {
         // We add `depLoad` even if it is done loading, for two reasons. The
         // association keeps the Load alive (Load Records are
         // reference-counted; see `FinishLinkSet`). Separately, `depLoad` may
         // have dependencies that are still laoding.
-        let depLoad = callFunction(std_Map_get, loaderData.loads, fullName);
+        let depLoad = callFunction(std_Map_get, loaderData.loads, name);
         AddLoadToLinkSet(linkSet, depLoad);
     }
 }
@@ -866,9 +865,9 @@ function AddLoadToLinkSet(linkSet, load) {
         } else {
             // Transitively add not-yet-linked dependencies.
             Assert(load.status == "loaded");
-            let fullNames = MapValuesToArray(load.dependencies);
-            for (let i = 0; i < fullNames.length; i++)
-                LinkSetAddLoadByName(linkSet, fullNames[i]);
+            let names = MapValuesToArray(load.dependencies);
+            for (let i = 0; i < names.length; i++)
+                LinkSetAddLoadByName(linkSet, names[i]);
         }
     }
 }
@@ -912,11 +911,11 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
         // If load is not needed by any surviving LinkSet, drop it.
         if (callFunction(std_Set_get_size, load.linkSets) === 0) {
-            let fullName = load.fullName;
-            if (fullName !== null) {
-                let currentLoad = callFunction(std_Map_get, loaderData.loads, fullName);
+            let name = load.name;
+            if (name !== undefined) {
+                let currentLoad = callFunction(std_Map_get, loaderData.loads, name);
                 if (currentLoad === load)
-                    callFunction(std_Map_delete, loaderData.loads, fullName);
+                    callFunction(std_Map_delete, loaderData.loads, name);
             }
         }
     }
@@ -961,7 +960,7 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options
         // given module.  Start the Load process at the `translate` hook.
         let load = CreateLoad(name);
         let linkSet = CreateLinkSet(loader, load);
-        callFunction(std_Map_set, loaderData.loads, fullName, load);
+        callFunction(std_Map_set, loaderData.loads, name, load);
         callFunction(std_Promise_then,
                      linkSet.done,
                      function (_) { resolve(undefined); },
@@ -1049,7 +1048,7 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, option
             let mod = load.module;
             if (mod === undefined) {
                 // TODO: can this happen?
-                throw std_TypeError("import(): module \"" + load.fullName +
+                throw std_TypeError("import(): module \"" + load.name +
                                     "\" was deleted from the loader");
             }
             EnsureEvaluatedHelper(mod, loader);
