@@ -15,7 +15,7 @@ set -eu
 
 # Build the web page.
 rm -rf docs
-python scripts/schnocco.py Loader.js
+python scripts/schlocco.py Loader.js
 
 # Ship it.
 (cd docs && cp Loader.html loaders.html)  # legacy url

@@ -31,11 +31,11 @@ You will need Python 2.7 and virtualenv.
 
 5.  To generate HTML from Loader.js, the command is:
 
-        python schnocco.py ../Loader.js
+        python schlocco.py ../Loader.js
 
     By default, the output document is `./docs/Loader.html`. This script
     accepts command-line arguments to change the default; run
-    `python schnocco.py --help` for details.
+    `python schlocco.py --help` for details.
 
 You don&rsquo;t need to repeat all those steps every time.
 If you&rsquo;ve done it once, subsequently you can just:

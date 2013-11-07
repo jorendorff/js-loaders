@@ -1,6 +1,6 @@
 #!/bin/env python
 
-"""schnocco.py - A badly-behaved port of [Docco](http://jashkenas.github.io/docco/).
+"""schlocco.py - A badly-behaved port of [Docco](http://jashkenas.github.io/docco/).
 
 This is directly descended from the delightful literate-CoffeeScript original.
 Differences from Docco:
@@ -21,7 +21,7 @@ Differences from Docco:
   Docco would run each comment through Markdown separately, generating two
   separate ordered lists, each starting with the number 1.
 
-  So in schnocco, all the documentation is run through Markdown as a single
+  So in schlocco, all the documentation is run through Markdown as a single
   unit. Code is inelegantly wedged into the documentation HTML and rendered
   using deeply preposterous CSS.
 """
@@ -119,7 +119,7 @@ def format(sections, config):
         right = docs_text[match.end():]
         if right == '':
             right = '\n'
-        docs_text = left + "(schnocco-source-code-segment-{})".format(n) + right
+        docs_text = left + "(schlocco-source-code-segment-{})".format(n) + right
 
         # Add a blank line between sections, unless this section starts with a
         # numbered list item.
@@ -146,7 +146,7 @@ def format(sections, config):
     docs_html = markdown.markdown(all_docs_md)
 
     # Substitute code segments into the generated HTML.
-    return re.sub(r'\(schnocco-source-code-segment-([0-9]+)\)',
+    return re.sub(r'\(schlocco-source-code-segment-([0-9]+)\)',
                   lambda match: code_segments[int(match.group(1))],
                   docs_html)
 
@@ -179,12 +179,12 @@ def write(source_filename, sections_html, config):
             + '</html>\n')
 
     dest = destination(source_filename)
-    print("schnocco: {} -> {}".format(source_filename, dest))
+    print("schlocco: {} -> {}".format(source_filename, dest))
     with codecs.open(dest, 'w', encoding='utf-8') as out:
         out.write(html)
  
 def main():
-    """ Finally, let's define the interface to run Schnocco from the command line.
+    """ Finally, let's define the interface to run Schlocco from the command line.
     Parse options using argparse. """
 
     parser = argparse.ArgumentParser(description="make a big HTML mess")
@@ -202,7 +202,7 @@ def main():
     args = parser.parse_args()
     dir = os.path.join(os.path.dirname(__file__), "resources")
     if args.css is None:
-        args.css = os.path.join(dir, "schnocco.css")
+        args.css = os.path.join(dir, "schlocco.css")
     document(args)
 
 if __name__ == '__main__':
