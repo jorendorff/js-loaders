@@ -384,10 +384,9 @@ function $GetLoaderIteratorPrivate(iter) {
 
 //> #### CreateLoad(name) Abstract Operation
 //>
-// A new `Load` begins in the `"loading"` state.
-//
-// The argument name is either `undefined` or a normalized module name.
-//
+//> Create and return a new Load Record.  The argument name is either
+//> `undefined`, indicating an anonymous module, or a normalized module name.
+//>
 function CreateLoad(name) {
     return {
         status: "loading",
@@ -408,7 +407,8 @@ function CreateLoad(name) {
 
 //> #### LoadFailed(load, exc) Abstract Operation
 //>
-//> Mark load as having failed.  All LinkSets that require it also fail.
+//> Mark a Load Record as having failed.  All LinkSets that depend on the Load
+//> also fail.
 //>
 function LoadFailed(load, exc) {
     Assert(load.status === "loading");
