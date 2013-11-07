@@ -410,20 +410,22 @@ function CreateLoad(name) {
 //> Mark a Load Record as having failed.  All LinkSets that depend on the Load
 //> also fail.
 //>
-function LoadFailed(load, exc) {
-    Assert(load.status === "loading");
-    load.status = "failed";
-    load.exception = exc;
+function MakeClosure_LoadFailed(load) {
+    return function (exc) {
+        Assert(load.status === "loading");
+        load.status = "failed";
+        load.exception = exc;
 
-    // For determinism, flunk the attached LinkSets in timestamp order.
-    // (NOTE: If it turns out that Promises fire in a nondeterministic
-    // order, then there's no point sorting this array here.)
-    let sets = SetToArray(load.linkSets);
-    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < sets.length; i++)
-        FinishLinkSet(sets[i], false, exc);
+        // For determinism, flunk the attached LinkSets in timestamp order.
+        // (NOTE: If it turns out that Promises fire in a nondeterministic
+        // order, then there's no point sorting this array here.)
+        let sets = SetToArray(load.linkSets);
+        callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
+        for (let i = 0; i < sets.length; i++)
+            FinishLinkSet(sets[i], false, exc);
 
-    Assert(callFunction(std_Set_get_size, load.linkSets) === 0);
+        Assert(callFunction(std_Set_get_size, load.linkSets) === 0);
+    };
 }
 
 
@@ -491,13 +493,35 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
     var load = CreateLoad(normalized);
     callFunction(std_Map_set, loaderData.loads, normalized, load);
 
-    var p = new std_Promise(function (resolve, reject) {
+    var p = new std_Promise(MakeClosure_CallLocate(loader, load));
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_CallFetch(loader, load));
+    return CallTranslate(loader, load, p);
+}
+
+function CallTranslate(loader, load, p) {
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_CallTranslate(loader, load));
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_CallInstantiate(loader, load));
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_InstantiateSucceeded(loader, load));
+    callFunction(std_Promise_catch, p,
+                 MakeClosure_LoadFailed(load));
+    return load;
+}
+
+function MakeClosure_CallLocate(loader, load) {
+    return function (resolve, reject) {
         resolve(loader.locate({
             name: load.name,
             metadata: load.metadata
         }));
-    });
-    p = callFunction(std_Promise_then, p, function (address) {
+    };
+}
+
+function MakeClosure_CallFetch(loader, load) {
+    return function (address) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         load.address = address;
@@ -506,8 +530,11 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
             metadata: load.metadata,
             address: address
         });
-    });
-    p = callFunction(std_Promise_then, p, function (source) {
+    };
+}
+
+function MakeClosure_CallTranslate(loader, load) {
+    return function (source) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         return loader.translate({
@@ -516,12 +543,11 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
             address: load.address,
             source: source
         });
-    });
-    return CallTranslate(loader, load, p);
+    };
 }
 
-function CallTranslate(loader, load, p) {
-    p = callFunction(std_Promise_then, p, function (source) {
+function MakeClosure_CallInstantiate(loader, load) {
+    return function (source) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
         load.source = source;
@@ -531,20 +557,14 @@ function CallTranslate(loader, load, p) {
             address: load.address,
             source: source
         });
-    });
-    p = callFunction(std_Promise_then, p, function (result) {
-        InstantiateSucceeded(loader, load, result);
-    });
-    callFunction(std_Promise_catch, p, function (exc) {
-        LoadFailed(load, exc);
-    });
-    return load;
+    };
 }
 
 // **`InstantiateSucceeded`** - This is called once the `instantiate` hook
 // succeeds. Continue module loading by interpreting the hook's result and
 // calling FinishLoad if necessary.
-function InstantiateSucceeded(loader, load, instantiateResult) {
+function MakeClosure_InstantiateSucceeded(loader, load) {
+    return function (instantiateResult) {
     // Interpret `instantiateResult`.  See comment on the `instantiate()`
     // method.
     if (instantiateResult === undefined) {
@@ -578,6 +598,7 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
         throw TODO;
     }
 }
+
 //> #### FinishLoad(load, loader, body) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `instantiate` hook),
@@ -610,12 +631,7 @@ function FinishLoad(load, loader, body) {
     let dependencies = CreateMap();
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
-        let depLoad;
-        try {
-            depLoad = GetOrStartLoad(loader, request, refererName, load.address);
-        } catch (exc) {
-            return LoadFailed(load, exc);
-        }
+        let depLoad = GetOrStartLoad(loader, request, refererName, load.address);
         callFunction(std_Map_set, dependencies, request, depLoad.name);
 
         if (depLoad.status !== "linked") {
