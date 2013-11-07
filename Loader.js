@@ -749,7 +749,7 @@ function OnEndRun(load, mod) {
 //> #### CreateLinkSet(loader, startingLoad) Abstract Operation
 //>
 function CreateLinkSet(loader, startingLoad) {
-    var loaderData = GetLoaderInternalData(linkSet.loader);
+    var loaderData = GetLoaderInternalData(loader);
     var resolve, reject;
     var done = new std_Promise(function (res, rej) {
         resolve = res;
