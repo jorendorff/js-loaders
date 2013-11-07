@@ -453,78 +453,6 @@ function CreateLoad(name) {
     };
 }
 
-//> #### FinishLoad(load, loader, body) Abstract Operation
-//>
-// The loader calls this after the last loader hook (the `instantiate` hook),
-// and after the module has been parsed. FinishLoad does two things:
-//
-//   1. Process imports. This may trigger additional loads.
-//
-//   2. Call LinkSetOnLoad on any listening LinkSets (see that abstract
-//      operation for the conclusion of the load/link/evaluate process).
-//
-// On success, this transitions the `Load` from `"loading"` status to
-// `"loaded"`.
-//
-function FinishLoad(load, loader, body) {
-    Assert(load.status === "loading");
-    Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
-
-    let refererName = load.name;
-    let sets = SetToArray(load.linkSets);
-
-    let moduleRequests = $ModuleRequests(body);
-
-    // For each new dependency, create a new Load Record, if necessary, and add
-    // it to the same LinkSet.
-    //
-    // The module-specifiers in import-declarations are not necessarily
-    // normalized module names.  We pass them to StartModuleLoad which will
-    // call the `normalize` hook.
-    //
-    let dependencies = CreateMap();
-    for (let i = 0; i < moduleRequests.length; i++) {
-        let request = moduleRequests[i];
-        let depLoad;
-        try {
-            depLoad = StartModuleLoad(loader, request, refererName, load.address);
-        } catch (exc) {
-            return LoadFailed(load, exc);
-        }
-        callFunction(std_Map_set, dependencies, request, depLoad.name);
-
-        if (depLoad.status !== "linked") {
-            for (let j = 0; j < sets.length; j++)
-                AddLoadToLinkSet(sets[j], depLoad);
-        }
-    }
-
-    load.status = "loaded";
-    load.body = body;
-    load.dependencies = dependencies;
-
-    // For determinism, finish linkable LinkSets in timestamp order.
-    // (NOTE: If it turns out that Promises fire in a nondeterministic
-    // order, then there's no point sorting this array here.)
-    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < sets.length; i++)
-        LinkSetOnLoad(sets[i], load);
-}
-
-//> #### OnEndRun(load, mod) Abstract Operation
-//>
-// Called when the `instantiate` hook returns a Module object.
-function OnEndRun(load, mod) {
-    Assert(load.status === "loading");
-    load.status = "linked";
-    load.module = mod;
-
-    let sets = SetToArray(load.linkSets);
-    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < sets.length; i++)
-        LinkSetOnLoad(sets[i], load);
-}
-
 //> #### LoadFailed(load, exc) Abstract Operation
 //>
 //> Mark load as having failed.  All LinkSets that require it also fail.
@@ -700,6 +628,77 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
 
         throw TODO;
     }
+}
+//> #### FinishLoad(load, loader, body) Abstract Operation
+//>
+// The loader calls this after the last loader hook (the `instantiate` hook),
+// and after the module has been parsed. FinishLoad does two things:
+//
+//   1. Process imports. This may trigger additional loads.
+//
+//   2. Call LinkSetOnLoad on any listening LinkSets (see that abstract
+//      operation for the conclusion of the load/link/evaluate process).
+//
+// On success, this transitions the `Load` from `"loading"` status to
+// `"loaded"`.
+//
+function FinishLoad(load, loader, body) {
+    Assert(load.status === "loading");
+    Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
+
+    let refererName = load.name;
+    let sets = SetToArray(load.linkSets);
+
+    let moduleRequests = $ModuleRequests(body);
+
+    // For each new dependency, create a new Load Record, if necessary, and add
+    // it to the same LinkSet.
+    //
+    // The module-specifiers in import-declarations are not necessarily
+    // normalized module names.  We pass them to StartModuleLoad which will
+    // call the `normalize` hook.
+    //
+    let dependencies = CreateMap();
+    for (let i = 0; i < moduleRequests.length; i++) {
+        let request = moduleRequests[i];
+        let depLoad;
+        try {
+            depLoad = StartModuleLoad(loader, request, refererName, load.address);
+        } catch (exc) {
+            return LoadFailed(load, exc);
+        }
+        callFunction(std_Map_set, dependencies, request, depLoad.name);
+
+        if (depLoad.status !== "linked") {
+            for (let j = 0; j < sets.length; j++)
+                AddLoadToLinkSet(sets[j], depLoad);
+        }
+    }
+
+    load.status = "loaded";
+    load.body = body;
+    load.dependencies = dependencies;
+
+    // For determinism, finish linkable LinkSets in timestamp order.
+    // (NOTE: If it turns out that Promises fire in a nondeterministic
+    // order, then there's no point sorting this array here.)
+    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
+    for (let i = 0; i < sets.length; i++)
+        LinkSetOnLoad(sets[i], load);
+}
+
+//> #### OnEndRun(load, mod) Abstract Operation
+//>
+// Called when the `instantiate` hook returns a Module object.
+function OnEndRun(load, mod) {
+    Assert(load.status === "loading");
+    load.status = "linked";
+    load.module = mod;
+
+    let sets = SetToArray(load.linkSets);
+    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
+    for (let i = 0; i < sets.length; i++)
+        LinkSetOnLoad(sets[i], load);
 }
 
 
