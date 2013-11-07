@@ -491,20 +491,15 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
     if (existingModule !== undefined)
         return {status: "linked", name: normalized, module: existingModule};
 
-    // If the module is already loaded, we are done.
+    // If the module is already loading or loaded, we are done.
     let load = callFunction(std_Map_get, loaderData.loads, normalized);
-    if (load !== undefined && load.status === "loaded")
-        return load;
-
-    // If the module is already loading, we are done.
     if (load !== undefined) {
-        Assert(load.status === "loading");
+        Assert(load.status === "loading" || load.status === "loaded");
         return load;
     }
 
-    var loaderData = GetLoaderInternalData(loader);
-    Assert(!callFunction(std_Map_has, loaderData.loads, normalized));
-    var load = CreateLoad(normalized);
+    // Start a new Load.
+    load = CreateLoad(normalized);
     callFunction(std_Map_set, loaderData.loads, normalized, load);
 
     var p = new std_Promise(MakeClosure_CallLocate(loader, load));
