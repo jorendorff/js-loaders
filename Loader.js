@@ -88,6 +88,16 @@ function IsObject(v) {
            typeof v !== "symbol";
 }
 
+// ES6 IsCallable abstract operation.
+//
+// This is technically correct according to the table in the defintion of the
+// ES6 `typeof` operator, although some JavaScript engines return `"object"` as
+// the type of some objects that implement [[Call]].
+//
+function IsCallable(v) {
+    return typeof v === "function";
+}
+
 // This implementation uses ES6 Set, Map, and WeakMap objects in some places
 // where the spec text refers to Lists and internal data properties.
 //
@@ -1242,8 +1252,8 @@ Module.prototype = null;
 // private methods, the "internal data properties" of Realm objects are stored
 // on a separate object which is not accessible from user code.
 //
-// So what the specification refers to as `realm.[[Realm]]` is implemented
-// as `GetRealmInternalData(realm).realm`.
+// So what the specification refers to as `realmObject.[[Realm]]` is implemented
+// as `GetRealmInternalData(realmObject).realm`.
 //
 // The simplest way to connect the two objects without exposing this internal
 // data to user code is to use a `WeakMap`.
@@ -1276,85 +1286,124 @@ function Realm(options, initializer) {
     if (realmData.realm !== undefined)
         throw std_TypeError("Realm object cannot be intitialized more than once");
 
-    //> 1.  If *options* is not undefined and Type(*options*) is not Object,
-    //>     throw a TypeError exception.
+    //> 1.  If options is not undefined and Type(options) is not Object, throw
+    //>     a TypeError exception.
     if (options !== undefined && !IsObject(options))
         throw std_TypeError("options must be an object or undefined");
 
-    //> 1.  Let *realm* be the result of CreateRealm(realmObject).
+    //> 1.  Let realm be the result of CreateRealm(realmObject).
     let realm = $CreateRealm(realmObject);
 
     //> 1.  If options is undefined, then let options be a new Object.
-    //> 1.  Else, if Type(*options*) is not Object, throw a TypeError
-    //>     exception.
+    if (options === undefined) {
+        options = {};
+    }
 
-    //> 1.  Let *evalHooks* be the result of calling the [[Get]] internal
-    //>     method of *options* passing `"eval"` and **true** as arguments.
-    //> 1.  ReturnIfAbrupt(*evalHooks*).
-    //> 1.  If *evalHooks* is undefined then let *evalHooks* be a new Object.
-    //> 1.  Else, if Type(*evalHooks*) is not Object, throw a TypeError
+    //> 1.  Else, if Type(options) is not Object, throw a TypeError
     //>     exception.
+    if (!IsObject(options)) {
+        throw std_TypeError("options must be an object or undefined");
+    }
+
+    //> 1.  Let evalHooks be the result of calling the [[Get]] internal
+    //>     method of options passing `"eval"` and true as arguments.
+    //> 1.  ReturnIfAbrupt(evalHooks).
+    //> 1.  If evalHooks is undefined then let evalHooks be a new Object.
     let evalHooks = UnpackOption(options, "eval", () => ({}));
 
-    //> 1.  Let *directEval* be the result of calling the [[Get]] internal
-    //>     method of *evalHooks* passing `"direct"` and **true** as arguments.
-    //> 1.  ReturnIfAbrupt(*directEval*).
-    //> 1.  If *directEval* is undefined then let *directEval* be a new Object.
-    //> 1.  Else, if Type(*directEval*) is not Object, throw a TypeError
+    //> 1.  Else, if Type(evalHooks) is not Object, throw a TypeError
     //>     exception.
+    if (!IsObject(evalHooks)) {
+        throw std_TypeError("options.eval must be an object or undefined");
+    }
+
+    //> 1.  Let directEval be the result of calling the [[Get]] internal
+    //>     method of evalHooks passing `"direct"` and true as arguments.
+    //> 1.  ReturnIfAbrupt(directEval).
+    //> 1.  If directEval is undefined then let directEval be a new Object.
     let directEval = UnpackOption(evalHooks, "direct", () => ({}));
 
-    //> 1.  Let *translate* be the result of calling the [[Get]] internal
-    //>     method of *directEval* passing `"translate"` and **true** as
+    //> 1.  Else, if Type(directEval) is not Object, throw a TypeError
+    //>     exception.
+    if (!IsObject(directEval)) {
+        throw std_TypeError("options.eval.direct must be an object or undefined");
+    }
+
+    //> 1.  Let translate be the result of calling the [[Get]] internal
+    //>     method of directEval passing `"translate"` and true as
     //>     arguments.
-    //> 1.  ReturnIfAbrupt(*translate*).
+    //> 1.  ReturnIfAbrupt(translate).
+    let translate = UnpackOption(directEval, "translate");
+
     //> 1.  If translate is not undefined and IsCallable(translate) is false,
     //>     throw a TypeError exception.
-    //> 1.  Set *realm*.[[translateDirectEvalHook]] to *translate*.
-    realm.translateDirectEvalHook = UnpackOption(directEval, "translate");
+    if (translate !== undefined && !IsCallable(translate)) {
+        throw std_TypeError("translate hook is not callable");
+    }
 
-    //> 1.  Let *fallback* be the result of calling the [[Get]] internal
-    //>     method of *directEval* passing `"fallback"` and **true** as
-    //>     arguments.
-    //> 1.  ReturnIfAbrupt(*fallback*).
+    //> 1.  Set realm.[[translateDirectEvalHook]] to translate.
+    realm.translateDirectEvalHook = translate;
+
+    //> 1.  Let fallback be the result of calling the [[Get]] internal method
+    //>     of directEval passing `"fallback"` and true as arguments.
+    //> 1.  ReturnIfAbrupt(fallback).
+    let fallback = UnpackOption(directEval, "fallback");
+
     //> 1.  If fallback is not undefined and IsCallable(fallback) is false,
     //>     throw a TypeError exception.
-    //> 1.  Set *realm*.[[fallbackDirectEvalHook]] to *fallback*.
-    realm.fallbackDirectEvalHook = UnpackOption(directEval, "fallback");
+    if (fallback !== undefined && !IsCallable(fallback)) {
+        throw std_TypeError("fallback hook is not callable");
+    }
 
-    //> 1.  Let *indirectEval* be the result of calling the [[Get]] internal
-    //>     method of *options* passing `"indirect"` and **true** as
-    //>     arguments.
-    //> 1.  ReturnIfAbrupt(*indirectEval*).
+    //> 1.  Set realm.[[fallbackDirectEvalHook]] to fallback.
+    realm.fallbackDirectEvalHook = fallback;
+
+    //> 1.  Let indirectEval be the result of calling the [[Get]] internal
+    //>     method of options passing `"indirect"` and true as arguments.
+    //> 1.  ReturnIfAbrupt(indirectEval).
+    let indirectEval = UnpackOption(evalHooks, "indirect");
+
     //> 1.  If indirectEval is not undefined and IsCallable(indirectEval) is
     //>     false, throw a TypeError exception.
-    //> 1.  Set *realm*.[[indirectEvalHook]] to *indirectEval*.
-    realm.indirectEvalHook = UnpackOption(evalHooks, "indirect");
+    if (indirectEval !== undefined && !IsCallable(indirectEval)) {
+        throw std_TypeError("indirect eval hook is not callable");
+    }
 
-    //> 1.  Let *Function* be the result of calling the [[Get]] internal
-    //>     method of *options* passing `"Function"` and **true** as
-    //>     arguments.
-    //> 1.  ReturnIfAbrupt(*Function*).
+    //> 1.  Set realm.[[indirectEvalHook]] to indirectEval.
+    realm.indirectEvalHook = indirectEval;
+
+    //> 1.  Let Function be the result of calling the [[Get]] internal method
+    //>     of options passing `"Function"` and true as arguments.
+    //> 1.  ReturnIfAbrupt(Function).
+    let Function = UnpackOption(options, "Function");
+
     //> 1.  If Function is not undefined and IsCallable(Function) is false,
     //>     throw a TypeError exception.
-    //> 1.  Set *realm*.[[FunctionHook]] to *Function*.
-    realm.FunctionHook = UnpackOption(options, "Function");
+    if (Function !== undefined && !IsCallable(Function)) {
+        throw std_TypeError("Function hook is not callable");
+    }
 
-    //> 1.  Set realmObject.[[Realm]] to *realm*.
+    //> 1.  Set realm.[[FunctionHook]] to Function.
+    realm.FunctionHook = Function;
+
+    //> 1.  Set realmObject.[[Realm]] to realm.
     realmData.realm = realm;
 
-    //> 1.  If *initializer* is not undefined then the following steps are
-    //>     taken:
+    //> 1.  If initializer is not undefined then the following steps are taken:
     if (initializer !== undefined) {
-        //>     1.  If IsCallable(*initializer*) is **false**, throw a
-        //>         TypeError exception.
-        //>     1.  Let *builtins* be a new Object.
+        //>     1.  If IsCallable(initializer) is false, throw a TypeError
+        //>         exception.
+        if (!IsCallable(initializer)) {
+            throw std_TypeError("initializer is not callable");
+        }
+
+        //>     1.  Let builtins be a new Object.
         //>     1.  Call the DefineBuiltinProperties abstract operation passing
-        //>         *realm* and *builtins* as arguments.
-        //>     1.  Let *r* be the result of calling the *initializer* function
-        //>         passing realmObject as the **this** value and *builtins* as
+        //>         realm and builtins as arguments.
+        //>     1.  Let status be the result of calling the initializer function
+        //>         passing realmObject as the this value and builtins as
         //>         the single argument.
-        //>     1.  ReturnIfAbrupt(*r*).
+        //>     1.  ReturnIfAbrupt(status).
         callFunction(initializer, realmObject, realm.builtins);
     }
 
