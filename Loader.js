@@ -821,28 +821,26 @@ function AddLoadToLinkSet(linkSet, load) {
 function LinkSetOnLoad(linkSet, load) {
     Assert(callFunction(std_Set_has, linkSet.loads, load));
     Assert(load.status === "loaded" || load.status === "linked");
-    //> 1.  Decrement linkSet.[[LoadingCount]].
-    //> 1.  If linkSet.[[LoadingCount]] is 0, then:
-    if (--linkSet.loadingCount === 0) {
-        // If all dependencies have loaded, link the modules and fire the
-        // success callback.
-        try {
-            //>     1.  Let status be the result of calling the Link abstract
-            //>         operation passing linkSet.[[Loads]] and
-            //>         linkSet.[[Loader]] as arguments.
-            //>     1.  If status is an abrupt completion, then:
-            LinkModules(linkSet);
-        } catch (exc) {
-            //>         1. Call the FinishLinkSet abstract operation passing
-            //>            linkSet, false, and status as arguments.
-            //>         1. Return status.
-            FinishLinkSet(linkSet, false, exc);
-            return;
-        }
-        //>     1. Else, call the FinishLinkSet abstract operation passing
-        //>        linkSet, true, and undefined as arguments.
-        FinishLinkSet(linkSet, true, undefined);
+    //> 1.  Repeat for each load in linkSet.[[Loads]],
+    //>     1.  If load.[[Status]] is `"loading"`, then return.
+    if (linkSet.loadingCount !== 0)
+        return;
+
+    try {
+        //> 2.  Let status be the result of calling the Link abstract
+        //>     operation passing linkSet.[[Loads]] and
+        //>     linkSet.[[Loader]] as arguments.
+        LinkModules(linkSet);
+    } catch (exc) {
+        //> 3.  If status is an abrupt completion, then
+        //>     1. Call FinishLinkSet(linkSet, false, status).
+        FinishLinkSet(linkSet, false, exc);
+
+        //>     2. Return.
+        return;
     }
+    //> 4. Call FinishLinkSet(linkSet, true, undefined).
+    FinishLinkSet(linkSet, true, undefined);
 }
 
 //> #### FinishLinkSet(linkSet, succeeded, exc) Abstract Operation
