@@ -27,7 +27,7 @@ span.src > code {
     font-family: Menlo, Monaco, Consolas, "Lucida Console", monospace;
 }
 
-p, li, h1, h2, h3, h4, h5, h6 { clear: both; }
+p, li, h1, h2, h3, h4, h5, h6, blockquote { clear: both; }
 
 
 
