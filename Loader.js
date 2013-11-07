@@ -146,118 +146,121 @@ function Assert(condition) {
 
 // Now on to the core JS language implementation primitives.
 //
-// * `$ParseModule(loader, src, moduleName, address)` parses the string `src`
-//   as an ES6 Module.  `$ParseModule` detects ES "early errors" and throws
-//   `SyntaxError` or `ReferenceError`.  On success, it returns either a
-//   ModuleBody object.  This is the only way objects of these types are
-//   created.  (ModuleBody objects are never exposed to user code; they are for
-//   use with the following primitives only.)
+// The first two primitives parse ECMAScript code.
 //
-//   Note that this does not run any of the code in `src`.
+//   * `$ParseModule(loader, source, moduleName, address)` parses the string
+//     `source` as an ES6 Module.  Returns a ModuleBody object.
 //
-// * `$ParseScript(src)` parses the string `src` as an ES6 Script.
-//   `$ParseScript` detects ES "early errors" and throws `SyntaxError` or
-//   `ReferenceError`. On success it returns a StatementList object. This is
-//   the only way objects of these types are created.  (StatementList objects
-//   are never exposed to user code; they are for use with the following
-//   primitives only.)
+//   * `$ParseScript(source)` parses the string `source` as an ES6 Script.
+//     Returns a StatementList object.
+//
+// Both primitives detect ES "early errors" and throw `SyntaxError` or
+// `ReferenceError`.
+//
+// Note that neither primitive runs any of the code in `source`.
+//
+// ModuleBody and StatementList objects are never exposed to user code. They
+// are for use with the primitives below only. These two parsing primitives are
+// the only way objects of these types are created.
 //
 // The following primitive extracts information from a ModuleBody object.
 //
-// * `$ModuleRequests(body)` - Return an Array of strings, the module
-//   specifiers as they appear in import declarations and module declarations
-//   in the given module body, with duplicates removed. (This corresponds to
-//   the ModuleRequests static semantics operation.)
+//   * `$ModuleRequests(body)` - Return an Array of strings, the module
+//     specifiers as they appear in import declarations and module declarations
+//     in the given module body, with duplicates removed. (This corresponds to
+//     the ModuleRequests static semantics operation.)
 //
 // The following primitives operate on Module objects.
 
-// * `$CreateModule()` returns a new `Module` object. The object is extensible.
-//   It must not be exposed to scripts until it has been populated and frozen.
+//   * `$CreateModule()` returns a new `Module` object. The object is
+//     extensible.  It must not be exposed to scripts until it has been
+//     populated and frozen.
 //
 function $CreateModule() {
     return std_Object_create(null);
 }
 
-// * `$IsModule(v)` returns true if `v` is a `Module` object.
+//   * `$IsModule(v)` returns true if `v` is a `Module` object.
 //
-// * `$DefineConstant(module, name, value)` defines a constant binding in
-//   the toplevel declarative environment of `module`, with the given `name`
-//   and `value`.  This is only used to implement `module a from "A";`
-//   declarations, so `value` is always a Module object.
+//   * `$DefineConstant(module, name, value)` defines a constant binding in the
+//     toplevel declarative environment of `module`, with the given `name` and
+//     `value`.  This is only used to implement `module a from "A";`
+//     declarations, so `value` is always a Module object.
 //
-// * `$CreateImportBinding(module, name, export)` defines an import binding.
-//   `module` is the importing module. `name` is a string, the name of the
-//   local binding being bound.  `export` is a value returned by
-//   $GetModuleExport(), representing the location of the slot to be bound.
+//   * `$CreateImportBinding(module, name, export)` defines an import binding.
+//     `module` is the importing module. `name` is a string, the name of the
+//     local binding being bound.  `export` is a value returned by
+//     $GetModuleExport(), representing the location of the slot to be bound.
 //
-//   The effect of `$CreateImportBinding` is that in `module`'s scope,
-//   `name` becomes an alias for the binding indicated by `export`.
+//     The effect of `$CreateImportBinding` is that in `module`'s scope, `name`
+//     becomes an alias for the binding indicated by `export`.
 //
-//   `name` must in fact be a name declared by an import declaration in
-//   `module`, and it must not already have been bound.
+//     `name` must in fact be a name declared by an import declaration in
+//     `module`, and it must not already have been bound.
 //
-// * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
-//   either undefined or an array of Module objects, the modules whose bodies
-//   are to be evaluated before the given module's body.  A return value of
-//   undefined means the same thing as returning an empty array to the sole
-//   caller, EnsureEvaluated().
+//   * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
+//     either undefined or an array of Module objects, the modules whose bodies
+//     are to be evaluated before the given module's body.  A return value of
+//     undefined means the same thing as returning an empty array to the sole
+//     caller, EnsureEvaluated().
 //
-// * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
+//   * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
 //
-// * `$ModuleBodyToModuleObject(body)` returns a `Module` object for
-//   the given ModuleBody `body`.
+//   * `$ModuleBodyToModuleObject(body)` returns a `Module` object for the
+//     given ModuleBody `body`.
 //
-//   Modules declared in scripts must be linked and evaluated before they
-//   are exposed to user code.
+//     Modules declared in scripts must be linked and evaluated before they are
+//     exposed to user code.
 //
-// * `$GetModuleBody(mod)` returns `mod.[[Body]]`. This is the parse of
-//   the module source code, if the Module object `mod` was compiled from
-//   JS source, and undefined otherwise.
+//   * `$GetModuleBody(mod)` returns `mod.[[Body]]`. This is the parse of the
+//     module source code, if the Module object `mod` was compiled from JS
+//     source, and undefined otherwise.
 //
-// * `$GetModuleExport(mod, name)` returns information about an export binding.
-//   If the module `mod` has an export binding for the given `name`, return an
-//   opaque object representing the slot it's bound to.  The only operations on
-//   this object are $IsExportImplicit and $LinkPassThroughExport. Otherwise
-//   return undefined.
+//   * `$GetModuleExport(mod, name)` returns information about an export
+//     binding.  If the module `mod` has an export binding for the given
+//     `name`, return an opaque object representing the slot it's bound to.
+//     The only operations on this object are $IsExportImplicit and
+//     $LinkPassThroughExport. Otherwise return undefined.
 //
-// * `$IsExportImplicit(export)` returns true if `export` arises from a
-//   declaration of the form `export *;` and false otherwise.
+//   * `$IsExportImplicit(export)` returns true if `export` arises from a
+//     declaration of the form `export *;` and false otherwise.
 //
-// * `$GetModuleExports(mod)` returns a new array containing the names of the
-//   export bindings already defined in the module `mod`.
+//   * `$GetModuleExports(mod)` returns a new array containing the names of the
+//     export bindings already defined in the module `mod`.
 //
-// * `$LinkPassThroughExport(mod, name, origin)` creates an export binding on
-//   the module `mod` with the given `name`, bound to `origin`.
+//   * `$LinkPassThroughExport(mod, name, origin)` creates an export binding on
+//     the module `mod` with the given `name`, bound to `origin`.
 //
-// * `$UnlinkModule(mod)` unlinks the given module. This removes all export
-//   bindings and import bindings from the module. The module may be re-linked
-//   later.
+//   * `$UnlinkModule(mod)` unlinks the given module. This removes all export
+//     bindings and import bindings from the module. The module may be re-linked
+//     later.
 //
-// * `$EvaluateModuleBody(realm, mod)` runs the body of the given module in the
-//   context of a given realm. Returns undefined.
+//   * `$EvaluateModuleBody(realm, mod)` runs the body of the given module in
+//     the context of a given realm. Returns undefined.
 //
-// * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
-//   $EvaluateModuleBody.
+//   * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
+//     $EvaluateModuleBody.
 //
 // Loader iterators require a little private state. (These can be implemented
 // using a WeakMap, but primitive functions would be more efficient.)
 //
-// * `$SetLoaderIteratorPrivate(iter, value)` stores `value` in an internal
-//   data property of `iter`.
+//   * `$SetLoaderIteratorPrivate(iter, value)` stores `value` in an internal
+//     data property of `iter`.
 //
-// * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
-//   using $SetLoaderIteratorPrivate. If no value was previously stored,
-//   throw a TypeError.
+//   * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
+//     using $SetLoaderIteratorPrivate. If no value was previously stored,
+//     throw a TypeError.
 //
 // The following primitives deal with realms.
 //
-// * `$CreateRealm(realmObject)` creates a new realm for evaluating module and
-//   script code. This can be polyfilled in the browser using techniques like
+//   * `$CreateRealm(realmObject)` creates a new realm for evaluating module
+//     and script code. This can be polyfilled in the browser using techniques
+//     like
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
 //
-// * `$IndirectEval(realm, source)` performs an indirect eval in the given
-//   realm for the given script source.
+//   * `$IndirectEval(realm, source)` performs an indirect eval in the given
+//     realm for the given script source.
 //
 
 
@@ -2128,7 +2131,7 @@ def(Loader.prototype, {
     //> The fetch hook returns either module source (any non-thenable value) or
     //> a thenable for module source.
     //>
-    //> *When this hook is called:* For all modules whose source is not
+    //> *When this hook is called:*  For all modules whose source is not
     //> directly provided by the caller.  It is not called for the module
     //> bodies provided as arguments to `loader.module()` or `loader.define()`,
     //> since those do not need to be fetched. (However, this hook may be
@@ -2159,7 +2162,7 @@ def(Loader.prototype, {
     //> The hook returns either an ECMAScript ModuleBody (any non-Promise
     //> value) or a thenable for a ModuleBody.
     //>
-    //> *When this hook is called:* For all modules, including module bodies
+    //> *When this hook is called:*  For all modules, including module bodies
     //> passed to `loader.module()` or `loader.define()`.
     //>
     //> *Default behavior:*  Return the source unchanged.
@@ -2198,9 +2201,8 @@ def(Loader.prototype, {
     //>  2. The hook may return a full `Module` instance object.  The loader
     //>     then simply adds that module to the registry.
     //>
-    //>  3. *(unimplemented)* The hook may return a factory object which the
-    //>     loader will use to create the module and link it with its clients
-    //>     and dependencies.
+    //>  3. The hook may return a factory object which the loader will use to
+    //>     create the module and link it with its clients and dependencies.
     //>
     //>     The form of a factory object is:
     //>
