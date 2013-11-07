@@ -323,19 +323,17 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //> ## Module Loading
 //>
-
-
 //> ### Load Records
 //>
 //> The Load Record type represents an attempt to locate, fetch, translate, and
-//> parse a single module or script.
+//> parse a single module.
 //>
 //> Each Load Record has the following fields:
 //>
 //>   * load.[[Status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
 //>
 //>   * load.[[FullName]] - The normalized name of the module being loaded, or
-//>     **null** if loading a script.
+//>     **undefined** if loading an anonymous module.
 //>
 //>   * load.[[LinkSets]] - A List of all LinkSets that require this load to
 //>     succeed.  There is a many-to-many relation between Loads and LinkSets.
@@ -727,9 +725,9 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
 //
 //  1. Compute the set F of `LinkSet`s we are going to fail.
 //
-//       * If the error is related to a single `LinkSet` (that is, it
-//         is a link error or an runtime error in a module or script),
-//         then F = a set containing just that `LinkSet`.
+//       * If the error is related to a single `LinkSet` (that is, it is a link
+//         error or an runtime error in a module), then F = a set containing
+//         just that `LinkSet`.
 //
 //       * If the error is related to an in-flight `Load` (that is, it has to
 //         do with a hook throwing, returning an invalid value, calling a
@@ -1580,7 +1578,7 @@ function GetRealmInternalData(value) {
 //>   * loader.[[Modules]] - A List of Module Records: the module registry.
 //>
 //>   * loader.[[Loads]] - A List of Load Records. These represent ongoing
-//>     asynchronous loads of modules or scripts.
+//>     asynchronous module loads.
 
 
 //> ### The Loader Constructor
