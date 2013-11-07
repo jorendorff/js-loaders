@@ -1466,6 +1466,9 @@ def(Realm.prototype, {
         //>     passing realmObject.[[Realm]] and source as arguments.
         return $IndirectEval(internalData.realm, source);
     }
+    //>
+    //> The `length` property of the `eval` method is **1**.
+    //>
 
 });
 
@@ -1918,6 +1921,32 @@ def(Loader.prototype, {
     },
     //>
     //> The `length` property of the `import` method is **1**.
+    //>
+
+
+    //> #### Loader.prototype.eval ( source )
+    //>
+    //> The following steps are taken:
+    //>
+    eval: function(source) {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If Type(loader) is not Object or loader does not have all the
+        //>     internal properties of a Loader object, throw a TypeError
+        //>     exception.
+        if (!IsObject(this) ||
+            !callFunction(std_WeakMap_has, loaderInternalDataMap, this))
+        {
+            throw std_TypeError("not a Loader object");
+        }
+
+        let internalData = GetLoaderInternalData(this);
+
+        //> 1.  Return the result of calling the IndirectEval abstract operation
+        //>     passing loader.[[Realm]] and source as arguments.
+        return $IndirectEval(internalData.realm, source);
+    }
+    //>
+    //> The `length` property of the `eval` method is **1**.
     //>
 
 
