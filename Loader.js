@@ -359,30 +359,21 @@ function $GetLoaderIteratorPrivate(iter) {
 //>   * load.[[Exception]] - If load.[[Status]] is `"failed"`, the exception
 //>     value that was thrown, causing the load to fail. Otherwise, **null**.
 //>
-//>   * load.[[Exports]] - A List of Records characterizing this module's
-//>     exports; or **undefined** if this is a script Load or the exports have
-//>     not been computed yet.
+//>   * load.[[Module]] - The Module object produced by this load, or
+//>     undefined.  There are three ways for this to be populated, corresponding
+//>     to the three permitted `instantiate` hook return types.
 //>
-//      Implementation note:  load.exports is not quite like the spec's
-//      load.[[Exports]].  load.exports only contains names exported using
-//      `export * from`.  All other exports are stored in the module object
-//      itself.
-//
-//>   * load.[[Module]] - If the `.instantiate()` hook returned a Module object,
-//>     this is that Module. Otherwise, **null**.
+//>     If the `instantiate` hook returns a Module, this internal data property
+//>     is set immediately.
 //>
-// The spec text currently uses only .[[Module]] and makes .[[ExportedNames]]
-// an internal property of the Module object.
-//
-// Implementation node: This implementation uses a special value of 0 as an
-// intermediate value for load.exportedNames, to indicate that the value is
-// being computed. This is necessary to detect `export * from` cycles. The spec
-// uses a List named *visited* for this purpose.
+//>     If the `instantiate` hook returns undefined, the module source is then
+//>     parsed, and load.[[Module]] is set if parsing succeeds and there are no
+//>     early errors.
+//>
+//>     Otherwise the `instantiate` hook returns a factory object, and load.[[Module]]
+//>     is set during the link phase, when the factory.execute() method returns
+//>     a Module.
 
-
-// The goal of a Load is to locate, fetch, translate, and parse a single
-// module.
-//
 // A Load is in one of four states:
 //
 // 1.  Loading:  Source is not available yet.
@@ -527,7 +518,6 @@ function OnEndRun(load, mod) {
     Assert(load.status === "loading");
     load.status = "linked";
     load.module = mod;
-    Assert(load.exports === undefined);
 
     let sets = SetToArray(load.linkSets);
     callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
@@ -537,8 +527,7 @@ function OnEndRun(load, mod) {
 
 //> #### LoadFailed(load, exc) Abstract Operation
 //>
-//> Mark load as having failed. All `LinkSet`s that require it also
-//> fail.
+//> Mark load as having failed.  All LinkSets that require it also fail.
 //>
 function LoadFailed(load, exc) {
     Assert(load.status === "loading");
