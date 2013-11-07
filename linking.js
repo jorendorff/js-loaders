@@ -5,6 +5,55 @@
 // (that is, non-default instantiate hooks).
 
 
+// Primitives required by this code:
+//
+//   * `$DefineConstant(module, name, value)` defines a constant binding in the
+//     toplevel declarative environment of `module`, with the given `name` and
+//     `value`.  This is only used to implement `module a from "A";`
+//     declarations, so `value` is always a Module object.
+//
+//   * `$CreateImportBinding(module, name, export)` defines an import binding.
+//     `module` is the importing module. `name` is a string, the name of the
+//     local binding being bound.  `export` is a value returned by
+//     $GetModuleExport(), representing the location of the slot to be bound.
+//
+//     The effect of `$CreateImportBinding` is that in `module`'s scope, `name`
+//     becomes an alias for the binding indicated by `export`.
+//
+//     `name` must in fact be a name declared by an import declaration in
+//     `module`, and it must not already have been bound.
+//
+//   * `$ModuleBodyToModuleObject(body)` returns a `Module` object for the
+//     given ModuleBody `body`.
+//
+//     Modules declared in scripts must be linked and evaluated before they are
+//     exposed to user code.
+//
+//   * `$GetModuleBody(mod)` returns `mod.[[Body]]`. This is the parse of the
+//     module source code, if the Module object `mod` was compiled from JS
+//     source, and undefined otherwise.
+//
+//   * `$GetModuleExport(mod, name)` returns information about an export
+//     binding.  If the module `mod` has an export binding for the given
+//     `name`, return an opaque object representing the slot it's bound to.
+//     The only operations on this object are $IsExportImplicit and
+//     $LinkPassThroughExport. Otherwise return undefined.
+//
+//   * `$IsExportImplicit(export)` returns true if `export` arises from a
+//     declaration of the form `export *;` and false otherwise.
+//
+//   * `$GetModuleExports(mod)` returns a new array containing the names of the
+//     export bindings already defined in the module `mod`.
+//
+//   * `$LinkPassThroughExport(mod, name, origin)` creates an export binding on
+//     the module `mod` with the given `name`, bound to `origin`.
+//
+//   * `$UnlinkModule(mod)` unlinks the given module. This removes all export
+//     bindings and import bindings from the module. The module may be re-linked
+//     later.
+//
+
+
 
 var std_SyntaxError = SyntaxError;
 var std_ReferenceError = ReferenceError;
