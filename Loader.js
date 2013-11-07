@@ -833,7 +833,7 @@ function LinkSetOnLoad(linkSet, load) {
         LinkModules(linkSet);
     } catch (exc) {
         //> 3.  If status is an abrupt completion, then
-        //>     1. Call FinishLinkSet(linkSet, false, status).
+        //>     1. Call FinishLinkSet(linkSet, false, status.[[value]]).
         FinishLinkSet(linkSet, false, exc);
 
         //>     2. Return.
