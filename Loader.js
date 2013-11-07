@@ -154,8 +154,6 @@ function Assert(condition) {
 // we'll be doing here.
 
 
-// Now on to the core JS language implementation primitives.
-//
 // The first two primitives parse ECMAScript code.
 //
 //   * `$ParseModule(loader, source, moduleName, address)` parses the string
