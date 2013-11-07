@@ -821,9 +821,10 @@ function AddLoadToLinkSet(linkSet, load) {
 function LinkSetOnLoad(linkSet, load) {
     Assert(callFunction(std_Set_has, linkSet.loads, load));
     Assert(load.status === "loaded" || load.status === "linked");
+
     //> 1.  Repeat for each load in linkSet.[[Loads]],
     //>     1.  If load.[[Status]] is `"loading"`, then return.
-    if (linkSet.loadingCount !== 0)
+    if (--linkSet.loadingCount !== 0)
         return;
 
     try {
