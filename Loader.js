@@ -430,9 +430,8 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
 
 // ## Notes on error handling
 //
-// Most errors that can occur during a load, asyncEval, or import are related
-// to either a specific in-flight `Load` (in `loader.loads`) or a specific
-// `LinkSet`.
+// Most errors that can occur during module loading are related to either a
+// specific in-flight `Load` (in `loader.loads`) or a specific `LinkSet`.
 //
 // When such an error occurs:
 //
