@@ -511,9 +511,9 @@ function InstantiateSucceeded(loader, load, instantiateResult) {
 //>
 //>   * load.[[LinkSets]] - A List of all LinkSets that require this load to
 //>     succeed.  There is a many-to-many relation between Loads and LinkSets.
-//>     A single `evalAsync()` call can have a large dependency tree, involving
-//>     many Loads.  Many `evalAsync()` calls can be waiting for a single Load,
-//>     if they depend on the same module. TODO - update this comment
+//>     A single `import()` call can have a large dependency tree, involving
+//>     many Loads.  Many `import()` calls can be waiting for a single Load, if
+//>     they depend on the same module.
 //>
 //>   * load.[[Metadata]] - An object which loader hooks may use for any purpose.
 //>     See Loader.prototype.locate.
@@ -734,8 +734,8 @@ function LoadFailed(load, exc) {
 
 //> ### LinkSet Records
 //>
-//> A LinkSet Record represents a call to `loader.eval()`, `.evalAsync()`,
-//> `.load()`, or `.import()`. TODO - update this comment
+//> A LinkSet Record represents a call to `loader.define()`, `.load()`,
+//> `.module()`, or `.import()`.
 //>
 //> Each LinkSet Record has the following fields:
 //>
@@ -786,9 +786,10 @@ function CreateLinkSet(loader, startingLoad) {
 function LinkSetAddLoadByName(linkSet, fullName) {
     var loaderData = GetLoaderInternalData(linkSet.loader);
     if (!callFunction(std_Map_has, loaderData.modules, fullName)) {
-        // We add `depLoad` even if it is done loading, because the
-        // association keeps the `Load` alive (`Load`s are
-        // reference-counted; see `FinishLinkSet`).
+        // We add `depLoad` even if it is done loading, for two reasons. The
+        // association keeps the Load alive (Load Records are
+        // reference-counted; see `FinishLinkSet`). Separately, `depLoad` may
+        // have dependencies that are still laoding.
         let depLoad = callFunction(std_Map_get, loaderData.loads, fullName);
         AddLoadToLinkSet(linkSet, depLoad);
     }
@@ -873,9 +874,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
 // **Timing and grouping of dependencies** - Consider
 //
-//     loader.evalAsync('module x from "x"; module y from "y";', {}, f);
-//
-// TODO - update this comment
+//     loader.module('module x from "x"; module y from "y";');
 //
 // The above code implies that we wait to evaluate "x" until "y" has also
 // been fetched. Even if "x" turns out to be linkable and runnable, its
@@ -1642,8 +1641,8 @@ var Loader_create = function create() {
         // It maps full module names to Load records.
         //
         // This is stored in the loader so that multiple calls to
-        // `loader.load()/.import()/.evalAsync()` can cooperate to fetch
-        // what they need only once. TODO - update this comment
+        // `loader.define()/.load()/.module()/.import()` can cooperate to fetch
+        // what they need only once.
         //
         loads: undefined,
 
