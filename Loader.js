@@ -1759,43 +1759,18 @@ def(Loader.prototype, {
     // of linking, and at least one `Load`.
 
 
-    //> #### Loader.prototype.module ( source )
-    //>
-    // **`module`** - Evaluate a top-level, anonymous module, without adding it
-    // to the loader's module registry.
-    //
-    // This is the dynamic equivalent of an asynchronous, anonymous `<module>`
-    // in HTML.
-    //
-    // Returns a future for the Module object.
-    //
-    module: function module_(source) {
-        var loader = this;
-        GetLoaderInternalData(this);
-        var f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source);
-        return new std_Promise(f);
-    },
-    //>
-
-
-    //> #### Loader.prototype.import ( name, options )
-    //>
-
-    // **`import`** - Asynchronously load, link, and evaluate a module and any
-    // dependencies it imports.  Return a promise for the `Module` object.
-    //
-    import: function import_(name, options = undefined) {
-        var loader = this;
-        var loaderData = GetLoaderInternalData(this);
-        var f = MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options);
-        return new std_Promise(f);
-    },
-    //>
-    //> The `length` property of the `import` method is **1**.
-    //>
-
-
     //> #### Loader.prototype.define ( name, source, options = undefined )
+    //>
+    //> The `define` method installs a module in the registry from source.  The
+    //> module is not immediately available. The `translate` and `instantiate`
+    //> hooks are called asynchronously, and dependencies are loaded
+    //> asynchronously.
+    //>
+    //> `define` returns a Promise object that resolves to undefined when the
+    //> new module and its dependencies are installed in the registry.
+    //>
+    //> NOTE This is the dynamic equivalent of the proposed `<module name=>`
+    //> element in HTML.
     //>
     define: function define(name, source, options = undefined) {
         var loader = this;
@@ -1810,6 +1785,11 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.load ( name, options = undefined )
     //>
+    //> The `load` method installs a module into the registry by name.
+    //>
+    //> NOTE Combined with the `normalize` hook and `Loader.prototype.get`,
+    //> this provides a close dynamic approximation of an ImportDeclaration.
+    //>
     load: function load(name, options = undefined) {
         var loader = this;
         GetLoaderInternalData(this);
@@ -1818,6 +1798,50 @@ def(Loader.prototype, {
     },
     //>
     //> The `length` property of the `load` method is **1**.
+    //>
+
+
+    //> #### Loader.prototype.module ( source )
+    //>
+    //> The `module` method asynchronously evaluates a top-level, anonymous
+    //> module from source.
+    //>
+    //> The module's dependencies, if any, are loaded and committed to the registry.
+    //> The anonymous module itself is not added to the registry.
+    //>
+    //> `module` returns a Promise object that resolves to a new Module
+    //> instance object once the given module body has been evaluated.
+    //>
+    //> NOTE This is the dynamic equivalent of an anonymous `<module>` in HTML.
+    //>
+    module: function module_(source) {
+        var loader = this;
+        GetLoaderInternalData(this);
+        var f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source);
+        return new std_Promise(f);
+    },
+    //>
+
+
+    //> #### Loader.prototype.import ( name, options )
+    //>
+    //> The `import` method asynchronously loads, links, and evaluates a module
+    //> and all its dependencies.
+    //>
+    //> `import` returns a Promise that resolves to the requested `Module` object
+    //> once it has been committed to the registry and evaluated.
+    //>
+    //> NOTE This is the dynamic equivalent (when combined with normalization)
+    //> of an ImportDeclaration.
+    //>
+    import: function import_(name, options = undefined) {
+        var loader = this;
+        var loaderData = GetLoaderInternalData(this);
+        var f = MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options);
+        return new std_Promise(f);
+    },
+    //>
+    //> The `length` property of the `import` method is **1**.
     //>
 
 
