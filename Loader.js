@@ -431,21 +431,21 @@ function LoadFailed(load, exc) {
 
 // ## The loader pipeline
 
-// **`StartModuleLoad`** - The common implementation of the `import()`
+// **`GetOrStartLoad`** - The common implementation of the `import()`
 // method and the processing of `import` declarations in ES code.
 //
 // There are several possible outcomes:
 //
 // 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
 //     callable, or it throws an exception, or it returns an invalid value.
-//     In these cases, `StartModuleLoad` throws.
+//     In these cases, `GetOrStartLoad` throws.
 //
 // 2.  The `normalize` hook returns the name of a module that is already in
-//     the registry.  `StartModuleLoad` returns a pair, the normalized name
+//     the registry.  `GetOrStartLoad` returns a pair, the normalized name
 //     and a fake Load object.
 //
 // 3.  In all other cases, either a new `Load` is started or we can join one
-//     already in flight.  `StartModuleLoad` returns the `Load` object.
+//     already in flight.  `GetOrStartLoad` returns the `Load` object.
 //
 // `name` is the (pre-normalize) name of the module to be imported, as it
 // appears in the import-declaration or as the argument to
@@ -459,7 +459,7 @@ function LoadFailed(load, exc) {
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function StartModuleLoad(loader, request, refererName, refererAddress) {
+function GetOrStartLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
     // Call the `normalize` hook to get a normalized module name.  See the
@@ -608,7 +608,7 @@ function FinishLoad(load, loader, body) {
     // it to the same LinkSet.
     //
     // The module-specifiers in import-declarations are not necessarily
-    // normalized module names.  We pass them to StartModuleLoad which will
+    // normalized module names.  We pass them to GetOrStartLoad which will
     // call the `normalize` hook.
     //
     let dependencies = CreateMap();
@@ -616,7 +616,7 @@ function FinishLoad(load, loader, body) {
         let request = moduleRequests[i];
         let depLoad;
         try {
-            depLoad = StartModuleLoad(loader, request, refererName, load.address);
+            depLoad = GetOrStartLoad(loader, request, refererName, load.address);
         } catch (exc) {
             return LoadFailed(load, exc);
         }
@@ -926,7 +926,7 @@ function MakeClosure_AsyncLoadModule(loader, name, options) {
             address = options.address;
         }
 
-        let load = StartModuleLoad(loader, name, undefined, address);
+        let load = GetOrStartLoad(loader, name, undefined, address);
         let linkSet = CreateLinkSet(loader, load);
         resolve(linkSet.done);
     };
@@ -969,8 +969,8 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, option
             address = options.address;
         }
 
-        // `StartModuleLoad` starts us along the pipeline.
-        let load = StartModuleLoad(loader, name, undefined, address);
+        // `GetOrStartLoad` starts us along the pipeline.
+        let load = GetOrStartLoad(loader, name, undefined, address);
 
         if (load.status === "linked") {
             // We already had this module in the registry.
