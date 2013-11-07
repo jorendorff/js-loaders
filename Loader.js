@@ -325,233 +325,6 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 
 
-// ## The loader pipeline
-
-// **`StartModuleLoad`** - The common implementation of the `import()`
-// method and the processing of `import` declarations in ES code.
-//
-// There are several possible outcomes:
-//
-// 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
-//     callable, or it throws an exception, or it returns an invalid value.
-//     In these cases, `StartModuleLoad` throws.
-//
-// 2.  The `normalize` hook returns the name of a module that is already in
-//     the registry.  `StartModuleLoad` returns a pair, the normalized name
-//     and a fake Load object.
-//
-// 3.  In all other cases, either a new `Load` is started or we can join one
-//     already in flight.  `StartModuleLoad` returns the `Load` object.
-//
-// `name` is the (pre-normalize) name of the module to be imported, as it
-// appears in the import-declaration or as the argument to
-// loader.import().
-//
-// `refererName` and `refererAddress` provide information about the context of
-// the `import()` call or import-declaration.  This information is passed to
-// all the loader hooks.
-//
-// TODO:  Suggest alternative name for `referer`.  It is really nothing to
-// do with the nasty Referer HTTP header.  Perhaps `importContext`,
-// `importer`, `client`.
-//
-function StartModuleLoad(loader, request, refererName, refererAddress) {
-    var loaderData = GetLoaderInternalData(loader);
-
-    // Call the `normalize` hook to get a normalized module name.  See the
-    // comment on `normalize()`.
-    //
-    // Errors that happen during this step propagate to the caller.
-    //
-    let normalized = loader.normalize(request, refererName, refererAddress);
-    normalized = ToString(normalized);
-
-    // If the module has already been linked, we are done.
-    let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
-    if (existingModule !== undefined)
-        return {status: "linked", fullName: normalized, module: existingModule};
-
-    // If the module is already loaded, we are done.
-    let load = callFunction(std_Map_get, loaderData.loads, normalized);
-    if (load !== undefined && load.status === "loaded")
-        return load;
-
-    // If the module is already loading, we are done.
-    if (load !== undefined) {
-        Assert(load.status === "loading");
-        return load;
-    }
-
-    return LoadModule(loader, normalized);
-}
-
-function LoadModule(loader, normalized) {
-    var loaderData = GetLoaderInternalData(loader);
-    Assert(!callFunction(std_Map_has, loaderData.loads, normalized));
-    var load = CreateLoad(normalized);
-    callFunction(std_Map_set, loaderData.loads, normalized, load);
-
-    var p = new std_Promise(function (resolve, reject) {
-        resolve(loader.locate({
-            name: load.fullName,
-            metadata: load.metadata
-        }));
-    });
-    p = callFunction(std_Promise_then, p, function (address) {
-        if (callFunction(std_Set_get_size, load.linkSets) === 0)
-            return;
-        load.address = address;
-        return loader.fetch({
-            name: load.fullName,
-            metadata: load.metadata,
-            address: address
-        });
-    });
-    p = callFunction(std_Promise_then, p, function (source) {
-        if (callFunction(std_Set_get_size, load.linkSets) === 0)
-            return;
-        return loader.translate({
-            name: load.fullName,
-            metadata: load.metadata,
-            address: load.address,
-            source: source
-        });
-    });
-    return CallTranslate(loader, load, p);
-}
-
-function CallTranslate(loader, load, p) {
-    p = callFunction(std_Promise_then, p, function (source) {
-        if (callFunction(std_Set_get_size, load.linkSets) === 0)
-            return;
-        load.source = source;
-        return loader.instantiate({
-            name: load.fullName,
-            metadata: load.metadata,
-            address: load.address,
-            source: source
-        });
-    });
-    p = callFunction(std_Promise_then, p, function (result) {
-        InstantiateSucceeded(loader, load, result);
-    });
-    callFunction(std_Promise_catch, p, function (exc) {
-        LoadFailed(load, exc);
-    });
-    return load;
-}
-
-// **`InstantiateSucceeded`** - This is called once the `instantiate` hook
-// succeeds. Continue module loading by interpreting the hook's result and
-// calling FinishLoad if necessary.
-function InstantiateSucceeded(loader, load, instantiateResult) {
-    // Interpret `instantiateResult`.  See comment on the `instantiate()`
-    // method.
-    if (instantiateResult === undefined) {
-        let body = $ParseModule(loader, load.source, load.fullName, load.address);
-        FinishLoad(load, loader, body);
-    } else if (!IsObject(instantiateResult)) {
-        throw std_TypeError("instantiate hook must return an object or undefined");
-    } else if ($IsModule(instantiateResult)) {
-        let mod = instantiateResult;
-        let name = load.fullName;
-        if (name !== undefined) {
-            var loaderData = GetLoaderInternalData(loader);
-
-            if (callFunction(std_Map_has, loaderData.modules, name)) {
-                throw std_TypeError("fetched module \"" + name + "\" " +
-                                    "but a module with that name is already " +
-                                    "in the registry");
-            }
-            callFunction(std_Map_set, loaderData.modules, name, mod);
-        }
-        OnEndRun(load, mod);
-    } else {
-        let mod = null;
-        let imports = instantiateResult.imports;
-
-        // P4 issue: "iterable" vs. "array"
-        if (imports !== undefined)
-            imports = [...imports];
-        let execute = instantiateResult.execute;
-
-        throw TODO;
-    }
-}
-
-
-
-// ## Notes on error handling
-//
-// Most errors that can occur during module loading are related to either a
-// specific in-flight `Load` (in `loader.loads`) or a specific `LinkSet`.
-//
-// When such an error occurs:
-//
-//  1. Compute the set F of `LinkSet`s we are going to fail.
-//
-//       * If the error is related to a single `LinkSet` (that is, it
-//         is a link error or an runtime error in a module or script),
-//         then F = a set containing just that `LinkSet`.
-//
-//       * If the error is related to an in-flight `Load` (that is, it has to
-//         do with a hook throwing, returning an invalid value, calling a
-//         fulfill callback incorrectly, or calling the reject callback), then
-//         F = `load.linkSets`.
-//
-//  2. Detach each `LinkSet` in F from all `Load`s it required.
-//
-//  3. Let M = the set of all in-flight loads (in loader.[[Loads]]) that are no
-//     longer needed by any LinkSet.
-//
-//  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
-//     state, make the `fulfill` and `reject` callbacks into no-ops.
-//
-//  5. Reject the promises associated with each `LinkSet` in F.
-//
-// After that, we drop the failed `LinkSet`s and they become garbage.
-//
-// Modules that are already linked and committed to the module registry are
-// unaffected by the error.
-//
-//
-// ### Encyclopedia of errors
-//
-// For reference, here are all the kinds of errors that can occur that are
-// related to one or more loads in progress. This list is meant to be
-// exhaustive.
-//
-// Errors related to a `Load`:
-//
-//   - For each load, we call one or more of the loader hooks.  Getting the
-//     hook from the Loader object can trigger a getter that throws.  The value
-//     of the hook property can be non-callable.  The hook can throw.  The hook
-//     can return an invalid return value.
-//
-//   - The `normalize`, `locate`, and `instantiate` hooks may return objects
-//     that are then destructured.  These objects could throw from a getter or
-//     proxy trap during destructuring.
-//
-//   - The fetch hook can report an error via the `reject()` callback.
-//
-//   - We can fetch bad code and get a `SyntaxError` trying to parse it.
-//
-//   - Once the code is parsed, we call the `normalize` hook for each import in
-//     that code; that hook can throw or return an invalid value.
-//
-// Errors related to a `LinkSet`:
-//
-//   - During linking, we can find that a factory-made module is
-//     involved in an import cycle. This is an error.
-//
-//   - Linking a set of non-factory-made modules can fail in several ways.
-//     These are described under "Runtime Semantics: Link Errors".
-//
-//   - A factory function can throw or return an invalid value.
-//
-//   - Evaluation of a module body or a script can throw.
-//
-
 //> ### Load Records
 //>
 //> The Load Record type represents an attempt to locate, fetch, translate, and
@@ -786,6 +559,235 @@ function LoadFailed(load, exc) {
     Assert(callFunction(std_Set_get_size, load.linkSets) === 0);
 }
 
+
+
+
+// ## The loader pipeline
+
+// **`StartModuleLoad`** - The common implementation of the `import()`
+// method and the processing of `import` declarations in ES code.
+//
+// There are several possible outcomes:
+//
+// 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
+//     callable, or it throws an exception, or it returns an invalid value.
+//     In these cases, `StartModuleLoad` throws.
+//
+// 2.  The `normalize` hook returns the name of a module that is already in
+//     the registry.  `StartModuleLoad` returns a pair, the normalized name
+//     and a fake Load object.
+//
+// 3.  In all other cases, either a new `Load` is started or we can join one
+//     already in flight.  `StartModuleLoad` returns the `Load` object.
+//
+// `name` is the (pre-normalize) name of the module to be imported, as it
+// appears in the import-declaration or as the argument to
+// loader.import().
+//
+// `refererName` and `refererAddress` provide information about the context of
+// the `import()` call or import-declaration.  This information is passed to
+// all the loader hooks.
+//
+// TODO:  Suggest alternative name for `referer`.  It is really nothing to
+// do with the nasty Referer HTTP header.  Perhaps `importContext`,
+// `importer`, `client`.
+//
+function StartModuleLoad(loader, request, refererName, refererAddress) {
+    var loaderData = GetLoaderInternalData(loader);
+
+    // Call the `normalize` hook to get a normalized module name.  See the
+    // comment on `normalize()`.
+    //
+    // Errors that happen during this step propagate to the caller.
+    //
+    let normalized = loader.normalize(request, refererName, refererAddress);
+    normalized = ToString(normalized);
+
+    // If the module has already been linked, we are done.
+    let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
+    if (existingModule !== undefined)
+        return {status: "linked", fullName: normalized, module: existingModule};
+
+    // If the module is already loaded, we are done.
+    let load = callFunction(std_Map_get, loaderData.loads, normalized);
+    if (load !== undefined && load.status === "loaded")
+        return load;
+
+    // If the module is already loading, we are done.
+    if (load !== undefined) {
+        Assert(load.status === "loading");
+        return load;
+    }
+
+    return LoadModule(loader, normalized);
+}
+
+function LoadModule(loader, normalized) {
+    var loaderData = GetLoaderInternalData(loader);
+    Assert(!callFunction(std_Map_has, loaderData.loads, normalized));
+    var load = CreateLoad(normalized);
+    callFunction(std_Map_set, loaderData.loads, normalized, load);
+
+    var p = new std_Promise(function (resolve, reject) {
+        resolve(loader.locate({
+            name: load.fullName,
+            metadata: load.metadata
+        }));
+    });
+    p = callFunction(std_Promise_then, p, function (address) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
+            return;
+        load.address = address;
+        return loader.fetch({
+            name: load.fullName,
+            metadata: load.metadata,
+            address: address
+        });
+    });
+    p = callFunction(std_Promise_then, p, function (source) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
+            return;
+        return loader.translate({
+            name: load.fullName,
+            metadata: load.metadata,
+            address: load.address,
+            source: source
+        });
+    });
+    return CallTranslate(loader, load, p);
+}
+
+function CallTranslate(loader, load, p) {
+    p = callFunction(std_Promise_then, p, function (source) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
+            return;
+        load.source = source;
+        return loader.instantiate({
+            name: load.fullName,
+            metadata: load.metadata,
+            address: load.address,
+            source: source
+        });
+    });
+    p = callFunction(std_Promise_then, p, function (result) {
+        InstantiateSucceeded(loader, load, result);
+    });
+    callFunction(std_Promise_catch, p, function (exc) {
+        LoadFailed(load, exc);
+    });
+    return load;
+}
+
+// **`InstantiateSucceeded`** - This is called once the `instantiate` hook
+// succeeds. Continue module loading by interpreting the hook's result and
+// calling FinishLoad if necessary.
+function InstantiateSucceeded(loader, load, instantiateResult) {
+    // Interpret `instantiateResult`.  See comment on the `instantiate()`
+    // method.
+    if (instantiateResult === undefined) {
+        let body = $ParseModule(loader, load.source, load.fullName, load.address);
+        FinishLoad(load, loader, body);
+    } else if (!IsObject(instantiateResult)) {
+        throw std_TypeError("instantiate hook must return an object or undefined");
+    } else if ($IsModule(instantiateResult)) {
+        let mod = instantiateResult;
+        let name = load.fullName;
+        if (name !== undefined) {
+            var loaderData = GetLoaderInternalData(loader);
+
+            if (callFunction(std_Map_has, loaderData.modules, name)) {
+                throw std_TypeError("fetched module \"" + name + "\" " +
+                                    "but a module with that name is already " +
+                                    "in the registry");
+            }
+            callFunction(std_Map_set, loaderData.modules, name, mod);
+        }
+        OnEndRun(load, mod);
+    } else {
+        let mod = null;
+        let imports = instantiateResult.imports;
+
+        // P4 issue: "iterable" vs. "array"
+        if (imports !== undefined)
+            imports = [...imports];
+        let execute = instantiateResult.execute;
+
+        throw TODO;
+    }
+}
+
+
+
+// ## Notes on error handling
+//
+// Most errors that can occur during module loading are related to either a
+// specific in-flight `Load` (in `loader.loads`) or a specific `LinkSet`.
+//
+// When such an error occurs:
+//
+//  1. Compute the set F of `LinkSet`s we are going to fail.
+//
+//       * If the error is related to a single `LinkSet` (that is, it
+//         is a link error or an runtime error in a module or script),
+//         then F = a set containing just that `LinkSet`.
+//
+//       * If the error is related to an in-flight `Load` (that is, it has to
+//         do with a hook throwing, returning an invalid value, calling a
+//         fulfill callback incorrectly, or calling the reject callback), then
+//         F = `load.linkSets`.
+//
+//  2. Detach each `LinkSet` in F from all `Load`s it required.
+//
+//  3. Let M = the set of all in-flight loads (in loader.[[Loads]]) that are no
+//     longer needed by any LinkSet.
+//
+//  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
+//     state, make the `fulfill` and `reject` callbacks into no-ops.
+//
+//  5. Reject the promises associated with each `LinkSet` in F.
+//
+// After that, we drop the failed `LinkSet`s and they become garbage.
+//
+// Modules that are already linked and committed to the module registry are
+// unaffected by the error.
+//
+//
+// ### Encyclopedia of errors
+//
+// For reference, here are all the kinds of errors that can occur that are
+// related to one or more loads in progress. This list is meant to be
+// exhaustive.
+//
+// Errors related to a `Load`:
+//
+//   - For each load, we call one or more of the loader hooks.  Getting the
+//     hook from the Loader object can trigger a getter that throws.  The value
+//     of the hook property can be non-callable.  The hook can throw.  The hook
+//     can return an invalid return value.
+//
+//   - The `normalize`, `locate`, and `instantiate` hooks may return objects
+//     that are then destructured.  These objects could throw from a getter or
+//     proxy trap during destructuring.
+//
+//   - The fetch hook can report an error via the `reject()` callback.
+//
+//   - We can fetch bad code and get a `SyntaxError` trying to parse it.
+//
+//   - Once the code is parsed, we call the `normalize` hook for each import in
+//     that code; that hook can throw or return an invalid value.
+//
+// Errors related to a `LinkSet`:
+//
+//   - During linking, we can find that a factory-made module is
+//     involved in an import cycle. This is an error.
+//
+//   - Linking a set of non-factory-made modules can fail in several ways.
+//     These are described under "Runtime Semantics: Link Errors".
+//
+//   - A factory function can throw or return an invalid value.
+//
+//   - Evaluation of a module body or a script can throw.
+//
 
 //> ### LinkSet Records
 //>
