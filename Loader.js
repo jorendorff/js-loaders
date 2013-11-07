@@ -186,12 +186,43 @@ function Assert(condition) {
 //     extensible.  It must not be exposed to scripts until it has been
 //     populated and frozen.
 //
+var moduleInternalDataMap = CreateWeakMap();
+function GetModuleInternalData(module) {
+    return callFunction(std_WeakMap_get, moduleInternalDataMap, module);
+}
+
 function $CreateModule() {
-    return std_Object_create(null);
+    var module = std_Object_create(null);
+    var moduleData = {
+        dependencies: undefined,
+        evaluated: false
+    };
+    callFunction(std_WeakMap_set, moduleInternalDataMap, module, moduleData);
+    return module;
 }
 
 //   * `$IsModule(v)` returns true if `v` is a `Module` object.
 //
+function $IsModule(module) {
+    return GetModuleInternalData(module) !== undefined;
+}
+
+//   * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
+//     either undefined or an array of Module objects, the modules whose bodies
+//     are to be evaluated before the given module's body.  A return value of
+//     undefined means the same thing as returning an empty array to the sole
+//     caller, EnsureEvaluated().
+//
+function $GetDependencies(module) {
+    return GetModuleInternalData(module).dependencies;
+}
+
+//   * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
+//
+function $SetDependencies(module, deps) {
+    GetModuleInternalData(module).dependencies = deps;
+}
+
 //   * `$DefineConstant(module, name, value)` defines a constant binding in the
 //     toplevel declarative environment of `module`, with the given `name` and
 //     `value`.  This is only used to implement `module a from "A";`
@@ -207,14 +238,6 @@ function $CreateModule() {
 //
 //     `name` must in fact be a name declared by an import declaration in
 //     `module`, and it must not already have been bound.
-//
-//   * `$GetDependencies(module)` returns module.[[Dependencies]].  This is
-//     either undefined or an array of Module objects, the modules whose bodies
-//     are to be evaluated before the given module's body.  A return value of
-//     undefined means the same thing as returning an empty array to the sole
-//     caller, EnsureEvaluated().
-//
-//   * `$SetDependencies(module, deps)` sets module.[[Dependencies]].
 //
 //   * `$ModuleBodyToModuleObject(body)` returns a `Module` object for the
 //     given ModuleBody `body`.
@@ -251,16 +274,36 @@ function $CreateModule() {
 //   * `$HasBeenEvaluated(mod)` returns true if mod has ever been passed to
 //     $EvaluateModuleBody.
 //
-// Loader iterators require a little private state. (These can be implemented
-// using a WeakMap, but primitive functions would be more efficient.)
+function $HasBeenEvaluated(module) {
+    return GetModuleInternalData(module).evaluated;
+}
+
+// Loader iterators require a little private state.
 //
 //   * `$SetLoaderIteratorPrivate(iter, value)` stores `value` in an internal
 //     data property of `iter`.
 //
+var loaderIteratorInternalDataMap = CreateWeakMap();
+function $SetLoaderIteratorPrivate(iter, value) {
+    callFunction(std_WeakMap_set, loaderIteratorInternalDataMap, iter, value);
+}
+
 //   * `$GetLoaderIteratorPrivate(iter)` retrieves the value previously stored
 //     using $SetLoaderIteratorPrivate. If no value was previously stored,
 //     throw a TypeError.
 //
+function $GetLoaderIteratorPrivate(iter) {
+    if (!IsObject(iter)) {
+        throw std_TypeError(
+            "Loader Iterator method called on an incompatible " + typeof iter);
+    }
+    if (!callFunction(std_WeakMap_has, loaderIteratorInternalDataMap, iter)) {
+        throw std_TypeError(
+            "Loader Iterator method called on an incompatible object");
+    }
+    return callFunction(std_WeakMap_get, loaderIteratorInternalDataMap, iter);
+}
+
 // The following primitives deal with realms.
 //
 //   * `$CreateRealm(realmObject)` creates a new realm for evaluating module
