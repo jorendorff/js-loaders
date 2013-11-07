@@ -741,27 +741,31 @@ function LoadFailed(load, exc) {
 //>
 //>   * linkSet.[[Loader]] - The Loader object that created this LinkSet.
 //>
-//>   * linkSet.[[Callback]] - A value that is called when all dependencies are
-//>     loaded and linked together.
-//>
-//>   * linkSet.[[ErrorCallback]] - A value that is called if an error occurs
-//>     during loading or linking.
-//>
 //>   * linkSet.[[Loads]] - A List of the Load Records that must finish loading
 //>     before the modules can be linked and evaluated.
+//>
+//>   * linkSet.[[Done]] - A Promise that becomes fulfilled when all dependencies
+//>     are loaded and linked together.
+//>
+//>   * linkSet.[[Resolve]] and linkSet.[[Reject]] - Functions used to resolve
+//>     or reject linkSet.[[Done]].
 //>
 
 //> #### CreateLinkSet(loader, startingLoad) Abstract Operation
 //>
 function CreateLinkSet(loader, startingLoad) {
     var loaderData = GetLoaderInternalData(linkSet.loader);
-    var resolver;
-    var done = new std_Promise(r => { resolver = r; });
+    var resolve, reject;
+    var done = new std_Promise(function (res, rej) {
+        resolve = res;
+        reject = rej;
+    });
     var linkSet = {
         loader: loader,
-        done: done,
-        resolver: resolver,
         loads: CreateSet(),
+        done: done,
+        resolve: resolve,
+        reject: reject,
         timestamp: loaderData.linkSetCounter++,
 
         // Implementation note: `this.loadingCount` is not in the spec. This is
@@ -862,9 +866,9 @@ function FinishLinkSet(linkSet, succeeded, exc) {
     }
 
     if (succeeded)
-        linkSet.resolver.resolve(undefined);
+        linkSet.resolve(undefined);
     else
-        linkSet.resolver.reject(exc);
+        linkSet.reject(exc);
 }
 
 // **Timing and grouping of dependencies** - Consider
