@@ -1633,6 +1633,35 @@ function UnpackOption(options, name) {
     return ToString(value);
 }
 
+function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
+    return function (resolve, reject) {
+        let address = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+        }
+
+        let load = CreateLoad(undefined);
+        let linkSet = CreateLinkSet(loader, load);
+        let p = callFunction(std_Promise_then,
+                             linkSet.done,
+                             function (_) {
+                                 let mod = load.module;
+                                 EnsureEvaluatedHelper(mod, loader);
+                                 resolve(mod);
+                             });
+        callFunction(std_Promise_catch, p, reject);
+
+        var sourcePromise = std_Promise_fulfill(source);
+        CallTranslate(loader, load, sourcePromise);
+
+        callFunction(std_Promise_then,
+                     CreateLinkSet(loader, load).done,
+                     function (_) { resolve(load.module); },
+                     reject);
+    };
+}
+
 def(Loader.prototype, {
 
     // ### Loading and running code
@@ -1647,7 +1676,7 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.module ( source )
     //>
-    // **`module`** - Execute a top-level, anonymous module, without adding it
+    // **`module`** - Evaluate a top-level, anonymous module, without adding it
     // to the loader's module registry.
     //
     // This is the dynamic equivalent of an asynchronous, anonymous `<module>`
@@ -1659,32 +1688,8 @@ def(Loader.prototype, {
         let loader = this;
         GetLoaderInternalData(this);
 
-        return new std_Promise(function (resolve, reject) {
-            let address = undefined;
-            if (options !== undefined) {
-                options = ToObject(options);
-                address = options.address;
-            }
-
-            let load = CreateLoad(undefined);
-            let linkSet = CreateLinkSet(loader, load);
-            let p = callFunction(std_Promise_then,
-                                 linkSet.done,
-                                 function (_) {
-                                     let mod = load.module;
-                                     EnsureEvaluatedHelper(mod, loader);
-                                     resolve(mod);
-                                 });
-            callFunction(std_Promise_catch, p, reject);
-
-            var sourcePromise = std_Promise_fulfill(source);
-            CallTranslate(loader, load, sourcePromise);
-
-            callFunction(std_Promise_then,
-                         CreateLinkSet(loader, load).done,
-                         function (_) { resolve(load.module); },
-                         reject);
-        });
+        let f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source);
+        return new std_Promise(f);
     },
     //>
 
