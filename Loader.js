@@ -256,6 +256,9 @@ function $CreateModule() {
 //
 //       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
 //
+// * `$IndirectEval(realm, source)` performs an indirect eval in the given
+//   realm for the given script source.
+//
 
 
 
@@ -1247,23 +1250,23 @@ let realmInternalDataMap = CreateWeakMap();
 //> #### new Realm ( options, initializer )
 //>
 function Realm(options, initializer) {
-    //> 1.  Let *R* be the this value.
+    //> 1.  Let realmObject be the this value.
     //
     // Bug: This calls Realm[@@create] directly.  The spec will instead make
     // `new Realm(options)` equivalent to
     // `Realm.[[Call]](Realm[@@create](), List [options])`.
     // In other words, Realm[@@create] will be called *before* Realm.
     // We'll change that when symbols and @@create are implemented.
-    var R = callFunction(Realm["@@create"], Realm);
+    var realmObject = callFunction(Realm["@@create"], Realm);
 
-    //> 1.  If Type(*R*) is not Object, throw a TypeError exception.
-    //> 1.  If *R* does not have all of the internal properties of a Realm
-    //>     object, throw a TypeError exception.
-    var realmData = callFunction(std_WeakMap_get, realmInternalDataMap, R);
+    //> 1.  If Type(realmObject) is not Object, throw a TypeError exception.
+    //> 1.  If realmObject does not have all of the internal properties of a
+    //>     Realm object, throw a TypeError exception.
+    var realmData = callFunction(std_WeakMap_get, realmInternalDataMap, realmObject);
     if (realmData === undefined)
         throw std_TypeError("Realm object expected");
 
-    //> 1.  If *R*.[[Realm]] is not undefined, throw a TypeError
+    //> 1.  If realmObject.[[Realm]] is not undefined, throw a TypeError
     //>     exception.
     if (realmData.realm !== undefined)
         throw std_TypeError("Realm object cannot be intitialized more than once");
@@ -1273,8 +1276,8 @@ function Realm(options, initializer) {
     if (options !== undefined && !IsObject(options))
         throw std_TypeError("options must be an object or undefined");
 
-    //> 1.  Let *realm* be the result of CreateRealm(R).
-    let realm = $CreateRealm(R);
+    //> 1.  Let *realm* be the result of CreateRealm(realmObject).
+    let realm = $CreateRealm(realmObject);
 
     //> 1.  If options is undefined, then let options be a new Object.
     //> 1.  Else, if Type(*options*) is not Object, throw a TypeError
@@ -1300,47 +1303,39 @@ function Realm(options, initializer) {
     //>     method of *directEval* passing `"translate"` and **true** as
     //>     arguments.
     //> 1.  ReturnIfAbrupt(*translate*).
-    //> 1.  If *translate* is undefined then let *translate* be the result of
-    //>     calling DefaultDirectEvalTranslate(*realm*).
-    //> 1.  Else, if IsCallable(*translate*) is **false**, throw a TypeError
-    //>     exception.
+    //> 1.  If translate is not undefined and IsCallable(translate) is false,
+    //>     throw a TypeError exception.
     //> 1.  Set *realm*.[[translateDirectEvalHook]] to *translate*.
-    realm.translateDirectEvalHook = UnpackOption(directEval, "translate", () => DefaultDirectEvalTranslate(realm));
+    realm.translateDirectEvalHook = UnpackOption(directEval, "translate");
 
     //> 1.  Let *fallback* be the result of calling the [[Get]] internal
     //>     method of *directEval* passing `"fallback"` and **true** as
     //>     arguments.
     //> 1.  ReturnIfAbrupt(*fallback*).
-    //> 1.  If *fallback* is undefined then let *fallback* be the result of
-    //>     calling DefaultDirectEvalFallback(*realm*).
-    //> 1.  Else, if IsCallable(*fallback*) is **false**, throw a TypeError
-    //>     exception.
+    //> 1.  If fallback is not undefined and IsCallable(fallback) is false,
+    //>     throw a TypeError exception.
     //> 1.  Set *realm*.[[fallbackDirectEvalHook]] to *fallback*.
-    realm.fallbackDirectEvalHook = UnpackOption(directEval, "fallback", () => DefaultEvalFallback(realm));
+    realm.fallbackDirectEvalHook = UnpackOption(directEval, "fallback");
 
     //> 1.  Let *indirectEval* be the result of calling the [[Get]] internal
     //>     method of *options* passing `"indirect"` and **true** as
     //>     arguments.
     //> 1.  ReturnIfAbrupt(*indirectEval*).
-    //> 1.  If *indirectEval* is undefined then let *indirectEval* be the
-    //>     result of calling DefaultIndirectEval(*realm*).
-    //> 1.  Else, if IsCallable(*indirectEval*) is **false**, throw a TypeError
-    //>     exception.
+    //> 1.  If indirectEval is not undefined and IsCallable(indirectEval) is
+    //>     false, throw a TypeError exception.
     //> 1.  Set *realm*.[[indirectEvalHook]] to *indirectEval*.
-    realm.indirectEvalHook = UnpackOption(evalHooks, "indirect", () => DefaultIndirectEval(realm));
+    realm.indirectEvalHook = UnpackOption(evalHooks, "indirect");
 
     //> 1.  Let *Function* be the result of calling the [[Get]] internal
     //>     method of *options* passing `"Function"` and **true** as
     //>     arguments.
     //> 1.  ReturnIfAbrupt(*Function*).
-    //> 1.  If *Function* is undefined then let *Function* be the result of
-    //>     calling DefaultFunction(*realm*).
-    //> 1.  Else, if IsCallable(*Function*) is **false**, throw a TypeError
-    //>     exception.
+    //> 1.  If Function is not undefined and IsCallable(Function) is false,
+    //>     throw a TypeError exception.
     //> 1.  Set *realm*.[[FunctionHook]] to *Function*.
-    realm.FunctionHook = UnpackOption(options, "Function", () => DefaultFunction(realm));
+    realm.FunctionHook = UnpackOption(options, "Function");
 
-    //> 1.  Set *R*.[[Realm]] to *realm*.
+    //> 1.  Set realmObject.[[Realm]] to *realm*.
     realmData.realm = realm;
 
     //> 1.  If *initializer* is not undefined then the following steps are
@@ -1352,14 +1347,14 @@ function Realm(options, initializer) {
         //>     1.  Call the DefineBuiltinProperties abstract operation passing
         //>         *realm* and *builtins* as arguments.
         //>     1.  Let *r* be the result of calling the *initializer* function
-        //>         passing *R* as the **this** value and *builtins* as the
-        //>         single argument.
+        //>         passing realmObject as the **this** value and *builtins* as
+        //>         the single argument.
         //>     1.  ReturnIfAbrupt(*r*).
-        callFunction(initializer, R, realm.builtins);
+        callFunction(initializer, realmObject, realm.builtins);
     }
 
-    //> 1.  Return *R*.
-    return R;
+    //> 1.  Return realmObject.
+    return realmObject;
 }
 
 //> ### Properties of the Realm Prototype Object
@@ -1374,12 +1369,13 @@ def(Realm.prototype, {
     //> steps:
     //>
     get global() {
-        //> 1. Let R be this Realm object.
-        //> 1. If R does not have all the internal properties of a Realm object,
-        //     throw a TypeError exception.
+        //> 1. Let realmObject be this Realm object.
+        //> 1. If realmObject does not have all the internal properties of a
+        //>    Realm object, throw a TypeError exception.
         let internalData = GetRealmInternalData(this);
-        //> 1. Return R.[[Realm]].[[globalThis]].
-        return internalData.realm.global;
+
+        //> 1. Return realmObject.[[Realm]].[[globalThis]].
+        return internalData.realm.globalThis;
     },
     //>
 
@@ -1388,39 +1384,17 @@ def(Realm.prototype, {
     //> The following steps are taken:
     //>
     eval: function(source) {
-        //> 1.  Let *R* be this Realm object.
-        //> 1.  If *R* does not have all the internal properties of a Realm
-        //>     object, throw a TypeError exception.
+        //> 1.  Let realmObject be this Realm object.
+        //> 1.  If realmObject does not have all the internal properties of a
+        //>     Realm object, throw a TypeError exception.
         let internalData = GetRealmInternalData(this);
-        //> 1.  Return *R*.[[Realm]].[[indirectEval]](*source*).
-        return internalData.realm.indirectEval(source);
+
+        //> 1.  Return the result of calling the IndirectEval abstract operation
+        //>     passing realmObject.[[Realm]] and source as arguments.
+        return $IndirectEval(internalData.realm, source);
     }
 
 });
-
-//> #### DefaultIndirectEval ( realm )
-//>
-//> When the abstract operation DefaultIndirectEval is called with parameter
-//> *realm*, the following steps are taken:
-//>
-function DefaultIndirectEval(realm) {
-    //> 1.  Let *F* be a new built-in function object as defined in TODO.
-    //> 1.  Set the value of *F*'s [[Realm]] internal slot to *realm*.
-    //> 1.  Return *F*.
-    return f;
-
-    //> #### Default Indirect Eval Function
-    //>
-    //> A default indirect eval function is a function that performs an indirect
-    //> top-level `eval` of a script source.
-    //>
-    //> 1. 
-    function f(source) {
-        //> 1. Let *script* be the result of parsing *source* as a *Script*.
-        //> 1. ReturnIfAbrupt(*script*).
-        throw TODO;
-    }
-}
 
 //> #### Realm [ @@create ] ( )
 //>
