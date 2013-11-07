@@ -405,30 +405,44 @@ function CreateLoad(name) {
     };
 }
 
-//> #### LoadFailed(load, exc) Abstract Operation
+//> #### LoadFailed Functions
 //>
-//> Mark a Load Record as having failed.  All LinkSets that depend on the Load
-//> also fail.
+//> A LoadFailed function is an anonymous function that marks a Load Record as
+//> having failed.  All LinkSets that depend on the Load also fail.
+//>
+//> Each LoadFailed function has a [[Load]] internal slot.
+//>
+//> When a LoadFailed function F is called with argument exc, the following
+//> steps are taken:
 //>
 function MakeClosure_LoadFailed(load) {
     return function (exc) {
+        //> 1.  Assert: load.[[Status]] is `"loading"`.
         Assert(load.status === "loading");
+
+        //> 2.  Set load.[[Status]] to `"failed".
         load.status = "failed";
+
+        //> 3.  Set load.[[Exception]] to exc.
         load.exception = exc;
 
-        // For determinism, flunk the attached LinkSets in timestamp order.
-        // (NOTE: If it turns out that Promises fire in a nondeterministic
-        // order, then there's no point sorting this array here.)
+        //> 4.  Let linkSets be a copy of the list load.[[LinkSets]].
+        //> 5.  For each linkSet in linkSets, in the order in which the LinkSet
+        //>     Records were created,
         let sets = SetToArray(load.linkSets);
         callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-        for (let i = 0; i < sets.length; i++)
+        for (let i = 0; i < sets.length; i++) {
+            //>     1.  Call FinishLinkSet(linkSet, false, exc).
             FinishLinkSet(sets[i], false, exc);
+        }
 
+        //> 6.  Assert: load.[[LinkSets]] is empty.
         Assert(callFunction(std_Set_get_size, load.linkSets) === 0);
     };
 }
-
-
+//
+// The attached LinkSets fail in timestamp order.  *Rationale*:  Any
+// deterministic order would do.
 
 
 // ## The loader pipeline
