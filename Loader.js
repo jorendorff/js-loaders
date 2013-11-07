@@ -881,6 +881,123 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 // non-determinism since multiple link sets can be in-flight at once.
 
 
+// ## Module loading entry points
+
+function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options) {
+    return function (resolve, reject) {
+        name = ToString(name);
+        let address = undefined;
+        let metadata = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+            metadata = options.metadata;
+        }
+        if (metadata === undefined)
+            metadata = {};
+
+        // Make a LinkSet.  Pre-populate it with a Load object for the
+        // given module.  Start the Load process at the `translate` hook.
+        let load = CreateLoad(name);
+        let linkSet = CreateLinkSet(loader, load);
+        callFunction(std_Map_set, loaderData.loads, fullName, load);
+        callFunction(std_Promise_then,
+                     linkSet.done,
+                     function (_) { resolve(undefined); },
+                     reject);
+        let sourcePromise = std_Promise_fulfill(source);
+        CallTranslate(loader, load, sourcePromise);
+    };
+}
+
+function MakeClosure_AsyncLoadModule(loader, name, options) {
+    return function (resolve, reject) {
+        name = ToString(name);
+        let address = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+        }
+
+        let load = StartModuleLoad(loader, name, undefined, address);
+        let linkSet = CreateLinkSet(loader, load);
+        callFunction(std_Promise_then,
+                     linkSet.done,
+                     function (_) { resolve(undefined); },
+                     reject);
+    };
+}
+
+function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
+    return function (resolve, reject) {
+        let address = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+        }
+
+        let load = CreateLoad(undefined);
+        let linkSet = CreateLinkSet(loader, load);
+        let p = callFunction(std_Promise_then,
+                             linkSet.done,
+                             function (_) {
+                                 let mod = load.module;
+                                 EnsureEvaluatedHelper(mod, loader);
+                                 resolve(mod);
+                             });
+        callFunction(std_Promise_catch, p, reject);
+
+        var sourcePromise = std_Promise_fulfill(source);
+        CallTranslate(loader, load, sourcePromise);
+
+        var p = callFunction(std_Promise_then,
+                             CreateLinkSet(loader, load).done,
+                             function (_) {
+                                 EnsureEvaluatedHelper(mod, loader);
+                                 resolve(load.module);
+                             });
+        callFunction(std_Promise_catch, p, reject);
+    };
+}
+
+function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options) {
+    return function (resolve, reject) {
+        let address = undefined;
+        if (options !== undefined) {
+            options = ToObject(options);
+            address = options.address;
+        }
+
+        // `StartModuleLoad` starts us along the pipeline.
+        let load = StartModuleLoad(loader, name, undefined, address);
+
+        if (load.status === "linked") {
+            // We already had this module in the registry.
+            resolve(load.module);
+        } else {
+            // The module is now loading.  When it loads, it may have more
+            // imports, requiring further loads, so put it in a LinkSet.
+            var p = callFunction(std_Promise_then,
+                                 CreateLinkSet(loader, load).done,
+                                 success);
+            callFunction(std_Promise_catch, p, reject);
+        }
+
+        function success() {
+            Assert(load.status === "linked");
+            let mod = load.module;
+            if (mod === undefined) {
+                // TODO: can this happen?
+                throw std_TypeError("import(): module \"" + load.fullName +
+                                    "\" was deleted from the loader");
+            }
+            EnsureEvaluatedHelper(mod, loader);
+            return mod;
+        }
+    };
+}
+
+
 
 //> ## Module Linking
 //>
@@ -1631,120 +1748,6 @@ function UnpackOption(options, name) {
     if (value === undefined)
         return null;
     return ToString(value);
-}
-
-function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
-    return function (resolve, reject) {
-        let address = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-        }
-
-        let load = CreateLoad(undefined);
-        let linkSet = CreateLinkSet(loader, load);
-        let p = callFunction(std_Promise_then,
-                             linkSet.done,
-                             function (_) {
-                                 let mod = load.module;
-                                 EnsureEvaluatedHelper(mod, loader);
-                                 resolve(mod);
-                             });
-        callFunction(std_Promise_catch, p, reject);
-
-        var sourcePromise = std_Promise_fulfill(source);
-        CallTranslate(loader, load, sourcePromise);
-
-        var p = callFunction(std_Promise_then,
-                             CreateLinkSet(loader, load).done,
-                             function (_) {
-                                 EnsureEvaluatedHelper(mod, loader);
-                                 resolve(load.module);
-                             });
-        callFunction(std_Promise_catch, p, reject);
-    };
-}
-
-function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options) {
-    return function (resolve, reject) {
-        let address = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-        }
-
-        // `StartModuleLoad` starts us along the pipeline.
-        let load = StartModuleLoad(loader, name, undefined, address);
-
-        if (load.status === "linked") {
-            // We already had this module in the registry.
-            resolve(load.module);
-        } else {
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            var p = callFunction(std_Promise_then,
-                                 CreateLinkSet(loader, load).done,
-                                 success);
-            callFunction(std_Promise_catch, p, reject);
-        }
-
-        function success() {
-            Assert(load.status === "linked");
-            let mod = load.module;
-            if (mod === undefined) {
-                // TODO: can this happen?
-                throw std_TypeError("import(): module \"" + load.fullName +
-                                    "\" was deleted from the loader");
-            }
-            EnsureEvaluatedHelper(mod, loader);
-            return mod;
-        }
-    };
-}
-
-function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options) {
-    return function (resolve, reject) {
-        name = ToString(name);
-        let address = undefined;
-        let metadata = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-            metadata = options.metadata;
-        }
-        if (metadata === undefined)
-            metadata = {};
-
-        // Make a LinkSet.  Pre-populate it with a Load object for the
-        // given module.  Start the Load process at the `translate` hook.
-        let load = CreateLoad(name);
-        let linkSet = CreateLinkSet(loader, load);
-        callFunction(std_Map_set, loaderData.loads, fullName, load);
-        callFunction(std_Promise_then,
-                     linkSet.done,
-                     function (_) { resolve(undefined); },
-                     reject);
-        let sourcePromise = std_Promise_fulfill(source);
-        CallTranslate(loader, load, sourcePromise);
-    };
-}
-
-function MakeClosure_AsyncLoadModule(loader, name, options) {
-    return function (resolve, reject) {
-        name = ToString(name);
-        let address = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-        }
-
-        let load = StartModuleLoad(loader, name, undefined, address);
-        let linkSet = CreateLinkSet(loader, load);
-        callFunction(std_Promise_then,
-                     linkSet.done,
-                     function (_) { resolve(undefined); },
-                     reject);
-    };
 }
 
 def(Loader.prototype, {
