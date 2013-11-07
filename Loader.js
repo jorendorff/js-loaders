@@ -908,6 +908,15 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options) {
     return function (resolve, reject) {
         name = ToString(name);
+        if (callFunction(std_Map_has(loaderData.modules, name))) {
+            throw std_TypeError(
+                "can't define module \"" + name + "\": already loaded");
+        }
+        if (callFunction(std_Map_has(loaderData.loads, name))) {
+            throw std_TypeError(
+                "can't define module \"" + name + "\": already loading");
+        }
+
         let address = undefined;
         let metadata = undefined;
         if (options !== undefined) {
@@ -921,6 +930,8 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options
         // Make a LinkSet.  Pre-populate it with a Load object for the
         // given module.  Start the Load process at the `translate` hook.
         let load = CreateLoad(name);
+        load.metadata = metadata;
+        load.address = address;
         let linkSet = CreateLinkSet(loader, load);
         callFunction(std_Map_set, loaderData.loads, name, load);
         resolve(linkSet.done);
