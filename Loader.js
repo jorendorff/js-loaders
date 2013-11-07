@@ -486,10 +486,6 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
         return load;
     }
 
-    return LoadModule(loader, normalized);
-}
-
-function LoadModule(loader, normalized) {
     var loaderData = GetLoaderInternalData(loader);
     Assert(!callFunction(std_Map_has, loaderData.loads, normalized));
     var load = CreateLoad(normalized);
