@@ -1464,8 +1464,6 @@ function GetRealmInternalData(value) {
 
 //> ### The Loader Constructor
 //>
-//> #### Loader ( options )
-//>
 
 // Implementation note: Since ES6 does not have support for private state or
 // private methods, the "internal data properties" of Loader objects are stored
@@ -1477,19 +1475,33 @@ function GetRealmInternalData(value) {
 // The simplest way to connect the two objects without exposing this internal
 // data to user code is to use a `WeakMap`.
 //
-let loaderInternalDataMap = CreateWeakMap();
+var loaderInternalDataMap = CreateWeakMap();
 
+// Get the internal data for a given `Loader` object.
+function GetLoaderInternalData(value) {
+    // Loader methods could be placed on wrapper prototypes like String.prototype.
+    if (typeof value !== "object")
+        throw std_TypeError("Loader method called on incompatible primitive");
+
+    let internalData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
+    if (internalData === undefined)
+        throw std_TypeError("Loader method called on incompatible object");
+    return internalData;
+}
+
+//> #### Loader ( options )
+//>
 //> When the `Loader` function is called with optional argument options the
 //> following steps are taken:
 //>
 function Loader(options={}) {
-    //> 1.  Let loader be the this value.
-    //
-    // Bug: This calls Loader[@@create] directly.  The spec will instead make
+    // Bug: In step 1, this implementation calls Loader[@@create] directly.  The spec will instead make
     // `new Loader(options)` equivalent to
     // `Loader.[[Call]](Loader[@@create](), List [options])`.
-    // In other words, Loader[@@create] will be called *before* Loader.
+    // In other words, Loader[@@create] must be called *before* Loader.
     // We'll change that when symbols and @@create are implemented.
+    //
+    //> 1.  Let loader be the this value.
     var loader = callFunction(Loader["@@create"], Loader);
 
     //> 2.  If Type(loader) is not Object, throw a TypeError exception.
@@ -1508,18 +1520,12 @@ function Loader(options={}) {
     if (!IsObject(options))
         throw std_TypeError("options must be an object or undefined");
 
-    // Fallible operations.
-
     //> 6.  Let realm be the result of calling the [[Get]] internal method
     //>     of options with arguments `"realm"` and options.
     //> 7.  ReturnIfAbrupt(realm).
     var realm = options.realm;
     //> 8.  If realm is undefined, let realm be Realm.[[realmObject]] where
     //>     Realm of the running execution context.
-    //
-    //  In the implementation we represent the implicit realm as undefined,
-    //  so we do nothing.
-    //
     //> 9.  Else if Type(realm) is not Object or realm does not have all the
     //>     internal properties of a Realm object, throw a TypeError exception.
     if (realm !== undefined &&
@@ -1529,15 +1535,6 @@ function Loader(options={}) {
         throw std_TypeError("options.realm is not a Realm object");
     }
 
-    // Hooks provided via `options` are just ordinary properties of the new
-    // Loader object.
-    //
-    // *Rationale*: The Loader class contains default implementations of each
-    // hook. This way the hooks can be called unconditionally, and either the
-    // user-provided hook or the default is called. Furthermore, Loader
-    // subclasses can add methods with the appropriate names and use `super()`
-    // to invoke the base-class behavior.
-    //
     //> 10. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
     //>     `"translate"`, `"instantiate"`),
     let hooks = ["normalize", "locate", "fetch", "translate", "instantiate"];
@@ -1554,6 +1551,7 @@ function Loader(options={}) {
             //>             passing name and the Property Descriptor {[[Value]]:
             //>             hook, [[Writable]]: true, [[Enumerable]]: true,
             //>             [[Configurable]]: true} as arguments.
+            //>         2.  ReturnIfAbrupt(result).
             std_Object_defineProperty(loader, name, {
                 configurable: true,
                 enumerable: true,
@@ -1563,7 +1561,6 @@ function Loader(options={}) {
         }
     }
 
-    // Infallible initialization of internal data properties.
     //> 11. Set loader.[[Modules]] to a new empty List.
     loaderData.modules = CreateMap();
     //> 12. Set loader.[[Loads]] to a new empty List.
@@ -1574,6 +1571,20 @@ function Loader(options={}) {
     //> 14. Return loader.
     return loader;
 }
+//
+// In step 8, this implementation represents the implicit Realm as
+// undefined, so we do nothing.
+//
+// In step 10, hooks provided via `options` are stored as ordinary data
+// properties of the new Loader object.  *Rationale*: The Loader class
+// contains default implementations of each hook. This way the hooks can be
+// called unconditionally, and either the user-provided hook or the default
+// is called. Furthermore, Loader subclasses can add methods with the
+// appropriate names and use `super()` to invoke the base-class behavior.
+//
+// The algorithm is designed so that all steps that could complete abruptly
+// precede the steps that initialize the internal data properties of the new
+// loader.
 
 // Define properties on an object. The properties defined this way are exactly
 // like the originals on *props*, but non-enumerable. This is used to build
@@ -1652,18 +1663,6 @@ var Loader_create = function create() {
 };
 
 def(Loader, {"@@create": Loader_create});
-
-// Get the internal data for a given `Loader` object.
-function GetLoaderInternalData(value) {
-    // Loader methods could be placed on wrapper prototypes like String.prototype.
-    if (typeof value !== "object")
-        throw std_TypeError("Loader method called on incompatible primitive");
-
-    let internalData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
-    if (internalData === undefined)
-        throw std_TypeError("Loader method called on incompatible object");
-    return internalData;
-}
 
 //> ### Properties of the Loader Prototype Object
 //>
