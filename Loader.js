@@ -511,6 +511,10 @@ function RequestLoad(loader, request, refererName, refererAddress) {
         load = CreateLoad(normalized);
         callFunction(std_Map_set, loaderData.loads, normalized, load);
 
+        // Bug: This leaks the use of promises in the implementation, since the
+        //      `Promise` constructor may have had its @@create mutated. We
+        //      need a slightly better strategy for creating async logic in the
+        //      spec.
         var p = new std_Promise(MakeClosure_CallLocate(loader, load));
         p = callFunction(std_Promise_then, p,
                          MakeClosure_CallFetch(loader, load));
@@ -994,32 +998,22 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address
     };
 }
 
-function MakeClosure_AsyncLoadModule(loader, name, address) {
-
-    //> ### AsyncLoadModule ( resolve, reject )
+function MakeClosure_CreateLinkSetForLoad(loader) {
+    //> ### CreateLinkSetForLoad ( load )
     //>
     //> The following steps are taken:
     //>
-    return function (resolve, reject) {
+    return function (load) {
         //> 1.  Let F be this function object.
-        //> 1.  Let loader be F.[[Loader]].
-        //> 1.  Let name be F.[[ModuleName]].
-        //> 1.  Let address be F.[[ModuleAddress]].
+        //> 2.  Let loader be F.[[Loader]].
+        //> 3.  Let linkSet be the result of calling the CreateLinkSet abstract
+        //>     operation passing loader and load as arguments.
+        let linkSet = CreateLinkSet(loader, load);
 
-        //> 1.  Let p be RequestLoad(loader, name, undefined, address).
-        // FIXME - update spec for asynchronous normalize hook.
-        let p = RequestLoad(loader, name, undefined, address);
-        p = callFunction(std_Promise_then, p, function (load) {
-            //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
-            //>     operation passing loader and load as arguments.
-            let linkSet = CreateLinkSet(loader, load);
-
-            //> 1.  Call the [[Call]] internal method of resolve with arguments
-            //>     null and (linkSet.[[Done]]).
-            resolve(linkSet.done);
-        });
-        callFunction(std_Promise_catch, p, reject);
+        //> 4.  Return linkSet.[[Done]].
+        return linkSet.done;
     };
+    //>
 }
 
 function MakeClosure_EvaluateLoadedModule(loader, load, resolve) {
@@ -2058,20 +2052,15 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(address).
         address = options.address;
 
+        //> 1.  Let p be RequestLoad(loader, name, undefined, address).
+        let p = RequestLoad(loader, name, undefined, address);
+
         //> 1.  Let F be a new anonymous function object as defined in
-        //>     AsyncLoadModule.
+        //>     CreateLinkSetForLoad.
         //> 1.  Set F.[[Loader]] to loader.
-        //> 1.  Set F.[[ModuleName]] to name.
-        //> 1.  Set F.[[ModuleAddress]] to address.
-        var f = MakeClosure_AsyncLoadModule(loader, name, address);
-
-        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-
-        // Bug: This leaks the use of promises in the implementation, since the
-        //      `Promise` constructor may have had its @@create mutated. We
-        //      need a slightly better strategy for creating async logic in the
-        //      spec.
-        return new std_Promise(f);
+        //> 1.  Return the result of PromiseThen(p, F).
+        return callFunction(std_Promise_then, p,
+                            MakeClosure_CreateLinkSetForLoad(loader));
     },
     //>
     //> The `length` property of the `load` method is **1**.
