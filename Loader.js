@@ -55,6 +55,7 @@ var std_WeakMap_has = WeakMap.prototype.has;
 var std_WeakMap_get = WeakMap.prototype.get;
 var std_WeakMap_set = WeakMap.prototype.set;
 var std_Promise = Promise;
+var std_Promise_all = Promise.all;
 var std_Promise_fulfill = Promise.fulfill;
 var std_Promise_then = Promise.prototype.then;
 var std_Promise_catch = Promise.prototype.catch;
@@ -488,14 +489,16 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
 
     // If the module has already been linked, we are done.
     let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
-    if (existingModule !== undefined)
-        return {status: "linked", name: normalized, module: existingModule};
+    if (existingModule !== undefined) {
+        return std_Promise_fulfill(
+            {status: "linked", name: normalized, module: existingModule});
+    }
 
     // If the module is already loading or loaded, we are done.
     let load = callFunction(std_Map_get, loaderData.loads, normalized);
     if (load !== undefined) {
         Assert(load.status === "loading" || load.status === "loaded");
-        return load;
+        return std_Promise_fulfill(load);
     }
 
     // Start a new Load.
@@ -505,7 +508,8 @@ function GetOrStartLoad(loader, request, refererName, refererAddress) {
     var p = new std_Promise(MakeClosure_CallLocate(loader, load));
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallFetch(loader, load));
-    return CallTranslate(loader, load, p);
+    CallTranslate(loader, load, p);
+    return std_Promise_fulfill(load);
 }
 
 function CallTranslate(loader, load, p) {
@@ -517,7 +521,6 @@ function CallTranslate(loader, load, p) {
                      MakeClosure_InstantiateSucceeded(loader, load));
     callFunction(std_Promise_catch, p,
                  MakeClosure_LoadFailed(load));
-    return load;
 }
 
 function MakeClosure_CallLocate(loader, load) {
@@ -578,7 +581,10 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
         // method.
         if (instantiateResult === undefined) {
             let body = $ParseModule(loader, load.source, load.name, load.address);
-            FinishLoad(load, loader, body);
+
+            // FinishLoad returns a promise. The only way to propagate errors
+            // is to return it.
+            return FinishLoad(load, loader, body);
         } else if (!IsObject(instantiateResult)) {
             throw std_TypeError("instantiate hook must return an object or undefined");
         } else if ($IsModule(instantiateResult)) {
@@ -639,27 +645,33 @@ function FinishLoad(load, loader, body) {
     // call the `normalize` hook.
     //
     let dependencies = CreateMap();
+    let loadPromises = [];
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
-        let depLoad = GetOrStartLoad(loader, request, refererName, load.address);
-        callFunction(std_Map_set, dependencies, request, depLoad.name);
-
-        if (depLoad.status !== "linked") {
-            for (let j = 0; j < sets.length; j++)
-                AddLoadToLinkSet(sets[j], depLoad);
-        }
+        let p = GetOrStartLoad(loader, request, refererName, load.address);
+        p = callFunction(std_Promise_then, p, function (depLoad) {
+            callFunction(std_Map_set, dependencies, request, depLoad.name);
+            if (depLoad.status !== "linked") {
+                for (let j = 0; j < sets.length; j++)
+                    AddLoadToLinkSet(sets[j], depLoad);
+            }
+        });
+        callFunction(std_Array_push, loadPromises, p);
     }
 
-    load.status = "loaded";
-    load.body = body;
-    load.dependencies = dependencies;
+    var p = callFunction(std_Promise_all, std_Promise, loadPromises);
+    return callFunction(std_Promise_then, p, function (_) {
+        load.status = "loaded";
+        load.body = body;
+        load.dependencies = dependencies;
 
-    // For determinism, finish linkable LinkSets in timestamp order.
-    // (NOTE: If it turns out that Promises fire in a nondeterministic
-    // order, then there's no point sorting this array here.)
-    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < sets.length; i++)
-        LinkSetOnLoad(sets[i], load);
+        // For determinism, finish linkable LinkSets in timestamp order.
+        // (NOTE: If it turns out that Promises fire in a nondeterministic
+        // order, then there's no point sorting this array here.)
+        callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
+        for (let i = 0; i < sets.length; i++)
+            LinkSetOnLoad(sets[i], load);
+    });
 }
 
 //> #### OnEndRun(load, mod) Abstract Operation
@@ -986,19 +998,19 @@ function MakeClosure_AsyncLoadModule(loader, name, address) {
         //> 1.  Let name be F.[[ModuleName]].
         //> 1.  Let address be F.[[ModuleAddress]].
 
-        //> 1.  Load load be the result of calling the GetOrStartLoad abstract
-        //>     operation passing loader, name, undefined, and address as
-        //>     arguments.
-        // FIXME: this is changing for async normalize
-        let load = GetOrStartLoad(loader, name, undefined, address);
+        //> 1.  Let p be GetOrStartLoad(loader, name, undefined, address).
+        // FIXME - update spec for asynchronous normalize hook.
+        let p = GetOrStartLoad(loader, name, undefined, address);
+        p = callFunction(std_Promise_then, p, function (load) {
+            //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
+            //>     operation passing loader and load as arguments.
+            let linkSet = CreateLinkSet(loader, load);
 
-        //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
-        //>     operation passing loader and load as arguments.
-        let linkSet = CreateLinkSet(loader, load);
-
-        //> 1.  Call the [[Call]] internal method of resolve with arguments
-        //>     null and (linkSet.[[Done]]).
-        resolve(linkSet.done);
+            //> 1.  Call the [[Call]] internal method of resolve with arguments
+            //>     null and (linkSet.[[Done]]).
+            resolve(linkSet.done);
+        });
+        callFunction(std_Promise_catch, p, reject);
     };
 }
 
@@ -1067,39 +1079,48 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, addres
         //> 1.  Load load be the result of calling the GetOrStartLoad abstract
         //>     operation passing loader, name, undefined, and address as
         //>     arguments.
-        // FIXME: this is changing for async normalize
-        // `GetOrStartLoad` starts us along the pipeline.
-        let load = GetOrStartLoad(loader, name, undefined, address);
+        ;// FIXME: update spec for async normalize
+        ;// `GetOrStartLoad` starts us along the pipeline.
+        let loadPromise = GetOrStartLoad(loader, name, undefined, address);
 
-        //> 1.  If load.[[Status]] is **linked**, then the following steps are
-        //>     taken:
-        if (load.status === "linked") {
-            // We already had this module in the registry.
-            //>     1.  Call the [[Call]] internal method of resolve passing
-            //>         null and (load.[[Module]]) as arguments.
-            resolve(load.module);
-        } else {
-            // The module is now loading.  When it loads, it may have more
-            // imports, requiring further loads, so put it in a LinkSet.
-            //>     1.  Let G be a new anonymous function object as define in
-            //>         EvaluateModuleLoader.
-            //>     1.  Set G.[[Loader]] to loader.
-            //>     1.  Set G.[[Load]] to load.
-            //>     1.  Set G.[[Resolve]] to resolve.
-            var successCallback =
-                MakeClosure_EvaluateModuleLoader(loader, load, resolve);
-            //>     1.  Let linkSet be the result of calling the CreateLinkSet
-            //>         abstract operation passing loader and load as
-            //>         arguments.
-            var linkSet = CreateLinkSet(loader, load);
-            //>     1.  Let p be the result of calling the [[Call]] internal
-            //>         method of %PromiseThen% passing linkSet.[[Done]] and
-            //>         (successCallback) as arguments.
-            var p = callFunction(std_Promise_then, linkSet.done, successCallback);
-            //>     1.  Call the [[Call]] internal method of %PromiseCatch%
-            //>         passing p and (reject) as arguments.
-            callFunction(std_Promise_catch, p, reject);
-        }
+        let p = callFuntion(std_Promise_then, loadPromise, function (load) {
+            //> 1.  If load.[[Status]] is **linked**, then the following steps are
+            //>     taken:
+            if (load.status === "linked") {
+                ;// We already had this module in the registry.
+                var module = load.module;
+                EnsureEvaluatedHelper(module, loader);
+
+                //>     1.  Call the [[Call]] internal method of resolve passing
+                //>         null and (load.[[Module]]) as arguments.
+                resolve(module);
+            } else {
+                ;// The module is now loading.  When it loads, it may have more
+                ;// imports, requiring further loads, so put it in a LinkSet.
+
+                //>     1.  Let G be a new anonymous function object as define in
+                //>         EvaluateModuleLoader.
+                //>     1.  Set G.[[Loader]] to loader.
+                //>     1.  Set G.[[Load]] to load.
+                //>     1.  Set G.[[Resolve]] to resolve.
+                var successCallback =
+                    MakeClosure_EvaluateModuleLoader(loader, load, resolve);
+
+                //>     1.  Let linkSet be the result of calling the CreateLinkSet
+                //>         abstract operation passing loader and load as
+                //>         arguments.
+                var linkSet = CreateLinkSet(loader, load);
+
+                //>     1.  Let p be the result of calling the [[Call]] internal
+                //>         method of %PromiseThen% passing linkSet.[[Done]] and
+                //>         (successCallback) as arguments.
+                //>     1.  Return p.
+                return callFunction(std_Promise_then, linkSet.done, successCallback);
+            }
+        });
+        //> 1.  Call the [[Call]] internal method of %PromiseCatch%
+        //>     passing p and (reject) as arguments.
+        callFunction(std_Promise_catch, p, reject);
     };
 }
 
