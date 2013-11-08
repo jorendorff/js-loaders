@@ -914,37 +914,61 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
 // ## Module loading entry points
 
-function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options) {
+function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address, metadata) {
+
+    //> ### AsyncDefineModule ( resolve, reject )
+    //>
+    //> The following steps are taken:
+    //>
     return function (resolve, reject) {
-        name = ToString(name);
+        //> 1.  Let F be this function object.
+        //> 1.  Let loader be F.[[Loader]].
+        //> 1.  Let name be F.[[ModuleName]].
+        //> 1.  Let source be F.[[ModuleSource]].
+        //> 1.  Let address be F.[[ModuleAddress]].
+        //> 1.  Let metadata be F.[[ModuleMetadata]].
+
+        //> 1.  If loader.[[Modules]] contains an entry whose [[key]] is equal
+        //>     to name, throw a TypeError exception.
         if (callFunction(std_Map_has(loaderData.modules, name))) {
             throw std_TypeError(
                 "can't define module \"" + name + "\": already loaded");
         }
+        //> 1.  If loader.[[Loads]] contains an entry whose [[key]] is equal
+        //>     to name, throw a TypeError exception.
         if (callFunction(std_Map_has(loaderData.loads, name))) {
             throw std_TypeError(
                 "can't define module \"" + name + "\": already loading");
         }
 
-        let address = undefined;
-        let metadata = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-            metadata = options.metadata;
-        }
-        if (metadata === undefined)
-            metadata = {};
-
         // Make a LinkSet.  Pre-populate it with a Load object for the
         // given module.  Start the Load process at the `translate` hook.
+
+        //> 1.  Let load be the result of calling the CreateLoad abstract
+        //>     operation passing name as the single argument.
         let load = CreateLoad(name);
+
+        //> 1.  Set load.[[Metadata]] to metadata.
         load.metadata = metadata;
+        //> 1.  Set load.[[Address]] to address.
         load.address = address;
+
+        //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
+        //>     operation passing loader and load as arguments.
         let linkSet = CreateLinkSet(loader, load);
+
+        //> 1.  Add the record {[[key]]: name, [[value]]: load} to
+        //>     loader.[[Loads]].
         callFunction(std_Map_set, loaderData.loads, name, load);
+        //> 1.  Call the [[Call]] internal method of resolve with arguments
+        //>     null and (linkSet.[[Done]]).
         resolve(linkSet.done);
+        //> 1.  Let sourcePromise be the result of calling the [[Call]]
+        //>     internal method of %PromiseFulfill% passing null and
+        //>     (source) as arguments.
         let sourcePromise = std_Promise_fulfill(source);
+        //> 1.  Call the CallTranslate abstract operation passing loader,
+        //>     load, and sourcePromise as arguments.
         CallTranslate(loader, load, sourcePromise);
     };
 }
@@ -1470,9 +1494,6 @@ def(Realm.prototype, {
         //>     passing realmObject.[[Realm]] and source as arguments.
         return $IndirectEval(internalData.realm, source);
     }
-    //>
-    //> The `length` property of the `eval` method is **1**.
-    //>
 
 });
 
@@ -1856,9 +1877,52 @@ def(Loader.prototype, {
     //> element in HTML.
     //>
     define: function define(name, source, options = undefined) {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If loader does not have all the internal properties of a Loader
+        //>     object, throw a TypeError exception.
         var loader = this;
         var loaderData = GetLoaderInternalData(this);
-        var f = MakeClosure_AsyncDefineModule(loader, loaderData, name, source, options);
+
+        //> 1.  Let name be ToString(name).
+        //> 1.  ReturnIfAbrupt(name).
+        name = ToString(name);
+
+        let address = undefined;
+        let metadata = undefined;
+        if (options !== undefined) {
+            //> 1.  If options is not undefined, then let options be
+            //>     ToObject(options).
+            //> 1.  ReturnIfAbrupt(options).
+            options = ToObject(options);
+            //> 1.  Let address be the result of calling the [[Get]] internal
+            //>     method of options passing `"address"` as the argument.
+            //> 1.  ReturnIfAbrupt(address).
+            address = options.address;
+            //> 1.  Let metadata be the result of calling the [[Get]] internal
+            //>     method of options passing `"metadata"` as the argument.
+            //> 1.  ReturnIfAbrupt(metadata).
+            metadata = options.metadata;
+        }
+        //> 1.  If metadata is undefined then let metadata be the result of
+        //>     calling ObjectCreate(%ObjectPrototype%, ()).
+        if (metadata === undefined)
+            metadata = {};
+
+        //> 1.  Let F be a new anonymous function object as defined in
+        //>     AsyncDefineModule.
+        //> 1.  Set F.[[Loader]] to loader.
+        //> 1.  Set F.[[ModuleName]] to name.
+        //> 1.  Set F.[[ModuleSource]] to source.
+        //> 1.  Set F.[[ModuleAddress]] to address.
+        //> 1.  Set F.[[ModuleMetadata]] to metadata.
+        var f = MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address, metadata);
+
+        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+
+        // Bug: This leaks the use of promises in the implementation, since the
+        //      `Promise` constructor may have had its @@create mutated. We
+        //      need a slightly better strategy for creating async logic in the
+        //      spec.
         return new std_Promise(f);
     },
     //>
@@ -1949,9 +2013,6 @@ def(Loader.prototype, {
         //>     passing loader.[[Realm]] and source as arguments.
         return $IndirectEval(internalData.realm, source);
     }
-    //>
-    //> The `length` property of the `eval` method is **1**.
-    //>
 
 
     // ### Module registry
@@ -2408,7 +2469,7 @@ def(Loader.prototype, {"@@iterator": Loader.prototype.entries});
 //>
 //> 1.  Assert: Type(loader) is Object.
 //> 2.  Assert: loader has all the internal data properties of a Loader object.
-//> 3.  Let iterator be the result of ObjectCreate(%LoaderIteatorPrototype%,
+//> 3.  Let iterator be the result of ObjectCreate(%LoaderIteratorPrototype%,
 //>     ([[Loader]], [[ModuleMapNextIndex]], [[MapIterationKind]])).
 //> 4.  Set iterator.[[Loader]] to loader.
 //> 5.  Set iterator.[[ModuleMapNextIndex]] to 0.
