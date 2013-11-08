@@ -2024,7 +2024,7 @@ def(Loader.prototype, {
         //> 1.  Return the result of calling the IndirectEval abstract operation
         //>     passing loader.[[Realm]] and source as arguments.
         return $IndirectEval(internalData.realm, source);
-    }
+    },
 
 
     // ### Module registry
