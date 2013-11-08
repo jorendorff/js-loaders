@@ -1076,7 +1076,7 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, addres
         //> 1.  Let name be F.[[ModuleName]].
         //> 1.  Let address be F.[[ModuleAddress]].
 
-        //> 1.  Load load be the result of calling the GetOrStartLoad abstract
+        //> 1.  Let load be the result of calling the GetOrStartLoad abstract
         //>     operation passing loader, name, undefined, and address as
         //>     arguments.
         ;// FIXME: update spec for async normalize
