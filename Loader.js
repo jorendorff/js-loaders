@@ -574,38 +574,39 @@ function MakeClosure_CallInstantiate(loader, load) {
 // calling FinishLoad if necessary.
 function MakeClosure_InstantiateSucceeded(loader, load) {
     return function (instantiateResult) {
-    // Interpret `instantiateResult`.  See comment on the `instantiate()`
-    // method.
-    if (instantiateResult === undefined) {
-        let body = $ParseModule(loader, load.source, load.name, load.address);
-        FinishLoad(load, loader, body);
-    } else if (!IsObject(instantiateResult)) {
-        throw std_TypeError("instantiate hook must return an object or undefined");
-    } else if ($IsModule(instantiateResult)) {
-        let mod = instantiateResult;
-        let name = load.name;
-        if (name !== undefined) {
-            var loaderData = GetLoaderInternalData(loader);
+        // Interpret `instantiateResult`.  See comment on the `instantiate()`
+        // method.
+        if (instantiateResult === undefined) {
+            let body = $ParseModule(loader, load.source, load.name, load.address);
+            FinishLoad(load, loader, body);
+        } else if (!IsObject(instantiateResult)) {
+            throw std_TypeError("instantiate hook must return an object or undefined");
+        } else if ($IsModule(instantiateResult)) {
+            let mod = instantiateResult;
+            let name = load.name;
+            if (name !== undefined) {
+                var loaderData = GetLoaderInternalData(loader);
 
-            if (callFunction(std_Map_has, loaderData.modules, name)) {
-                throw std_TypeError("fetched module \"" + name + "\" " +
-                                    "but a module with that name is already " +
-                                    "in the registry");
+                if (callFunction(std_Map_has, loaderData.modules, name)) {
+                    throw std_TypeError("fetched module \"" + name + "\" " +
+                                        "but a module with that name is already " +
+                                        "in the registry");
+                }
+                callFunction(std_Map_set, loaderData.modules, name, mod);
             }
-            callFunction(std_Map_set, loaderData.modules, name, mod);
+            OnEndRun(load, mod);
+        } else {
+            let mod = null;
+            let imports = instantiateResult.imports;
+
+            // P4 issue: "iterable" vs. "array"
+            if (imports !== undefined)
+                imports = [...imports];
+            let execute = instantiateResult.execute;
+
+            throw TODO;
         }
-        OnEndRun(load, mod);
-    } else {
-        let mod = null;
-        let imports = instantiateResult.imports;
-
-        // P4 issue: "iterable" vs. "array"
-        if (imports !== undefined)
-            imports = [...imports];
-        let execute = instantiateResult.execute;
-
-        throw TODO;
-    }
+    };
 }
 
 //> #### FinishLoad(load, loader, body) Abstract Operation
