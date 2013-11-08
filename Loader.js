@@ -385,26 +385,41 @@ function $GetLoaderIteratorPrivate(iter) {
 
 //> #### CreateLoad(name) Abstract Operation
 //>
-//> Create and return a new Load Record.  The argument name is either
-//> `undefined`, indicating an anonymous module, or a normalized module name.
+//> The abstract operation CreateLoad creates and returns a new Load Record.
+//> The argument name is either `undefined`, indicating an anonymous module, or
+//> a normalized module name.
+//>
+//> The following steps are taken:
 //>
 function CreateLoad(name) {
+    //> 1.  Let load be a new Load Record.
     return {
+        //> 2.  Set the [[Status]] field of load to `"loading"`.
         status: "loading",
+        //> 3.  Set the [[Name]] field of load to name.
         name: name,
+        //> 4.  Set the [[LinkSets]] field of load to a new empty List.
         linkSets: CreateSet(),
+        //> 5.  Let metadata be the result of ObjectCreate(%ObjectPrototype%).
+        //> 6.  Set the [[Metadata]] field of load to metadata.
         metadata: {},
+        //> 7.  Set the [[Address]] field of load to undefined.
         address: undefined,
-        src: undefined,
-        body: null,
-        linkingInfo: null,
-        dependencies: null,
-        factory: null,
-        exception: null,
-        exportedNames: undefined,
+        //> 8.  Set the [[Source]] field of load to undefined.
+        source: undefined,
+        //> 9.  Set the [[Body]] field of load to undefined.
+        body: undefined,
+        //> 10. Set the [[Factory]] field of load to undefined.
+        factory: undefined,
+        //> 11. Set the [[Exception]] field of load to undefined.
+        exception: undefined,
+        //> 12. Set the [[Module]] field of load to undefined.
         module: null
     };
+    //> 13.  Return load.
 }
+//>
+
 
 //> #### LoadFailed Functions
 //>
