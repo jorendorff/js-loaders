@@ -481,37 +481,43 @@ function MakeClosure_LoadFailed(load) {
 function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
-    // Call the `normalize` hook to get a normalized module name.  See the
-    // comment on `normalize()`.
-    //
-    // Errors that happen during this step propagate to the caller.
-    //
-    let normalized = loader.normalize(request, refererName, refererAddress);
-    normalized = ToString(normalized);
+    var p = callFunction(std_Promise_fulfill, std_Promise, undefined);
+    p = callFunction(std_Promise_then, p, function (_) {
+        // Call the `normalize` hook to get a normalized module name.  See the
+        // comment on `normalize()`.
+        //
+        // Errors that happen during this step propagate to the caller.
+        //
+        return loader.normalize(request, refererName, refererAddress);
+    });
+    p = callFunction(std_Promise_then, p, function (normalized) {
+        normalized = ToString(normalized);
 
-    // If the module has already been linked, we are done.
-    let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
-    if (existingModule !== undefined) {
-        return std_Promise_fulfill(
-            {status: "linked", name: normalized, module: existingModule});
-    }
+        // If the module has already been linked, we are done.
+        let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
+        if (existingModule !== undefined) {
+            return std_Promise_fulfill(
+                {status: "linked", name: normalized, module: existingModule});
+        }
 
-    // If the module is already loading or loaded, we are done.
-    let load = callFunction(std_Map_get, loaderData.loads, normalized);
-    if (load !== undefined) {
-        Assert(load.status === "loading" || load.status === "loaded");
-        return std_Promise_fulfill(load);
-    }
+        // If the module is already loading or loaded, we are done.
+        let load = callFunction(std_Map_get, loaderData.loads, normalized);
+        if (load !== undefined) {
+            Assert(load.status === "loading" || load.status === "loaded");
+            return std_Promise_fulfill(load);
+        }
 
-    // Start a new Load.
-    load = CreateLoad(normalized);
-    callFunction(std_Map_set, loaderData.loads, normalized, load);
+        // Start a new Load.
+        load = CreateLoad(normalized);
+        callFunction(std_Map_set, loaderData.loads, normalized, load);
 
-    var p = new std_Promise(MakeClosure_CallLocate(loader, load));
-    p = callFunction(std_Promise_then, p,
-                     MakeClosure_CallFetch(loader, load));
-    CallTranslate(loader, load, p);
-    return std_Promise_fulfill(load);
+        var p = new std_Promise(MakeClosure_CallLocate(loader, load));
+        p = callFunction(std_Promise_then, p,
+                         MakeClosure_CallFetch(loader, load));
+        CallTranslate(loader, load, p);
+        return load;
+    });
+    return p;
 }
 
 function CallTranslate(loader, load, p) {
