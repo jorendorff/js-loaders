@@ -1103,8 +1103,7 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, addres
                 //>     1.  Set G.[[Loader]] to loader.
                 //>     1.  Set G.[[Load]] to load.
                 //>     1.  Set G.[[Resolve]] to resolve.
-                var successCallback =
-                    MakeClosure_EvaluateModuleLoader(loader, load, resolve);
+                var G = MakeClosure_EvaluateModuleLoader(loader, load, resolve);
 
                 //>     1.  Let linkSet be the result of calling the CreateLinkSet
                 //>         abstract operation passing loader and load as
@@ -1113,9 +1112,9 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, addres
 
                 //>     1.  Let p be the result of calling the [[Call]] internal
                 //>         method of %PromiseThen% passing linkSet.[[Done]] and
-                //>         (successCallback) as arguments.
+                //>         (G) as arguments.
                 //>     1.  Return p.
-                return callFunction(std_Promise_then, linkSet.done, successCallback);
+                return callFunction(std_Promise_then, linkSet.done, G);
             }
         });
         //> 1.  Call the [[Call]] internal method of %PromiseCatch%
