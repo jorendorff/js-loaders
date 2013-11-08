@@ -1083,7 +1083,7 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, addres
         ;// `GetOrStartLoad` starts us along the pipeline.
         let loadPromise = GetOrStartLoad(loader, name, undefined, address);
 
-        let p = callFuntion(std_Promise_then, loadPromise, function (load) {
+        let p = callFunction(std_Promise_then, loadPromise, function (load) {
             //> 1.  If load.[[Status]] is **linked**, then the following steps are
             //>     taken:
             if (load.status === "linked") {
