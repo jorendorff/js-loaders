@@ -1434,9 +1434,9 @@ function Realm(options, initializer) {
         //>     1.  Let builtins be a new Object.
         //>     1.  Call the DefineBuiltinProperties abstract operation passing
         //>         realm and builtins as arguments.
-        //>     1.  Let status be the result of calling the initializer function
-        //>         passing realmObject as the this value and builtins as
-        //>         the single argument.
+        //>     1.  Let status be the result of calling the [[Call]] internal
+        //>         method of the initializer function, passing realmObject as
+        //>         the this value and builtins as the single argument.
         //>     1.  ReturnIfAbrupt(status).
         callFunction(initializer, realmObject, realm.builtins);
     }
