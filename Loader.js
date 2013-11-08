@@ -448,25 +448,27 @@ function MakeClosure_LoadFailed(load) {
 
 // ## The loader pipeline
 
-// **`GetOrStartLoad`** - The common implementation of the `import()`
+// **`RequestLoad`** - The common implementation of the `import()`
 // method and the processing of `import` declarations in ES code.
 //
 // There are several possible outcomes:
 //
 // 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
 //     callable, or it throws an exception, or it returns an invalid value.
-//     In these cases, `GetOrStartLoad` throws.
+//     In these cases, `RequestLoad` throws.
 //
 // 2.  The `normalize` hook returns the name of a module that is already in
-//     the registry.  `GetOrStartLoad` returns a pair, the normalized name
+//     the registry.  `RequestLoad` returns a pair, the normalized name
 //     and a fake Load object.
 //
 // 3.  In all other cases, either a new `Load` is started or we can join one
-//     already in flight.  `GetOrStartLoad` returns the `Load` object.
+//     already in flight.  `RequestLoad` returns the `Load` object.
 //
-// `name` is the (pre-normalize) name of the module to be imported, as it
+// `loader` is a Loader object.
+//
+// `request` is the (pre-normalize) name of the module to be imported, as it
 // appears in the import-declaration or as the argument to
-// loader.import().
+// `loader.import()`.
 //
 // `refererName` and `refererAddress` provide information about the context of
 // the `import()` call or import-declaration.  This information is passed to
@@ -476,7 +478,7 @@ function MakeClosure_LoadFailed(load) {
 // do with the nasty Referer HTTP header.  Perhaps `importContext`,
 // `importer`, `client`.
 //
-function GetOrStartLoad(loader, request, refererName, refererAddress) {
+function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
     // Call the `normalize` hook to get a normalized module name.  See the
@@ -641,14 +643,14 @@ function FinishLoad(load, loader, body) {
     // it to the same LinkSet.
     //
     // The module-specifiers in import-declarations are not necessarily
-    // normalized module names.  We pass them to GetOrStartLoad which will
+    // normalized module names.  We pass them to RequestLoad which will
     // call the `normalize` hook.
     //
     let dependencies = CreateMap();
     let loadPromises = [];
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
-        let p = GetOrStartLoad(loader, request, refererName, load.address);
+        let p = RequestLoad(loader, request, refererName, load.address);
         p = callFunction(std_Promise_then, p, function (depLoad) {
             callFunction(std_Map_set, dependencies, request, depLoad.name);
             if (depLoad.status !== "linked") {
@@ -998,9 +1000,9 @@ function MakeClosure_AsyncLoadModule(loader, name, address) {
         //> 1.  Let name be F.[[ModuleName]].
         //> 1.  Let address be F.[[ModuleAddress]].
 
-        //> 1.  Let p be GetOrStartLoad(loader, name, undefined, address).
+        //> 1.  Let p be RequestLoad(loader, name, undefined, address).
         // FIXME - update spec for asynchronous normalize hook.
-        let p = GetOrStartLoad(loader, name, undefined, address);
+        let p = RequestLoad(loader, name, undefined, address);
         p = callFunction(std_Promise_then, p, function (load) {
             //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
             //>     operation passing loader and load as arguments.
@@ -1076,12 +1078,10 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, addres
         //> 1.  Let name be F.[[ModuleName]].
         //> 1.  Let address be F.[[ModuleAddress]].
 
-        //> 1.  Let load be the result of calling the GetOrStartLoad abstract
-        //>     operation passing loader, name, undefined, and address as
-        //>     arguments.
+        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined, address).
         ;// FIXME: update spec for async normalize
-        ;// `GetOrStartLoad` starts us along the pipeline.
-        let loadPromise = GetOrStartLoad(loader, name, undefined, address);
+        ;// `RequestLoad` starts us along the pipeline.
+        let loadPromise = RequestLoad(loader, name, undefined, address);
 
         let p = callFunction(std_Promise_then, loadPromise, function (load) {
             //> 1.  If load.[[Status]] is **linked**, then the following steps are
