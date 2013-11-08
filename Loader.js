@@ -481,6 +481,10 @@ function MakeClosure_LoadFailed(load) {
 function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
+    // Bug: This leaks the use of promises in the implementation, since the
+    //      `Promise` constructor may have had its @@create mutated. We
+    //      need a slightly better strategy for creating async logic in the
+    //      spec.
     var p = callFunction(std_Promise_fulfill, std_Promise, undefined);
     p = callFunction(std_Promise_then, p, function (_) {
         // Call the `normalize` hook to get a normalized module name.  See the
@@ -1016,110 +1020,68 @@ function MakeClosure_CreateLinkSetForLoad(loader) {
     //>
 }
 
-function MakeClosure_EvaluateLoadedModule(loader, load, resolve) {
+function MakeClosure_EvaluateLoadedModule(loader, load) {
+    //> ### EvaluateLoadedModule ( )
+    //>
+    //> The following steps are taken:
+    //>
     return function (_) {
+        //> 1.  Let F be this function.
+        //> 2.  Let loader be F.[[Loader]].
+        //> 3.  Let load be F.[[Load]].
+
+        //> 4.  Assert: load.[[Status]] is `"linked"`.
         Assert(load.status === "linked");
+
+        //> 5.  Let module be load.[[Module]].
         var module = load.module;
+
+        //> 6.  Call EnsureEvaluated(module, (), loader).
         EnsureEvaluatedHelper(module, loader);
-        resolve(module);
+
+        //> 7.  Return module.
+        return module;
     };
+    //>
 }
 
-function MakeClosure_AsyncEvaluateAnonymousModule(loader, source, address) {
-    //> ### AsyncEvaluateAnonymousModule ( resolve, reject )
+function MakeClosure_AsyncLoadAndEvaluateModule(loader) {
+    //> ### AsyncLoadAndEvaluateModule ( load )
     //>
     //> The following steps are taken:
     //>
-    return function (resolve, reject) {
-        //> 1.  Let F be this function object.
+    return function (load) {
+        //> 1.  Let F be this function.
         //> 1.  Let loader be F.[[Loader]].
-        //> 1.  Let source be F.[[ModuleSource]].
-        //> 1.  Let address be F.[[ModuleAddress]].
 
-        //> 1.  Let load be the result of calling the CreateLoad abstract operation
-        //>     passing undefined as the single argument.
-        let load = CreateLoad(undefined);
-        //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
-        //>     operation passing loader and load as arguments.
-        let linkSet = CreateLinkSet(loader, load);
-        //> 1.  Let successCallback be a new anonymous function object as defined
-        //>     by EvaluateLoadedModule.
-        //> 1.  Set successCallback.[[Loader]] to loader.
-        //> 1.  Set successCallback.[[Load]] to load.
-        //> 1.  Set successCallback.[[Resolve]] to resolve.
-        var successCallback =
-            MakeClosure_EvaluateLoadedModule(loader, load, resolve);
-        //> 1.  Let p be the result of calling the [[Call]] internal method of
-        //>     %PromiseThen% passing linkSet.[[Done]] and (successCallback) as
-        //>     arguments.
-        let p = callFunction(std_Promise_then, linkSet.done, successCallback);
-        //> 1.  Call the [[Call]] internal method of %PromiseCatch% passing
-        //>     p and (reject) as arguments.
-        callFunction(std_Promise_catch, p, reject);
+        //> 1.  If load.[[Status]] is **linked**, then the following steps are
+        //>     taken:
+        if (load.status === "linked") {
+            //>     1.  Let module be load.[[Module]].
+            var module = load.module;
 
-        //> 1.  Let sourcePromise be the result of calling the [[Call]]
-        //>     internal  method of %PromiseFulfill% passing null and
-        //>     (source) as arguments.
-        var sourcePromise = std_Promise_fulfill(source);
-        //> 1.  Call the CallTranslate abstract operation passing loader, load,
-        //>     and sourcePromise as arguments.
-        CallTranslate(loader, load, sourcePromise);
-    };
-}
+            //>     1.  Call EnsureEvaluated(module, (), loader).
+            EnsureEvaluatedHelper(module, loader);
 
-function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, address) {
-    //> ### AsyncLoadAndEvaluateModule ( resolve, reject )
-    //>
-    //> The following steps are taken:
-    //>
-    return function (resolve, reject) {
-        //> 1.  Let F be this function object.
-        //> 1.  Let loader be F.[[Loader]].
-        //> 1.  Let name be F.[[ModuleName]].
-        //> 1.  Let address be F.[[ModuleAddress]].
+            //>     1.  Return module.
+            return module;
+        }
 
-        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined, address).
-        ;// FIXME: update spec for async normalize
-        ;// `RequestLoad` starts us along the pipeline.
-        let loadPromise = RequestLoad(loader, name, undefined, address);
+        //>     1.  Let linkSet be the result of calling the CreateLinkSet
+        //>         abstract operation passing loader and load as
+        //>         arguments.
+        var linkSet = CreateLinkSet(loader, load);
 
-        let p = callFunction(std_Promise_then, loadPromise, function (load) {
-            //> 1.  If load.[[Status]] is **linked**, then the following steps are
-            //>     taken:
-            if (load.status === "linked") {
-                ;// We already had this module in the registry.
-                var module = load.module;
-                EnsureEvaluatedHelper(module, loader);
-
-                //>     1.  Call the [[Call]] internal method of resolve passing
-                //>         null and (load.[[Module]]) as arguments.
-                resolve(module);
-            } else {
-                ;// The module is now loading.  When it loads, it may have more
-                ;// imports, requiring further loads, so put it in a LinkSet.
-
-                //>     1.  Let G be a new anonymous function object as define in
-                //>         EvaluateModuleLoader.
-                //>     1.  Set G.[[Loader]] to loader.
-                //>     1.  Set G.[[Load]] to load.
-                //>     1.  Set G.[[Resolve]] to resolve.
-                var G = MakeClosure_EvaluateModuleLoader(loader, load, resolve);
-
-                //>     1.  Let linkSet be the result of calling the CreateLinkSet
-                //>         abstract operation passing loader and load as
-                //>         arguments.
-                var linkSet = CreateLinkSet(loader, load);
-
-                //>     1.  Let p be the result of calling the [[Call]] internal
-                //>         method of %PromiseThen% passing linkSet.[[Done]] and
-                //>         (G) as arguments.
-                //>     1.  Return p.
-                return callFunction(std_Promise_then, linkSet.done, G);
-            }
-        });
-        //> 1.  Call the [[Call]] internal method of %PromiseCatch%
-        //>     passing p and (reject) as arguments.
-        callFunction(std_Promise_catch, p, reject);
+        //>     1.  Let G be a new anonymous function object as define in
+        //>         EvaluateLoadedModule.
+        //>     1.  Set G.[[Loader]] to loader.
+        //>     1.  Set G.[[Load]] to load.
+        //>     1.  Let p be the result of calling the [[Call]] internal
+        //>         method of %PromiseThen% passing linkSet.[[Done]] and
+        //>         (G) as arguments.
+        //>     1.  Return p.
+        return callFunction(std_Promise_then, linkSet.done,
+                            MakeClosure_EvaluateLoadedModule(loader, load));
     };
 }
 
@@ -2052,8 +2014,9 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(address).
         address = options.address;
 
-        //> 1.  Let p be RequestLoad(loader, name, undefined, address).
-        let p = RequestLoad(loader, name, undefined, address);
+        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined,
+        //>     address).
+        let loadPromise = RequestLoad(loader, name, undefined, address);
 
         //> 1.  Let F be a new anonymous function object as defined in
         //>     CreateLinkSetForLoad.
@@ -2103,20 +2066,32 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(address).
         address = options.address;
 
-        //> 1.  Let F be a new anonymous function object as defined in
-        //>     AsyncEvaluateAnonymousModule.
-        //> 1.  Set F.[[Loader]] to loader.
-        //> 1.  Set F.[[ModuleSource]] to source.
-        //> 1.  Set F.[[ModuleAddress]] to address.
-        var f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source, address);
+        //> 1.  Let load be CreateLoad(undefined).
+        let load = CreateLoad(undefined);
 
-        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+        //> 1.  Let linkSet be CreateLinkSet(loader, load).
+        let linkSet = CreateLinkSet(loader, load);
 
-        // Bug: This leaks the use of promises in the implementation, since the
-        //      `Promise` constructor may have had its @@create mutated. We
-        //      need a slightly better strategy for creating async logic in the
-        //      spec.
-        return new std_Promise(f);
+        //> 1.  Let successCallback be a new anonymous function object as defined
+        //>     by EvaluateLoadedModule.
+        //> 1.  Set successCallback.[[Loader]] to loader.
+        //> 1.  Set successCallback.[[Load]] to load.
+        //> 1.  Let p be the result of calling the [[Call]] internal method of
+        //>     %PromiseThen% passing linkSet.[[Done]] and (successCallback) as
+        //>     arguments.
+        let p = callFunction(std_Promise_then, linkSet.done,
+                             MakeClosure_EvaluateLoadedModule(loader, load));
+
+        //> 1.  Let sourcePromise be the result of calling the [[Call]]
+        //>     internal  method of %PromiseFulfill% passing null and
+        //>     (source) as arguments.
+        var sourcePromise = std_Promise_fulfill(source);
+
+        //> 1.  Call the CallTranslate abstract operation passing loader, load,
+        //>     and sourcePromise as arguments.
+        CallTranslate(loader, load, sourcePromise);
+
+        return p;
     },
     //>
     //> The `length` property of the `module` method is **1**.
@@ -2161,20 +2136,17 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(address).
         address = options.address;
 
-        //> 1.  Let F be a new anonymous function object as defined in
-        //>     AsyncLoadAndEvaluateModule.
-        //> 1.  Set F.[[Loader]] to loader.
-        //> 1.  Set F.[[ModuleName]] to name.
-        //> 1.  Set F.[[ModuleAddress]] to address.
-        var f = MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, address);
+        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined, address).
+        let loadPromise = RequestLoad(loader, name, undefined, address);
 
-        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-
-        // Bug: This leaks the use of promises in the implementation, since the
-        //      `Promise` constructor may have had its @@create mutated. We
-        //      need a slightly better strategy for creating async logic in the
-        //      spec.
-        return new std_Promise(f);
+        //> 1.  Let G be a new anonymous function object as define in
+        //>         AsyncLoadAndEvaluateModule.
+        //> 1.  Let G.[[Loader]] be loader.
+        //> 1.  Let p be the result of calling the [[Call]] internal method of
+        //>     %PromiseThen% passing loadPromise and (G) as arguments.
+        //> 1.  Return p.
+        return callFunction(std_Promise_then, loadPromise,
+                            MakeClosure_AsyncLoadAndEvaluateModule(loader));
     },
     //>
     //> The `length` property of the `import` method is **1**.
