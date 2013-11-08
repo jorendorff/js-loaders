@@ -1328,7 +1328,8 @@ function Realm(options, initializer) {
     //> 1.  Let realm be the result of CreateRealm(realmObject).
     let realm = $CreateRealm(realmObject);
 
-    //> 1.  If options is undefined, then let options be a new Object.
+    //> 1.  If options is undefined, then let options be the result of calling
+    //>     ObjectCreate(%ObjectPrototype%, ()).
     if (options === undefined) {
         options = {};
     }
@@ -1342,7 +1343,8 @@ function Realm(options, initializer) {
     //> 1.  Let evalHooks be the result of calling the [[Get]] internal
     //>     method of options passing `"eval"` and true as arguments.
     //> 1.  ReturnIfAbrupt(evalHooks).
-    //> 1.  If evalHooks is undefined then let evalHooks be a new Object.
+    //> 1.  If evalHooks is undefined then let evalHooks be the result of
+    //>     calling ObjectCreate(%ObjectPrototype%, ()).
     let evalHooks = UnpackOption(options, "eval", () => ({}));
 
     //> 1.  Else, if Type(evalHooks) is not Object, throw a TypeError
@@ -1354,7 +1356,8 @@ function Realm(options, initializer) {
     //> 1.  Let directEval be the result of calling the [[Get]] internal
     //>     method of evalHooks passing `"direct"` and true as arguments.
     //> 1.  ReturnIfAbrupt(directEval).
-    //> 1.  If directEval is undefined then let directEval be a new Object.
+    //> 1.  If directEval is undefined then let directEval be the result of
+    //>     calling ObjectCreate(%ObjectPrototype%, ()).
     let directEval = UnpackOption(evalHooks, "direct", () => ({}));
 
     //> 1.  Else, if Type(directEval) is not Object, throw a TypeError
@@ -1431,7 +1434,8 @@ function Realm(options, initializer) {
             throw std_TypeError("initializer is not callable");
         }
 
-        //>     1.  Let builtins be a new Object.
+        //>     1.  Let builtins be the result of calling
+        //>         ObjectCreate(%ObjectPrototype%, ()).
         //>     1.  Call the DefineBuiltinProperties abstract operation passing
         //>         realm and builtins as arguments.
         //>     1.  Let status be the result of calling the [[Call]] internal
@@ -1889,20 +1893,24 @@ def(Loader.prototype, {
 
         let address = undefined;
         let metadata = undefined;
-        if (options !== undefined) {
-            //> 1.  If options is not undefined, then let options be
-            //>     ToObject(options).
-            //> 1.  ReturnIfAbrupt(options).
-            options = ToObject(options);
-            //> 1.  Let address be the result of calling the [[Get]] internal
-            //>     method of options passing `"address"` as the argument.
-            //> 1.  ReturnIfAbrupt(address).
-            address = options.address;
-            //> 1.  Let metadata be the result of calling the [[Get]] internal
-            //>     method of options passing `"metadata"` as the argument.
-            //> 1.  ReturnIfAbrupt(metadata).
-            metadata = options.metadata;
+        //> 1.  If options is undefined then let options be the result of
+        //>     calling ObjectCreate(%ObjectPrototype%, ()).
+        if (options === undefined) {
+            options = {};
+        //> 1.  Else if Type(options) is not Object then throw a TypeError
+        //>     exception.
+        } else if (!IsObject(options)) {
+            throw std_TypeError("options is not an object");
         }
+
+        //> 1.  Let address be the result of calling the [[Get]] internal
+        //>     method of options passing `"address"` as the argument.
+        //> 1.  ReturnIfAbrupt(address).
+        address = options.address;
+        //> 1.  Let metadata be the result of calling the [[Get]] internal
+        //>     method of options passing `"metadata"` as the argument.
+        //> 1.  ReturnIfAbrupt(metadata).
+        metadata = options.metadata;
         //> 1.  If metadata is undefined then let metadata be the result of
         //>     calling ObjectCreate(%ObjectPrototype%, ()).
         if (metadata === undefined)
@@ -1938,6 +1946,9 @@ def(Loader.prototype, {
     //> this provides a close dynamic approximation of an ImportDeclaration.
     //>
     load: function load(name, options = undefined) {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If loader does not have all the internal properties of a Loader
+        //>     object, throw a TypeError exception.
         var loader = this;
         GetLoaderInternalData(this);
         var f = MakeClosure_AsyncLoadModule(loader, name, options);
