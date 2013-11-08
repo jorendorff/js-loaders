@@ -2104,7 +2104,7 @@ def(Loader.prototype, {
         address = options.address;
 
         //> 1.  Let F be a new anonymous function object as defined in
-        //>     AsyncLoadAndEvaluateModule.
+        //>     AsyncEvaluateAnonymousModule.
         //> 1.  Set F.[[Loader]] to loader.
         //> 1.  Set F.[[ModuleSource]] to source.
         //> 1.  Set F.[[ModuleAddress]] to address.
