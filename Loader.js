@@ -974,17 +974,30 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address
     };
 }
 
-function MakeClosure_AsyncLoadModule(loader, name, options) {
-    return function (resolve, reject) {
-        name = ToString(name);
-        let address = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-        }
+function MakeClosure_AsyncLoadModule(loader, name, address) {
 
+    //> ### AsyncLoadModule ( resolve, reject )
+    //>
+    //> The following steps are taken:
+    //>
+    return function (resolve, reject) {
+        //> 1.  Let F be this function object.
+        //> 1.  Let loader be F.[[Loader]].
+        //> 1.  Let name be F.[[ModuleName]].
+        //> 1.  Let address be F.[[ModuleAddress]].
+
+        //> 1.  Load load be the result of calling the GetOrStartLoad abstract
+        //>     operation passing loader, name, undefined, and address as
+        //>     arguments.
+        // FIXME: this is changing for async normalize
         let load = GetOrStartLoad(loader, name, undefined, address);
+
+        //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
+        //>     operation passing loader and load as arguments.
         let linkSet = CreateLinkSet(loader, load);
+
+        //> 1.  Call the [[Call]] internal method of resolve with arguments
+        //>     null and (linkSet.[[Done]]).
         resolve(linkSet.done);
     };
 }
@@ -1018,27 +1031,51 @@ function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
     };
 }
 
-function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options) {
+function MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, address) {
+    //> ### AsyncLoadAndEvaluateModule ( resolve, reject )
+    //>
+    //> The following steps are taken:
+    //>
     return function (resolve, reject) {
-        let address = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-        }
+        //> 1.  Let F be this function object.
+        //> 1.  Let loader be F.[[Loader]].
+        //> 1.  Let name be F.[[ModuleName]].
+        //> 1.  Let address be F.[[ModuleAddress]].
 
+        //> 1.  Load load be the result of calling the GetOrStartLoad abstract
+        //>     operation passing loader, name, undefined, and address as
+        //>     arguments.
+        // FIXME: this is changing for async normalize
         // `GetOrStartLoad` starts us along the pipeline.
         let load = GetOrStartLoad(loader, name, undefined, address);
 
+        //> 1.  If load.[[Status]] is **linked**, then the following steps are
+        //>     taken:
         if (load.status === "linked") {
             // We already had this module in the registry.
+            //>     1.  Call the [[Call]] internal method of resolve passing
+            //>         null and (load.[[Module]]) as arguments.
             resolve(load.module);
         } else {
             // The module is now loading.  When it loads, it may have more
             // imports, requiring further loads, so put it in a LinkSet.
+            //>     1.  Let G be a new anonymous function object as define in
+            //>         EvaluateModuleLoader.
+            //>     1.  Set G.[[Loader]] to loader.
+            //>     1.  Set G.[[Load]] to load.
+            //>     1.  Set G.[[Resolve]] to resolve.
             var successCallback =
                 MakeClosure_EvaluateModuleLoader(loader, load, resolve);
+            //>     1.  Let linkSet be the result of calling the CreateLinkSet
+            //>         abstract operation passing loader and load as
+            //>         arguments.
             var linkSet = CreateLinkSet(loader, load);
+            //>     1.  Let p be the result of calling the [[Call]] internal
+            //>         method of %PromiseThen% passing linkSet.[[Done]] and
+            //>         (successCallback) as arguments.
             var p = callFunction(std_Promise_then, linkSet.done, successCallback);
+            //>     1.  Call the [[Call]] internal method of %PromiseCatch%
+            //>         passing p and (reject) as arguments.
             callFunction(std_Promise_catch, p, reject);
         }
     };
@@ -1952,7 +1989,40 @@ def(Loader.prototype, {
         //>     object, throw a TypeError exception.
         var loader = this;
         GetLoaderInternalData(this);
-        var f = MakeClosure_AsyncLoadModule(loader, name, options);
+
+        //> 1.  Let name be ToString(name).
+        //> 1.  ReturnIfAbrupt(name).
+        name = ToString(name);
+
+        let address = undefined;
+        //> 1.  If options is undefined then let options be the result of
+        //>     calling ObjectCreate(%ObjectPrototype%, ()).
+        if (options === undefined) {
+            options = {};
+        //> 1.  Else if Type(options) is not Object then throw a TypeError
+        //>     exception.
+        } else if (!IsObject(options)) {
+            throw std_TypeError("options is not an object");
+        }
+
+        //> 1.  Let address be the result of calling the [[Get]] internal
+        //>     method of options passing `"address"` as the argument.
+        //> 1.  ReturnIfAbrupt(address).
+        address = options.address;
+
+        //> 1.  Let F be a new anonymous function object as defined in
+        //>     AsyncLoadModule.
+        //> 1.  Set F.[[Loader]] to loader.
+        //> 1.  Set F.[[ModuleName]] to name.
+        //> 1.  Set F.[[ModuleAddress]] to address.
+        var f = MakeClosure_AsyncLoadModule(loader, name, address);
+
+        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+
+        // Bug: This leaks the use of promises in the implementation, since the
+        //      `Promise` constructor may have had its @@create mutated. We
+        //      need a slightly better strategy for creating async logic in the
+        //      spec.
         return new std_Promise(f);
     },
     //>
@@ -1994,9 +2064,45 @@ def(Loader.prototype, {
     //> of an ImportDeclaration.
     //>
     import: function import_(name, options = undefined) {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If loader does not have all the internal properties of a Loader
+        //>     object, throw a TypeError exception.
         var loader = this;
         var loaderData = GetLoaderInternalData(this);
-        var f = MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, options);
+
+        //> 1.  Let name be ToString(name).
+        //> 1.  ReturnIfAbrupt(name).
+        name = ToString(name);
+
+        let address = undefined;
+        //> 1.  If options is undefined then let options be the result of
+        //>     calling ObjectCreate(%ObjectPrototype%, ()).
+        if (options === undefined) {
+            options = {};
+        //> 1.  Else if Type(options) is not Object then throw a TypeError
+        //>     exception.
+        } else if (!IsObject(options)) {
+            throw std_TypeError("options is not an object");
+        }
+
+        //> 1.  Let address be the result of calling the [[Get]] internal
+        //>     method of options passing `"address"` as the argument.
+        //> 1.  ReturnIfAbrupt(address).
+        address = options.address;
+
+        //> 1.  Let F be a new anonymous function object as defined in
+        //>     AsyncLoadAndEvaluateModule.
+        //> 1.  Set F.[[Loader]] to loader.
+        //> 1.  Set F.[[ModuleName]] to name.
+        //> 1.  Set F.[[ModuleAddress]] to address.
+        var f = MakeClosure_AsyncLoadAndEvaluateModule(loader, loaderData, name, address);
+
+        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+
+        // Bug: This leaks the use of promises in the implementation, since the
+        //      `Promise` constructor may have had its @@create mutated. We
+        //      need a slightly better strategy for creating async logic in the
+        //      spec.
         return new std_Promise(f);
     },
     //>
