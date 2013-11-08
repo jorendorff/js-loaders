@@ -1011,22 +1011,44 @@ function MakeClosure_EvaluateLoadedModule(loader, load, resolve) {
     };
 }
 
-function MakeClosure_AsyncEvaluateAnonymousModule(loader, source) {
+function MakeClosure_AsyncEvaluateAnonymousModule(loader, source, address) {
+    //> ### AsyncEvaluateAnonymousModule ( resolve, reject )
+    //>
+    //> The following steps are taken:
+    //>
     return function (resolve, reject) {
-        let address = undefined;
-        if (options !== undefined) {
-            options = ToObject(options);
-            address = options.address;
-        }
+        //> 1.  Let F be this function object.
+        //> 1.  Let loader be F.[[Loader]].
+        //> 1.  Let source be F.[[ModuleSource]].
+        //> 1.  Let address be F.[[ModuleAddress]].
 
+        //> 1.  Let load be the result of calling the CreateLoad abstract operation
+        //>     passing undefined as the single argument.
         let load = CreateLoad(undefined);
+        //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
+        //>     operation passing loader and load as arguments.
         let linkSet = CreateLinkSet(loader, load);
+        //> 1.  Let successCallback be a new anonymous function object as defined
+        //>     by EvaluateLoadedModule.
+        //> 1.  Set successCallback.[[Loader]] to loader.
+        //> 1.  Set successCallback.[[Load]] to load.
+        //> 1.  Set successCallback.[[Resolve]] to resolve.
         var successCallback =
             MakeClosure_EvaluateLoadedModule(loader, load, resolve);
+        //> 1.  Let p be the result of calling the [[Call]] internal method of
+        //>     %PromiseThen% passing linkSet.[[Done]] and (successCallback) as
+        //>     arguments.
         let p = callFunction(std_Promise_then, linkSet.done, successCallback);
+        //> 1.  Call the [[Call]] internal method of %PromiseCatch% passing
+        //>     p and (reject) as arguments.
         callFunction(std_Promise_catch, p, reject);
 
+        //> 1.  Let sourcePromise be the result of calling the [[Call]]
+        //>     internal  method of %PromiseFulfill% passing null and
+        //>     (source) as arguments.
         var sourcePromise = std_Promise_fulfill(source);
+        //> 1.  Call the CallTranslate abstract operation passing loader, load,
+        //>     and sourcePromise as arguments.
         CallTranslate(loader, load, sourcePromise);
     };
 }
@@ -2030,7 +2052,7 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.module ( source )
+    //> #### Loader.prototype.module ( source, options )
     //>
     //> The `module` method asynchronously evaluates a top-level, anonymous
     //> module from source.
@@ -2043,12 +2065,46 @@ def(Loader.prototype, {
     //>
     //> NOTE This is the dynamic equivalent of an anonymous `<module>` in HTML.
     //>
-    module: function module_(source) {
+    module: function module(source, options = undefined) {
+        //> 1.  Let loader be this Loader object.
+        //> 1.  If loader does not have all the internal properties of a Loader
+        //>     object, throw a TypeError exception.
         var loader = this;
         GetLoaderInternalData(this);
-        var f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source);
+
+        let address = undefined;
+        //> 1.  If options is undefined then let options be the result of
+        //>     calling ObjectCreate(%ObjectPrototype%, ()).
+        if (options === undefined) {
+            options = {};
+        //> 1.  Else if Type(options) is not Object then throw a TypeError
+        //>     exception.
+        } else if (!IsObject(options)) {
+            throw std_TypeError("options is not an object");
+        }
+
+        //> 1.  Let address be the result of calling the [[Get]] internal
+        //>     method of options passing `"address"` as the argument.
+        //> 1.  ReturnIfAbrupt(address).
+        address = options.address;
+
+        //> 1.  Let F be a new anonymous function object as defined in
+        //>     AsyncLoadAndEvaluateModule.
+        //> 1.  Set F.[[Loader]] to loader.
+        //> 1.  Set F.[[ModuleSource]] to source.
+        //> 1.  Set F.[[ModuleAddress]] to address.
+        var f = MakeClosure_AsyncEvaluateAnonymousModule(loader, source, address);
+
+        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+
+        // Bug: This leaks the use of promises in the implementation, since the
+        //      `Promise` constructor may have had its @@create mutated. We
+        //      need a slightly better strategy for creating async logic in the
+        //      spec.
         return new std_Promise(f);
     },
+    //>
+    //> The `length` property of the `module` method is **1**.
     //>
 
 
