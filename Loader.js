@@ -463,36 +463,31 @@ function MakeClosure_LoadFailed(load) {
 
 // ## The loader pipeline
 
-// **`RequestLoad`** - The common implementation of the `import()`
-// method and the processing of `import` declarations in ES code.
-//
-// There are several possible outcomes:
-//
-// 1.  Getting `loader.normalize` throws, or the `normalize` hook isn't
-//     callable, or it throws an exception, or it returns an invalid value.
-//     In these cases, `RequestLoad` throws.
-//
-// 2.  The `normalize` hook returns the name of a module that is already in
-//     the registry.  `RequestLoad` returns a pair, the normalized name
-//     and a fake Load object.
-//
-// 3.  In all other cases, either a new `Load` is started or we can join one
-//     already in flight.  `RequestLoad` returns the `Load` object.
-//
-// `loader` is a Loader object.
-//
-// `request` is the (pre-normalize) name of the module to be imported, as it
-// appears in the import-declaration or as the argument to
-// `loader.import()`.
-//
-// `refererName` and `refererAddress` provide information about the context of
-// the `import()` call or import-declaration.  This information is passed to
-// all the loader hooks.
-//
-// TODO:  Suggest alternative name for `referer`.  It is really nothing to
-// do with the nasty Referer HTTP header.  Perhaps `importContext`,
-// `importer`, `client`.
-//
+//> #### RequestLoad(loader, request, refererName, refererAddress) Abstract Operation
+//>
+//> The RequestLoad abstract operation normalizes the given module name,
+//> request, and returns a promise that resolves to the value of a Load
+//> object for the given module.
+//>
+//> The loader argument is a Loader object.
+//>
+//> request is the (non-normalized) name of the module to be imported, as it
+//> appears in the import-declaration or as the argument to `loader.load()` or
+//> `loader.import()`.
+//>
+//> refererName and refererAddress provide information about the context of
+//> the `import()` call or import-declaration.  This information is passed to
+//> all the loader hooks.
+//>
+//> If the requested module is already in the loader's module registry,
+//> RequestLoad returns a promise for a Load with the [[Status]] field set to
+//> `"linked"`. If the requested module is loading or loaded but not yet
+//> linked, RequestLoad returns a promise for an existing Load object from
+//> loader.[[Loads]]. Otherwise, RequestLoad starts loading the module and
+//> returns a promise for a new Load Record.
+//>
+//> The following steps are taken:
+//>
 function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
@@ -1995,7 +1990,7 @@ def(Loader.prototype, {
     //>
 
 
-    //> #### Loader.prototype.load ( name, options = undefined )
+    //> #### Loader.prototype.load ( request, options = undefined )
     //>
     //> The `load` method installs a module into the registry by name.
     //>
