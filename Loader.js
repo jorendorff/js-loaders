@@ -1727,15 +1727,16 @@ function Loader(options={}) {
     //> 9.  Else if Type(realmObject) is not Object or realmObject does not
     //>     have all the internal properties of a Realm object, throw a
     //>     TypeError exception.
+    //> 10. Else let realm be realmObject.[[Realm]].
     var realm;
-    if (realmObject !== undefined &&
-        (!IsObject(realmObject) ||
-         !callFunction(std_WeakMap_has, realmInternalDataMap, realmObject)))
+    if (realmObject === undefined) {
+        realm = undefined;
+    } else if (IsObject(realmObject) &&
+               callFunction(std_WeakMap_has, realmInternalDataMap, realmObject))
     {
-        throw std_TypeError("options.realm is not a Realm object");
-    } else {
-        //> 10. Else let realm be realmObject.[[Realm]].
         realm = GetRealmInternalData(realmObject).realm;
+    } else {
+        throw std_TypeError("options.realm is not a Realm object");
     }
 
     //> 11. For each name in the List (`"normalize"`, `"locate"`, `"fetch"`,
