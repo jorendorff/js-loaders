@@ -2049,7 +2049,8 @@ def(Loader.prototype, {
         //>     AsyncStartLoadPartwayThrough.
         //> 1.  Set F.[[Loader]] to loader.
         //> 1.  Set F.[[ModuleName]] to name.
-        //> 1.  Set F.[[Step]] to ???.
+        //> 1.  If address is undefined, set F.[[Step]] to `"locate"`.
+        //> 1.  Else, set F.[[Step]] to `"fetch"`.
         //> 1.  Set F.[[ModuleMetadata]] to metadata.
         //> 1.  Set F.[[ModuleSource]] to source.
         //> 1.  Set F.[[ModuleAddress]] to address.
