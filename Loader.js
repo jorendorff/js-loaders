@@ -56,7 +56,7 @@ var std_WeakMap_get = WeakMap.prototype.get;
 var std_WeakMap_set = WeakMap.prototype.set;
 var std_Promise = Promise;
 var std_Promise_all = Promise.all;
-var std_Promise_fulfill = Promise.fulfill;
+var std_Promise_resolve = Promise.resolve;
 var std_Promise_then = Promise.prototype.then;
 var std_Promise_catch = Promise.prototype.catch;
 var std_TypeError = TypeError;
@@ -133,6 +133,12 @@ function SetToArray(set) {
 
 function MapValuesToArray(map) {
     return IteratorToArray(callFunction(std_Map_values, map), std_Map_iterator_next);
+}
+
+// The Loader spec uses a few primitives that will likely be provided by the
+// Promise spec.
+function PromiseOf(value) {
+    return callFunction(std_Promise_resolve, std_Promise, value);
 }
 
 // `Assert(condition)` is your bog-standard assert function. In theory, it
@@ -414,11 +420,17 @@ function CreateLoad(name) {
         //> 11. Set the [[Exception]] field of load to undefined.
         exception: undefined,
         //> 12. Set the [[Module]] field of load to undefined.
-        module: null
+        module: null,
+        then: undefined
     };
     //> 13.  Return load.
 }
 //>
+//
+// In this implementation, Load objects have an extra property `then:
+// undefined` to prevent them from appearing thenable even if the user assigns
+// to Object.prototype.then.  An alternative would be to use
+// Object.create(null) here.
 
 
 //> #### LoadFailed Functions
@@ -495,7 +507,7 @@ function RequestLoad(loader, request, refererName, refererAddress) {
     //      `Promise` constructor may have had its @@create mutated. We
     //      need a slightly better strategy for creating async logic in the
     //      spec.
-    var p = callFunction(std_Promise_fulfill, std_Promise, undefined);
+    var p = PromiseOf(undefined);
     p = callFunction(std_Promise_then, p, function (_) {
         // Call the `normalize` hook to get a normalized module name.  See the
         // comment on `normalize()`.
@@ -510,15 +522,19 @@ function RequestLoad(loader, request, refererName, refererAddress) {
         // If the module has already been linked, we are done.
         let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
         if (existingModule !== undefined) {
-            return std_Promise_fulfill(
-                {status: "linked", name: normalized, module: existingModule});
+            return PromiseOf({
+                status: "linked",
+                name: normalized,
+                module: existingModule,
+                then: undefined
+            });
         }
 
         // If the module is already loading or loaded, we are done.
         let load = callFunction(std_Map_get, loaderData.loads, normalized);
         if (load !== undefined) {
             Assert(load.status === "loading" || load.status === "loaded");
-            return std_Promise_fulfill(load);
+            return PromiseOf(load);
         }
 
         // Start a new Load.
@@ -732,9 +748,8 @@ function OnEndRun(load, mod) {
 //         just that `LinkSet`.
 //
 //       * If the error is related to an in-flight `Load` (that is, it has to
-//         do with a hook throwing, returning an invalid value, calling a
-//         fulfill callback incorrectly, or calling the reject callback), then
-//         F = `load.linkSets`.
+//         do with a hook throwing, returning an invalid value, or returning a
+//         thenable that becomes rejected), then F = `load.linkSets`.
 //
 //  2. Detach each `LinkSet` in F from all `Load`s it required.
 //
@@ -742,7 +757,8 @@ function OnEndRun(load, mod) {
 //     longer needed by any LinkSet.
 //
 //  4. Remove all loads in M from loader.[[Loads]].  If any are in `"loading"`
-//     state, make the `fulfill` and `reject` callbacks into no-ops.
+//     state, waiting for a promise, make any `fulfill` and `reject` callbacks
+//     into no-ops.
 //
 //  5. Reject the promises associated with each `LinkSet` in F.
 //
@@ -1006,14 +1022,14 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
 
         //> 1.  If step is `"locate"`,
         if (step == "locate") {
-            //>     1.  Let namePromise be CreateResolvedPromise(name).
+            //>     1.  Let namePromise be PromiseOf(name).
             //>     1.  Call ProceedToLocate(loader, load, namePromise).
-            ProceedToLocate(loader, load, std_Promise_resolve(name));
+            ProceedToLocate(loader, load, PromiseOf(name));
         //> 1.  Else if step is `"fetch"`,
         } else if (step == "fetch") {
-            //>     1.  Let addressPromise be CreateResolvedPromise(address).
+            //>     1.  Let addressPromise be PromiseOf(address).
             //>     1.  Call ProceedToFetch(loader, load, addressPromise).
-            ProceedToFetch(loader, load, std_Promise_resolve(address));
+            ProceedToFetch(loader, load, PromiseOf(address));
         //> 1.  Else,
         } else {
             //>     1.  Assert: step is `"translate"`.
@@ -1022,10 +1038,8 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
             //>     1.  Set load.[[Address]] to address.
             load.address = address;
 
-            //>     1.  Let sourcePromise be the result of calling the [[Call]]
-            //>         internal method of %PromiseFulfill% passing null and
-            //>         (source) as arguments.
-            var sourcePromise = std_Promise_fulfill(source);
+            //>     1.  Let sourcePromise be PromiseOf(source).
+            var sourcePromise = PromiseOf(source);
 
             //>     1.  Call ProceedToTranslate(loader, load, sourcePromise).
             ProceedToTranslate(loader, load, sourcePromise);
@@ -2123,10 +2137,8 @@ def(Loader.prototype, {
         let p = callFunction(std_Promise_then, linkSet.done,
                              MakeClosure_EvaluateLoadedModule(loader, load));
 
-        //> 1.  Let sourcePromise be the result of calling the [[Call]]
-        //>     internal  method of %PromiseFulfill% passing null and
-        //>     (source) as arguments.
-        var sourcePromise = std_Promise_fulfill(source);
+        //> 1.  Let sourcePromise be PromiseOf(source).
+        var sourcePromise = PromiseOf(source);
 
         //> 1.  Call the ProceedToTranslate abstract operation passing loader, load,
         //>     and sourcePromise as arguments.
