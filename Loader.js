@@ -530,15 +530,17 @@ function RequestLoad(loader, request, refererName, refererAddress) {
         //      need a slightly better strategy for creating async logic in the
         //      spec.
         var p = new std_Promise(MakeClosure_CallLocate(loader, load));
-        p = callFunction(std_Promise_then, p,
-                         MakeClosure_CallFetch(loader, load));
-        CallTranslate(loader, load, p);
+        ProceedToFetch(loader, load, p);
         return load;
     });
     return p;
 }
 
-function CallTranslate(loader, load, p) {
+function ProceedToFetch(loader, load, p) {
+    return callFunction(std_Promise_then, p, MakeClosure_CallFetch(loader, load));
+}
+
+function ProceedToTranslate(loader, load, p) {
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallTranslate(loader, load));
     p = callFunction(std_Promise_then, p,
@@ -953,9 +955,10 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
 // ## Module loading entry points
 
-function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address, metadata) {
-
-    //> ### AsyncDefineModule ( resolve, reject )
+function MakeClosure_AsyncStartLoadPartwayThrough(
+    loader, loaderData, name, step, metadata, address, source)
+{
+    //> ### AsyncStartLoadPartwayThrough ( resolve, reject )
     //>
     //> The following steps are taken:
     //>
@@ -963,9 +966,9 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address
         //> 1.  Let F be this function object.
         //> 1.  Let loader be F.[[Loader]].
         //> 1.  Let name be F.[[ModuleName]].
-        //> 1.  Let source be F.[[ModuleSource]].
-        //> 1.  Let address be F.[[ModuleAddress]].
         //> 1.  Let metadata be F.[[ModuleMetadata]].
+        //> 1.  Let address be F.[[ModuleAddress]].
+        //> 1.  Let source be F.[[ModuleSource]].
 
         //> 1.  If loader.[[Modules]] contains an entry whose [[key]] is equal
         //>     to name, throw a TypeError exception.
@@ -973,6 +976,7 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address
             throw std_TypeError(
                 "can't define module \"" + name + "\": already loaded");
         }
+
         //> 1.  If loader.[[Loads]] contains an entry whose [[key]] is equal
         //>     to name, throw a TypeError exception.
         if (callFunction(std_Map_has(loaderData.loads, name))) {
@@ -989,8 +993,6 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address
 
         //> 1.  Set load.[[Metadata]] to metadata.
         load.metadata = metadata;
-        //> 1.  Set load.[[Address]] to address.
-        load.address = address;
 
         //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
         //>     operation passing loader and load as arguments.
@@ -1002,13 +1004,28 @@ function MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address
         //> 1.  Call the [[Call]] internal method of resolve with arguments
         //>     null and (linkSet.[[Done]]).
         resolve(linkSet.done);
-        //> 1.  Let sourcePromise be the result of calling the [[Call]]
-        //>     internal method of %PromiseFulfill% passing null and
-        //>     (source) as arguments.
-        let sourcePromise = std_Promise_fulfill(source);
-        //> 1.  Call the CallTranslate abstract operation passing loader,
-        //>     load, and sourcePromise as arguments.
-        CallTranslate(loader, load, sourcePromise);
+
+        //>???
+        if (step == "locate") {
+            ProceedToLocate(loader, load, std_Promise_resolve(name));
+        } else if (step == "fetch") {
+            ProceedToFetch(loader, load, std_Promise_resolve(address));
+        } else {
+            //> ???
+            $Assert(step == "translate");
+
+            //> 1.  Set load.[[Address]] to address.
+            load.address = address;
+
+            //> 1.  Let sourcePromise be the result of calling the [[Call]]
+            //>     internal method of %PromiseFulfill% passing null and
+            //>     (source) as arguments.
+            var sourcePromise = std_Promise_fulfill(source);
+
+            //> 1.  Call the ProceedToTranslate abstract operation passing loader,
+            //>     load, and sourcePromise as arguments.
+            ProceedToTranslate(loader, load, sourcePromise);
+        }
     };
 }
 
@@ -1969,13 +1986,15 @@ def(Loader.prototype, {
             metadata = {};
 
         //> 1.  Let F be a new anonymous function object as defined in
-        //>     AsyncDefineModule.
+        //>     AsyncStartLoadPartwayThrough.
         //> 1.  Set F.[[Loader]] to loader.
         //> 1.  Set F.[[ModuleName]] to name.
+        //> 1.  Set F.[[Step]] to the String `"translate"`.
+        //> 1.  Set F.[[ModuleMetadata]] to metadata.
         //> 1.  Set F.[[ModuleSource]] to source.
         //> 1.  Set F.[[ModuleAddress]] to address.
-        //> 1.  Set F.[[ModuleMetadata]] to metadata.
-        var f = MakeClosure_AsyncDefineModule(loader, loaderData, name, source, address, metadata);
+        var f = MakeClosure_AsyncStartLoadPartwayThrough(
+            loader, loaderData, name, "translate", metadata, address, source);
 
         //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
 
@@ -2008,32 +2027,39 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(name).
         name = ToString(name);
 
-        let address = undefined;
-        //> 1.  If options is undefined then let options be the result of
-        //>     calling ObjectCreate(%ObjectPrototype%, ()).
+        var address;
+        //> 1.  If options is undefined, then
         if (options === undefined) {
-            options = {};
-        //> 1.  Else if Type(options) is not Object then throw a TypeError
-        //>     exception.
-        } else if (!IsObject(options)) {
+            //>     1.  Let address be undefined.
+            address = undefined;
+        //> 1.  Else if Type(options) is Object then 
+        } else if (IsObject(options)) {
+            //>     1.  Let address be the result of calling the [[Get]] internal
+            //>         method of options passing `"address"` as the argument.
+            //>     1.  ReturnIfAbrupt(address).
+            
+            address = options.address;
+        //> 1.  Else,
+        } else {
+            //>     1.  throw a TypeError exception.
             throw std_TypeError("options is not an object");
         }
 
-        //> 1.  Let address be the result of calling the [[Get]] internal
-        //>     method of options passing `"address"` as the argument.
-        //> 1.  ReturnIfAbrupt(address).
-        address = options.address;
-
-        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined,
-        //>     address).
-        let loadPromise = RequestLoad(loader, name, undefined, address);
-
         //> 1.  Let F be a new anonymous function object as defined in
-        //>     CreateLinkSetForLoad.
+        //>     AsyncStartLoadPartwayThrough.
         //> 1.  Set F.[[Loader]] to loader.
-        //> 1.  Return the result of PromiseThen(p, F).
-        return callFunction(std_Promise_then, p,
-                            MakeClosure_CreateLinkSetForLoad(loader));
+        //> 1.  Set F.[[ModuleName]] to name.
+        //> 1.  Set F.[[Step]] to ???.
+        //> 1.  Set F.[[ModuleMetadata]] to metadata.
+        //> 1.  Set F.[[ModuleSource]] to source.
+        //> 1.  Set F.[[ModuleAddress]] to address.
+        var f = MakeClosure_AsyncStartLoadPartwayThrough(
+            loader, loaderData, name,
+            address === undefined ? "locate" : "fetch",
+            metadata, address, undefined);
+
+        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+        return new std_Promise(f);
     },
     //>
     //> The `length` property of the `load` method is **1**.
@@ -2097,9 +2123,9 @@ def(Loader.prototype, {
         //>     (source) as arguments.
         var sourcePromise = std_Promise_fulfill(source);
 
-        //> 1.  Call the CallTranslate abstract operation passing loader, load,
+        //> 1.  Call the ProceedToTranslate abstract operation passing loader, load,
         //>     and sourcePromise as arguments.
-        CallTranslate(loader, load, sourcePromise);
+        ProceedToTranslate(loader, load, sourcePromise);
 
         return p;
     },
