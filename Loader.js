@@ -302,8 +302,8 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //>   * load.[[Source]] - The result of the translate hook.
 //>
-//>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a Module or
-//>     Script parse. (???terminology)
+//>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a ModuleBody
+//>     parse. (???terminology)
 //>
 //>   * load.[[Dependencies]] - Once the Load reaches the `"loaded"` state, a
 //>     List of pairs. Each pair consists of two strings: a module name as it
