@@ -966,6 +966,7 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
         //> 1.  Let F be this function object.
         //> 1.  Let loader be F.[[Loader]].
         //> 1.  Let name be F.[[ModuleName]].
+        //> 1.  Let step be F.[[Step]].
         //> 1.  Let metadata be F.[[ModuleMetadata]].
         //> 1.  Let address be F.[[ModuleAddress]].
         //> 1.  Let source be F.[[ModuleSource]].
@@ -984,9 +985,6 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
                 "can't define module \"" + name + "\": already loading");
         }
 
-        // Make a LinkSet.  Pre-populate it with a Load object for the
-        // given module.  Start the Load process at the `translate` hook.
-
         //> 1.  Let load be the result of calling the CreateLoad abstract
         //>     operation passing name as the single argument.
         let load = CreateLoad(name);
@@ -1001,29 +999,35 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
         //> 1.  Add the record {[[key]]: name, [[value]]: load} to
         //>     loader.[[Loads]].
         callFunction(std_Map_set, loaderData.loads, name, load);
+
         //> 1.  Call the [[Call]] internal method of resolve with arguments
         //>     null and (linkSet.[[Done]]).
         resolve(linkSet.done);
 
-        //>???
+        //> 1.  If step is `"locate"`,
         if (step == "locate") {
+            //>     1.  Let namePromise be CreateResolvedPromise(name).
+            //>     1.  Call ProceedToLocate(loader, load, namePromise).
             ProceedToLocate(loader, load, std_Promise_resolve(name));
+        //> 1.  Else if step is `"fetch"`,
         } else if (step == "fetch") {
+            //>     1.  Let addressPromise be CreateResolvedPromise(address).
+            //>     1.  Call ProceedToFetch(loader, load, addressPromise).
             ProceedToFetch(loader, load, std_Promise_resolve(address));
+        //> 1.  Else,
         } else {
-            //> ???
+            //>     1.  Assert: step is `"translate"`.
             $Assert(step == "translate");
 
-            //> 1.  Set load.[[Address]] to address.
+            //>     1.  Set load.[[Address]] to address.
             load.address = address;
 
-            //> 1.  Let sourcePromise be the result of calling the [[Call]]
-            //>     internal method of %PromiseFulfill% passing null and
-            //>     (source) as arguments.
+            //>     1.  Let sourcePromise be the result of calling the [[Call]]
+            //>         internal method of %PromiseFulfill% passing null and
+            //>         (source) as arguments.
             var sourcePromise = std_Promise_fulfill(source);
 
-            //> 1.  Call the ProceedToTranslate abstract operation passing loader,
-            //>     load, and sourcePromise as arguments.
+            //>     1.  Call ProceedToTranslate(loader, load, sourcePromise).
             ProceedToTranslate(loader, load, sourcePromise);
         }
     };
