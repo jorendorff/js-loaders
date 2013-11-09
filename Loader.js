@@ -553,7 +553,9 @@ function RequestLoad(loader, request, refererName, refererAddress) {
 }
 
 function ProceedToFetch(loader, load, p) {
-    return callFunction(std_Promise_then, p, MakeClosure_CallFetch(loader, load));
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_CallFetch(loader, load));
+    return ProceedToTranslate(p);
 }
 
 function ProceedToTranslate(loader, load, p) {
