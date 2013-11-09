@@ -623,6 +623,9 @@ function MakeClosure_CallInstantiate(loader, load) {
 // calling FinishLoad if necessary.
 function MakeClosure_InstantiateSucceeded(loader, load) {
     return function (instantiateResult) {
+        if (callFunction(std_Set_get_size, load.linkSets) === 0)
+            return;
+
         // Interpret `instantiateResult`.  See comment on the `instantiate()`
         // method.
         if (instantiateResult === undefined) {
