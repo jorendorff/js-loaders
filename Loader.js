@@ -1720,15 +1720,14 @@ function Loader(options={}) {
     //> 6.  Let realmObject be the result of calling the [[Get]] internal
     //>     method  of options with arguments `"realm"` and options.
     //> 7.  ReturnIfAbrupt(realmObject).
-
     var realmObject = options.realm;
-    var realm;
 
     //> 8.  If realmObject is undefined, let realm be the Realm of the running
     //>     execution context.
     //> 9.  Else if Type(realmObject) is not Object or realmObject does not
     //>     have all the internal properties of a Realm object, throw a
     //>     TypeError exception.
+    var realm;
     if (realmObject !== undefined &&
         (!IsObject(realmObject) ||
          !callFunction(std_WeakMap_has, realmInternalDataMap, realmObject)))
@@ -1849,7 +1848,7 @@ var Loader_create = function create() {
 
         // **`loaderData.realm`** is an ECMAScript Realm. It determines the
         // global scope and intrinsics of all code this Loader runs. By
-        // default, `new Loader()` creates a new Realm.
+        // default, `new Loader()` simply uses the current Realm.
         realm: undefined,
 
         // **`loaderData.linkSetCounter`** is used to give each LinkSet record
