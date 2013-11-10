@@ -555,7 +555,7 @@ function RequestLoad(loader, request, refererName, refererAddress) {
 function ProceedToFetch(loader, load, p) {
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallFetch(loader, load));
-    return ProceedToTranslate(p);
+    return ProceedToTranslate(loader, load, p);
 }
 
 function ProceedToTranslate(loader, load, p) {
