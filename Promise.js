@@ -14,6 +14,24 @@ var window = this,
                 cb();
             }
         }
+    },
+    test = {
+        run: function () {
+            test.passed = undefined;
+            process.pumpEvents();
+            assertEq(test.passed, true);
+        },
+        pass: function () {
+            if (test.passed === undefined)
+                test.passed = true;
+        },
+        fail: function (exc) {
+            test.passed = false;
+            print("=== Test failed:");
+            if ("stack" in exc)
+                print(exc.stack);
+            print(exc);
+        }
     };
 // </div>
 
