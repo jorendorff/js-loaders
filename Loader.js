@@ -2729,8 +2729,8 @@ def(LoaderIterator.prototype, {
     //>
     //> The following steps are taken:
     //>
-    // Bug: "@@iterator" should of course be [Symbol.iterator], but
-    // SpiderMonkey doesn't have Symbol support yet.
+    // Bug: "@@iterator" should of course be [Symbol.iterator].  This will be
+    // updated once Symbols are implemented.
     //
     "@@iterator": function () {
         //> 1.  Return the this value.
