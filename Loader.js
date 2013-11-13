@@ -141,8 +141,8 @@ function PromiseOf(value) {
     return callFunction(std_Promise_resolve, std_Promise, value);
 }
 
-// `Assert(condition)` is your bog-standard assert function. In theory, it
-// does nothing. The given `condition` is always true.
+// `Assert(condition)` is your bog-standard assert function. In theory, it does
+// nothing. The given `condition` is always true.
 function Assert(condition) {
     if (typeof assert === "function")
         assert(condition);
@@ -289,7 +289,8 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //> Each Load Record has the following fields:
 //>
-//>   * load.[[Status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or `"failed"`.
+//>   * load.[[Status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or
+//>     `"failed"`.
 //>
 //>   * load.[[Name]] - The normalized name of the module being loaded, or
 //>     **undefined** if loading an anonymous module.
@@ -307,8 +308,8 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //>   * load.[[Source]] - The result of the translate hook.
 //>
-//>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a ModuleBody
-//>     parse. (???terminology)
+//>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a
+//>     ModuleBody parse. (???terminology)
 //>
 //>   * load.[[Dependencies]] - Once the Load reaches the `"loaded"` state, a
 //>     List of pairs. Each pair consists of two strings: a module name as it
@@ -329,9 +330,9 @@ function $GetLoaderIteratorPrivate(iter) {
 //>     parsed, and load.[[Module]] is set if parsing succeeds and there are no
 //>     early errors.
 //>
-//>     Otherwise the `instantiate` hook returns a factory object, and load.[[Module]]
-//>     is set during the link phase, when the factory.execute() method returns
-//>     a Module.
+//>     Otherwise the `instantiate` hook returns a factory object, and
+//>     load.[[Module]] is set during the link phase, when the
+//>     factory.execute() method returns a Module.
 
 // A Load is in one of four states:
 //
@@ -345,18 +346,17 @@ function $GetLoaderIteratorPrivate(iter) {
 //     hook returns a Module object.
 //
 // 2.  Loaded:  Source is available and has been translated and parsed.
-//     Dependencies have been identified.  But the module hasn't been
-//     linked or evaluated yet.  We are waiting for dependencies.
+//     Dependencies have been identified.  But the module hasn't been linked or
+//     evaluated yet.  We are waiting for dependencies.
 //
-//     This implementation treats the `Module` object as already
-//     existing at this point (except for factory-made modules).  But it
-//     has not been linked and thus must not be exposed to script yet.
+//     This implementation treats the `Module` object as already existing at
+//     this point (except for factory-made modules).  But it has not been
+//     linked and thus must not be exposed to script yet.
 //
-//     The `"loaded"` state says nothing about the status of the
-//     dependencies; they may all be linked and evaluated and yet there
-//     may not be any `LinkSet` that's ready to link and evaluate this
-//     module.  The `LinkSet` may be waiting for unrelated dependencies
-//     to load.
+//     The `"loaded"` state says nothing about the status of the dependencies;
+//     they may all be linked and evaluated and yet there may not be any
+//     `LinkSet` that's ready to link and evaluate this module.  The `LinkSet`
+//     may be waiting for unrelated dependencies to load.
 //
 //         .status === "loaded"
 //         .body is a ModuleBody, or null
@@ -367,8 +367,8 @@ function $GetLoaderIteratorPrivate(iter) {
 //     Exactly one of `[.body, .factory]` is non-null.
 //     If .body is null, then .dependencies is null.
 //
-//     The load leaves this state when a LinkSet successfully links the
-//     module and moves it into the loader's module registry.
+//     The load leaves this state when a LinkSet successfully links the module
+//     and moves it into the loader's module registry.
 //
 // 3.  Done:  The module has been linked and added to the loader's module
 //     registry.  Its body may or may not have been evaluated yet (see
@@ -478,8 +478,8 @@ function MakeClosure_LoadFailed(load) {
 //> #### RequestLoad(loader, request, refererName, refererAddress) Abstract Operation
 //>
 //> The RequestLoad abstract operation normalizes the given module name,
-//> request, and returns a promise that resolves to the value of a Load
-//> object for the given module.
+//> request, and returns a promise that resolves to the value of a Load object
+//> for the given module.
 //>
 //> The loader argument is a Loader object.
 //>
@@ -504,9 +504,8 @@ function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
     // Bug: This leaks the use of promises in the implementation, since the
-    //      `Promise` constructor may have had its @@create mutated. We
-    //      need a slightly better strategy for creating async logic in the
-    //      spec.
+    //      `Promise` constructor may have had its @@create mutated. We need a
+    //      slightly better strategy for creating async logic in the spec.
     var p = PromiseOf(undefined);
     p = callFunction(std_Promise_then, p, function (_) {
         // Call the `normalize` hook to get a normalized module name.  See the
@@ -690,8 +689,8 @@ function FinishLoad(load, loader, body) {
     // it to the same LinkSet.
     //
     // The module-specifiers in import-declarations are not necessarily
-    // normalized module names.  We pass them to RequestLoad which will
-    // call the `normalize` hook.
+    // normalized module names.  We pass them to RequestLoad which will call
+    // the `normalize` hook.
     //
     let dependencies = CreateMap();
     let loadPromises = [];
@@ -799,8 +798,8 @@ function OnEndRun(load, mod) {
 //
 // Errors related to a `LinkSet`:
 //
-//   - During linking, we can find that a factory-made module is
-//     involved in an import cycle. This is an error.
+//   - During linking, we can find that a factory-made module is involved in an
+//     import cycle. This is an error.
 //
 //   - Linking a set of non-factory-made modules can fail in several ways.
 //     These are described under "Runtime Semantics: Link Errors".
@@ -822,8 +821,8 @@ function OnEndRun(load, mod) {
 //>   * linkSet.[[Loads]] - A List of the Load Records that must finish loading
 //>     before the modules can be linked and evaluated.
 //>
-//>   * linkSet.[[Done]] - A Promise that becomes fulfilled when all dependencies
-//>     are loaded and linked together.
+//>   * linkSet.[[Done]] - A Promise that becomes fulfilled when all
+//>     dependencies are loaded and linked together.
 //>
 //>   * linkSet.[[Resolve]] and linkSet.[[Reject]] - Functions used to resolve
 //>     or reject linkSet.[[Done]].
@@ -846,9 +845,9 @@ function CreateLinkSet(loader, startingLoad) {
         reject: reject,
         timestamp: loaderData.linkSetCounter++,
 
-        // Implementation note: `this.loadingCount` is not in the spec. This is
-        // the number of `Load`s in `this.loads` whose `.status` is
-        // `"loading"`. It is an optimization to avoid having to walk
+        // Implementation note:  `this.loadingCount` is not in the spec.
+        // This is the number of `Load`s in `this.loads` whose `.status` is
+        // `"loading"`.  It is an optimization to avoid having to walk
         // `this.loads` and compute this value every time it's needed.
         loadingCount: 0
     };
@@ -911,9 +910,8 @@ function LinkSetOnLoad(linkSet, load) {
         return;
 
     try {
-        //> 2.  Let status be the result of calling the Link abstract
-        //>     operation passing linkSet.[[Loads]] and
-        //>     linkSet.[[Loader]] as arguments.
+        //> 2.  Let status be the result of calling the Link abstract operation
+        //>     passing linkSet.[[Loads]] and linkSet.[[Loader]] as arguments.
         LinkModules(linkSet);
     } catch (exc) {
         //> 3.  If status is an abrupt completion, then
@@ -950,7 +948,8 @@ function FinishLinkSet(linkSet, succeeded, exc) {
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
 
-        //>     1.  Assert: linkSet is an element of the List load.[[LinkSets]].
+        //>     1.  Assert: linkSet is an element of the List
+        //>         load.[[LinkSets]].
         Assert(callFunction(std_Set_has, load.linkSets, linkSet));
 
         //>     2.  Remove linkSet from the List load.[[LinkSets]].
@@ -961,7 +960,8 @@ function FinishLinkSet(linkSet, succeeded, exc) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0) {
             let name = load.name;
             if (name !== undefined) {
-                let currentLoad = callFunction(std_Map_get, loaderData.loads, name);
+                let currentLoad =
+                    callFunction(std_Map_get, loaderData.loads, name);
                 if (currentLoad === load) {
                     //>         1.  Remove load from the List loader.[[Loads]].
                     callFunction(std_Map_delete, loaderData.loads, name);
@@ -984,15 +984,15 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 //
 //     loader.module('module x from "x"; module y from "y";');
 //
-// The above code implies that we wait to evaluate "x" until "y" has also
-// been fetched. Even if "x" turns out to be linkable and runnable, its
-// dependencies are all satisfied, it links correctly, and it has no direct
-// or indirect dependency on "y", we still wait.
+// The above code implies that we wait to evaluate "x" until "y" has also been
+// fetched. Even if "x" turns out to be linkable and runnable, its dependencies
+// are all satisfied, it links correctly, and it has no direct or indirect
+// dependency on "y", we still wait.
 //
-// *Rationale:* Dependencies could be initialized more eagerly, but the
-// order would be less deterministic. The design opts for a bit more
-// determinism in common cases&mdash;though it is still possible to trigger
-// non-determinism since multiple link sets can be in-flight at once.
+// *Rationale:* Dependencies could be initialized more eagerly, but the order
+// would be less deterministic. The design opts for a bit more determinism in
+// common cases&mdash;though it is still possible to trigger non-determinism
+// since multiple link sets can be in-flight at once.
 
 
 // ## Module loading entry points
@@ -1163,16 +1163,16 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader) {
 
 //> ## Module Evaluation
 //>
-//> Module bodies are evaluated on demand, as late as possible.  The
-//> loader uses the function `EnsureEvaluated`, defined below, to run
-//> scripts.  The loader always calls `EnsureEvaluated` before returning
-//> a Module object to user code.
+//> Module bodies are evaluated on demand, as late as possible.  The loader
+//> uses the function `EnsureEvaluated`, defined below, to run scripts.  The
+//> loader always calls `EnsureEvaluated` before returning a Module object to
+//> user code.
 //>
-//> There is one way a module can be exposed to script before its body
-//> has been evaluated.  In the case of an import cycle, whichever
-//> module is evaluated first can observe the others before they are
-//> evaluated.  Simply put, we have to start somewhere: one of the
-//> modules in the cycle must run before the others.
+//> There is one way a module can be exposed to script before its body has been
+//> evaluated.  In the case of an import cycle, whichever module is evaluated
+//> first can observe the others before they are evaluated.  Simply put, we
+//> have to start somewhere: one of the modules in the cycle must run before
+//> the others.
 
 
 //> ### EnsureEvaluated(mod, seen, loader) Abstract Operation
@@ -1245,20 +1245,19 @@ function EnsureEvaluated(mod, seen, loaderData) {
 // which are propagated to the caller.
 //
 // When this happens, we leave the module in the registry (per samth, 2013
-// April 16) because re-loading the module and running it again is not
-// likely to make things better.
+// April 16) because re-loading the module and running it again is not likely
+// to make things better.
 //
-// Other fully linked modules in the same LinkSet are also left in
-// the registry (per dherman, 2013 April 18).  Some of those may be
-// unrelated to the module that threw.  Since their "has ever
-// started being evaluated" bit is not yet set, they will be
-// evaluated on demand.  This allows unrelated modules to finish
-// loading and initializing successfully, if they are needed.
+// Other fully linked modules in the same LinkSet are also left in the registry
+// (per dherman, 2013 April 18).  Some of those may be unrelated to the module
+// that threw.  Since their "has ever started being evaluated" bit is not yet
+// set, they will be evaluated on demand.  This allows unrelated modules to
+// finish loading and initializing successfully, if they are needed.
 //
 // **Nesting** &ndash; While evaluating a module body, calling `eval()` or
-// `System.get()` can cause other module bodies to be evaluated.
-// That is, module body evaluation can nest.  However no individual
-// module's body will be evaluated more than once.
+// `System.get()` can cause other module bodies to be evaluated.  That is,
+// module body evaluation can nest.  However no individual module's body will
+// be evaluated more than once.
 //
 // **Why the graph walk doesn't stop at already-evaluated modules** &ndash;
 // It's a matter of correctness.  Here is the test case:
