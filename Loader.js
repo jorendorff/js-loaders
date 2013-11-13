@@ -1323,19 +1323,27 @@ function ConstantGetter(value) {
 //> following steps are taken:
 //>
 function Module(obj) {
+    //> 1.  If Type(obj) is not Object, throw a TypeError exception.
+    if (!IsObject(obj))
+        throw std_TypeError("Module argument must be an object");
+
     //> 1.  Let mod be the result of calling the CreateLinkedModuleInstance
     //>     abstract operation.
     var mod = $CreateModule();
+
     //> 1.  Let keys be the result of calling the ObjectKeys abstract
     //>     operation passing obj as the argument.
     //> 1.  ReturnIfAbrupt(keys).
     var keys = std_Object_keys(obj);
+
     //> 1.  For each key in keys, do
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
+
         //>     1.  Let value be the result of calling the [[Get]] internal
         //>         method of obj passing key and true as arguments.
         var value = obj[key];
+
         //>     1.  ReturnIfAbrupt(value).
         //>     1.  Let thrower be the %ThrowTypeError% intrinsic function
         //>         Object.
@@ -1355,8 +1363,10 @@ function Module(obj) {
             set: undefined
         });
     }
+
     //> 1.  Call the [[PreventExtensions]] internal method of mod.
     std_Object_preventExtensions(mod);
+
     //> 1.  Return mod.
     return mod;
 }
