@@ -1020,8 +1020,8 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
                 "can't define module \"" + name + "\": already loaded");
         }
 
-        //> 1.  If loader.[[Loads]] contains an entry whose [[key]] is equal
-        //>     to name, throw a TypeError exception.
+        //> 1.  If loader.[[Loads]] contains a Load Record whose [[Name]] field
+        //>     is equal to name, throw a TypeError exception.
         if (callFunction(std_Map_has(loaderData.loads, name))) {
             throw std_TypeError(
                 "can't define module \"" + name + "\": already loading");
@@ -1038,8 +1038,7 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
         //>     operation passing loader and load as arguments.
         let linkSet = CreateLinkSet(loader, load);
 
-        //> 1.  Add the record {[[key]]: name, [[value]]: load} to
-        //>     loader.[[Loads]].
+        //> 1.  Add load to the List loader.[[Loads]].
         callFunction(std_Map_set, loaderData.loads, name, load);
 
         //> 1.  Call the [[Call]] internal method of resolve with arguments
