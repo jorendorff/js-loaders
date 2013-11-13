@@ -833,30 +833,57 @@ function OnEndRun(load, mod) {
 
 //> #### CreateLinkSet(loader, startingLoad) Abstract Operation
 //>
+//> The CreateLinkSet abstract operation creates a new LinkSet record by
+//> performing the following steps:
+//>
 function CreateLinkSet(loader, startingLoad) {
+    //> 1.  If Type(loader) is not Object, throw a TypeError exception.
+    //> 2.  If loader does not have all of the internal properties of a Loader
+    //>     Instance, throw a TypeError exception.
     var loaderData = GetLoaderInternalData(loader);
+
+    //> 3.  Let deferred be the result of calling GetDeferred(%Promise%).
+    //> 4.  ReturnIfAbrupt(deferred).
     var resolve, reject;
     var done = new std_Promise(function (res, rej) {
         resolve = res;
         reject = rej;
     });
-    var linkSet = {
-        loader: loader,
-        loads: CreateSet(),
-        done: done,
-        resolve: resolve,
-        reject: reject,
-        timestamp: loaderData.linkSetCounter++,
 
-        // Implementation note:  `this.loadingCount` is not in the spec.
-        // This is the number of `Load`s in `this.loads` whose `.status` is
-        // `"loading"`.  It is an optimization to avoid having to walk
-        // `this.loads` and compute this value every time it's needed.
+    //> 5.  Let linkSet be a new LinkSet record.
+    var linkSet = {
+        //> 6.  Set the [[Loader]] field of linkSet to loader.
+        loader: loader,
+        //> 7.  Set the [[Loads]] field of linkSet to a new empty List.
+        loads: CreateSet(),
+        //> 8.  Set the [[Done]] field of linkSet to deferred.[[Promise]].
+        done: done,
+        //> 9.  Set the [[Resolve]] field of linkSet to deferred.[[Resolve]].
+        resolve: resolve,
+        //> 10. Set the [[Reject]] field of linkSet to deferred.[[Reject]].
+        reject: reject,
+
+        timestamp: loaderData.linkSetCounter++,
         loadingCount: 0
     };
+
+    //> 11. Call AddLoadToLinkSet(linkSet, startingLoad).
     AddLoadToLinkSet(linkSet, startingLoad);
+
+    //> 12. Return linkSet.
     return linkSet;
 }
+//
+// **`linkSet.timestamp`** &ndash; This field is not in the spec, but several
+// places in the spec require sorting a List of LinkSets by the order in which
+// they were created.
+//
+// **`linkSet.loadingCount`** &ndash; This field is not in the spec either.
+// Its value is always the number of `Load`s in `this.loads` whose `.status` is
+// `"loading"`.  This implementation stores this value as an optimization, to
+// avoid having to walk `this.loads` and compute this value every time it's
+// needed.
+
 
 //> #### LinkSetAddLoadByName(linkSet, name) Abstract Operation
 //>
