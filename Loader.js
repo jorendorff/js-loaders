@@ -895,45 +895,64 @@ function CreateLinkSet(loader, startingLoad) {
 // needed.
 
 
-//> #### LinkSetAddLoadByName(linkSet, name) Abstract Operation
+//> #### AddLoadToLinkSet(linkSet, load) Abstract Operation
+//>
+//> The AddLoadToLinkSet abstract operation associates a LinkSet Record with a
+//> Load Record, indicating that the LinkSet cannot be linked until the Load
+//> succeeds.
+//>
+//> The following steps are taken:
+//>
+function AddLoadToLinkSet(linkSet, load) {
+    //> 1.  Assert: load.[[Status]] is either `"loading"` or `"loaded"`.
+    Assert(load.status === "loading" || load.status === "loaded");
+
+    //> 2.  If load is not already an element of the List linkSet.[[Loads]],
+    if (!callFunction(std_Set_has, linkSet.loads, load)) {
+        //>     1.  Add load to the List linkSet.[[Loads]].
+        callFunction(std_Set_add, linkSet.loads, load);
+
+        //>     2.  Add linkSet to the List load.[[LinkSets]].
+        callFunction(std_Set_add, load.linkSets, linkSet);
+
+        //>     3.  If load.[[Status]] is `"loaded"`, then
+        if (load.status === "loading") {
+            linkSet.loadingCount++;
+        } else {
+            //>         1.  For each name in the List load.[[Dependencies]], do
+            let names = MapValuesToArray(load.dependencies);
+            for (let i = 0; i < names.length; i++) {
+                //>             1.  Call AddLoadToLinkSetByName(linkSet, name).
+                AddLoadToLinkSetByName(linkSet, names[i]);
+            }
+        }
+    }
+}
+
+//> #### AddLoadToLinkSetByName(linkSet, name) Abstract Operation
 //>
 //> If a module with the given normalized name is loading or loaded but not
 //> linked, add the `Load` to the given linkSet.
 //>
-function LinkSetAddLoadByName(linkSet, name) {
+function AddLoadToLinkSetByName(linkSet, name) {
+    //> 1.  Let loader be linkSet.[[Loader]].
     var loaderData = GetLoaderInternalData(linkSet.loader);
-    if (!callFunction(std_Map_has, loaderData.modules, name)) {
-        // We add `depLoad` even if it is done loading, for two reasons. The
-        // association keeps the Load alive (Load Records are
-        // reference-counted; see `FinishLinkSet`). Separately, `depLoad` may
-        // have dependencies that are still laoding.
-        let depLoad = callFunction(std_Map_get, loaderData.loads, name);
-        AddLoadToLinkSet(linkSet, depLoad);
-    }
+
+    //> 2.  If there is an element of loader.[[Modules]] whose [[key]] field is
+    //>     equal to name, return.
+    if (callFunction(std_Map_has, loaderData.modules, name))
+        return;
+
+    //> 3.  Assert: There is exactly one element of loader.[[Loads]] whose
+    //>     [[Name]] field is equal to name.
+    //> 4.  Let depLoad be that Load Record.
+    let depLoad = callFunction(std_Map_get, loaderData.loads, name);
+    Assert(depLoad !== undefined);
+
+    //> 5.  Call AddLoadToLinkSet(linkSet, depLoad).
+    AddLoadToLinkSet(linkSet, depLoad);
 }
 
-//> #### AddLoadToLinkSet(linkSet, load) Abstract Operation
-//>
-function AddLoadToLinkSet(linkSet, load) {
-    // This case can happen in `import`, for example if a `locate` hook
-    // throws. TODO - this is probably not true anymore
-    if (load.status === "failed")
-        return FinishLinkSet(linkSet, false, load.exception);
-
-    if (!callFunction(std_Set_has, linkSet.loads, load)) {
-        callFunction(std_Set_add, linkSet.loads, load);
-        callFunction(std_Set_add, load.linkSets, linkSet);
-        if (load.status === "loading") {
-            linkSet.loadingCount++;
-        } else {
-            // Transitively add not-yet-linked dependencies.
-            Assert(load.status == "loaded");
-            let names = MapValuesToArray(load.dependencies);
-            for (let i = 0; i < names.length; i++)
-                LinkSetAddLoadByName(linkSet, names[i]);
-        }
-    }
-}
 
 //> #### LinkSetOnLoad(linkSet, load) Abstract Operation
 //>
