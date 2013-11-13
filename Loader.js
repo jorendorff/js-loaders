@@ -1920,7 +1920,7 @@ def(Loader.prototype, {
     //> steps:
     //>
     get realm() {
-        //> 1.  Let loader be this Loader object.
+        //> 1.  Let loader be this Loader.
         //> 1.  If Type(loader) is not Object or loader does not have all the
         //>     internal properties of a Loader object, throw a TypeError
         //>     exception.
@@ -1942,7 +1942,7 @@ def(Loader.prototype, {
     //> steps:
     //>
     get global() {
-        //> 1.  Let loader be this Loader object.
+        //> 1.  Let loader be this Loader.
         //> 1.  If Type(loader) is not Object or loader does not have all the
         //>     internal properties of a Loader object, throw a TypeError
         //>     exception.
@@ -1991,7 +1991,7 @@ def(Loader.prototype, {
     //> element in HTML.
     //>
     define: function define(name, source, options = undefined) {
-        //> 1.  Let loader be this Loader object.
+        //> 1.  Let loader be this Loader.
         //> 1.  If loader does not have all the internal properties of a Loader
         //>     object, throw a TypeError exception.
         var loader = this;
@@ -2046,11 +2046,10 @@ def(Loader.prototype, {
     //> this provides a close dynamic approximation of an ImportDeclaration.
     //>
     load: function load(name, options = undefined) {
-        //> 1.  Let loader be this Loader object.
-        //> 1.  If loader does not have all the internal properties of a Loader
-        //>     object, throw a TypeError exception.
+        //> 1.  Let loader be this Loader.
+        //> 1.  ReturnIfAbrupt(loader).
         var loader = this;
-        GetLoaderInternalData(this);
+        var loaderData = GetLoaderInternalData(loader);
 
         //> 1.  Let name be ToString(name).
         //> 1.  ReturnIfAbrupt(name).
@@ -2094,9 +2093,8 @@ def(Loader.prototype, {
     //> NOTE This is the dynamic equivalent of an anonymous `<module>` in HTML.
     //>
     module: function module(source, options = undefined) {
-        //> 1.  Let loader be this Loader object.
-        //> 1.  If loader does not have all the internal properties of a Loader
-        //>     object, throw a TypeError exception.
+        //> 1.  Let loader be this Loader.
+        //> 1.  ReturnIfAbrupt(loader).
         var loader = this;
         GetLoaderInternalData(this);
 
@@ -2151,16 +2149,15 @@ def(Loader.prototype, {
     //> The `import` method asynchronously loads, links, and evaluates a module
     //> and all its dependencies.
     //>
-    //> `import` returns a Promise that resolves to the requested `Module` object
-    //> once it has been committed to the registry and evaluated.
+    //> `import` returns a Promise that resolves to the requested `Module`
+    //> object once it has been committed to the registry and evaluated.
     //>
     //> NOTE This is the dynamic equivalent (when combined with normalization)
     //> of an ImportDeclaration.
     //>
     import: function import_(name, options = undefined) {
-        //> 1.  Let loader be this Loader object.
-        //> 1.  If loader does not have all the internal properties of a Loader
-        //>     object, throw a TypeError exception.
+        //> 1.  Let loader be this Loader.
+        //> 1.  ReturnIfAbrupt(loader).
         var loader = this;
         var loaderData = GetLoaderInternalData(this);
 
@@ -2193,13 +2190,11 @@ def(Loader.prototype, {
     //> The following steps are taken:
     //>
     eval: function(source) {
-        //> 1.  Let loader be this Loader object.
-        //> 1.  If Type(loader) is not Object or loader does not have all the
-        //>     internal properties of a Loader object, throw a TypeError
-        //>     exception.
+        //> 1.  Let loader be this Loader.
+        //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
 
-        //> 1.  Return the result of calling the IndirectEval abstract operation
+        //> 3.  Return the result of calling the IndirectEval abstract operation
         //>     passing loader.[[Realm]] and source as arguments.
         return $IndirectEval(loaderData.realm, source);
     },
