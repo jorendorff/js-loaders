@@ -128,7 +128,7 @@ function IteratorToArray(iter, next) {
 }
 
 function SetToArray(set) {
-    return IteratorToArray(callFunction(std_Set_iterator, set));
+    return IteratorToArray(callFunction(std_Set_iterator, set), std_Set_iterator_next);
 }
 
 function MapValuesToArray(map) {
