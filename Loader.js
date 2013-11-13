@@ -456,11 +456,12 @@ function MakeClosure_LoadFailed(load) {
         //> 4.  Let linkSets be a copy of the List load.[[LinkSets]].
         //> 5.  For each linkSet in linkSets, in the order in which the LinkSet
         //>     Records were created,
-        let sets = SetToArray(load.linkSets);
-        callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-        for (let i = 0; i < sets.length; i++) {
+        let linkSets = SetToArray(load.linkSets);
+        callFunction(std_Array_sort, linkSets,
+                     (a, b) => b.timestamp - a.timestamp);
+        for (let i = 0; i < linkSets.length; i++) {
             //>     1.  Call FinishLinkSet(linkSet, false, exc).
-            FinishLinkSet(sets[i], false, exc);
+            FinishLinkSet(linkSets[i], false, exc);
         }
 
         //> 6.  Assert: load.[[LinkSets]] is empty.
@@ -681,7 +682,7 @@ function FinishLoad(load, loader, body) {
     Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
 
     let refererName = load.name;
-    let sets = SetToArray(load.linkSets);
+    let linkSets = SetToArray(load.linkSets);
 
     let moduleRequests = $ModuleRequests(body);
 
@@ -700,8 +701,8 @@ function FinishLoad(load, loader, body) {
         p = callFunction(std_Promise_then, p, function (depLoad) {
             callFunction(std_Map_set, dependencies, request, depLoad.name);
             if (depLoad.status !== "linked") {
-                for (let j = 0; j < sets.length; j++)
-                    AddLoadToLinkSet(sets[j], depLoad);
+                for (let j = 0; j < linkSets.length; j++)
+                    AddLoadToLinkSet(linkSets[j], depLoad);
             }
         });
         callFunction(std_Array_push, loadPromises, p);
@@ -714,11 +715,10 @@ function FinishLoad(load, loader, body) {
         load.dependencies = dependencies;
 
         // For determinism, finish linkable LinkSets in timestamp order.
-        // (NOTE: If it turns out that Promises fire in a nondeterministic
-        // order, then there's no point sorting this array here.)
-        callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-        for (let i = 0; i < sets.length; i++)
-            LinkSetOnLoad(sets[i], load);
+        callFunction(std_Array_sort, linkSets,
+                     (a, b) => b.timestamp - a.timestamp);
+        for (let i = 0; i < linkSets.length; i++)
+            LinkSetOnLoad(linkSets[i], load);
     });
 }
 
@@ -730,10 +730,11 @@ function OnEndRun(load, mod) {
     load.status = "linked";
     load.module = mod;
 
-    let sets = SetToArray(load.linkSets);
-    callFunction(std_Array_sort, sets, (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < sets.length; i++)
-        LinkSetOnLoad(sets[i], load);
+    let linkSets = SetToArray(load.linkSets);
+    callFunction(std_Array_sort, linkSets,
+                 (a, b) => b.timestamp - a.timestamp);
+    for (let i = 0; i < linkSets.length; i++)
+        LinkSetOnLoad(linkSets[i], load);
 }
 
 
