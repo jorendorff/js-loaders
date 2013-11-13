@@ -683,7 +683,7 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
 //
 //   1. Process imports. This may trigger additional loads.
 //
-//   2. Call LinkSetOnLoad on any listening LinkSets (see that abstract
+//   2. Call UpdateLinkSetOnLoad on any listening LinkSets (see that abstract
 //      operation for the conclusion of the load/link/evaluate process).
 //
 // On success, this transitions the `Load` from `"loading"` status to
@@ -721,7 +721,7 @@ function FinishLoad(load, loader, body) {
     }
 
     var p = callFunction(std_Promise_all, std_Promise, loadPromises);
-    return callFunction(std_Promise_then, p, function (_) {
+    p = callFunction(std_Promise_then, p, function (_) {
         load.status = "loaded";
         load.body = body;
         load.dependencies = dependencies;
@@ -730,8 +730,9 @@ function FinishLoad(load, loader, body) {
         callFunction(std_Array_sort, linkSets,
                      (a, b) => b.timestamp - a.timestamp);
         for (let i = 0; i < linkSets.length; i++)
-            LinkSetOnLoad(linkSets[i], load);
+            UpdateLinkSetOnLoad(linkSets[i], load);
     });
+    return p;
 }
 
 //> #### OnEndRun(load, mod) Abstract Operation
@@ -746,7 +747,7 @@ function OnEndRun(load, mod) {
     callFunction(std_Array_sort, linkSets,
                  (a, b) => b.timestamp - a.timestamp);
     for (let i = 0; i < linkSets.length; i++)
-        LinkSetOnLoad(linkSets[i], load);
+        UpdateLinkSetOnLoad(linkSets[i], load);
 }
 
 
@@ -954,33 +955,42 @@ function AddLoadToLinkSet(linkSet, load) {
 // use of `Loader.prototype.delete`.
 
 
-//> #### LinkSetOnLoad(linkSet, load) Abstract Operation
+//> #### UpdateLinkSetOnLoad(linkSet, load) Abstract Operation
 //>
-//> `FinishLoad` calls this after one `Load` successfully finishes, and after
-//> kicking off loads for all its dependencies.
+//> The UpdateLinkSetOnLoad abstract operation is called immediately after a
+//> Load successfully finishes, after starting Loads for any dependencies that
+//> were not already loading, loaded, or in the module registry.
 //>
-function LinkSetOnLoad(linkSet, load) {
+//> This routine determines whether linkSet is ready to link, and if so, calls
+//> LinkModules and marks linkSet as finished.
+//>
+//> The following steps are taken:
+//>
+function UpdateLinkSetOnLoad(linkSet, load) {
+    //> 1.  Assert: load is an element of linkSet.[[Loads]].
     Assert(callFunction(std_Set_has, linkSet.loads, load));
+
+    //> 2.  Assert: load.[[Status]] is either `"loaded"` or `"linked"`.
     Assert(load.status === "loaded" || load.status === "linked");
 
-    //> 1.  Repeat for each load in linkSet.[[Loads]],
+    //> 3.  Repeat for each load in linkSet.[[Loads]],
     //>     1.  If load.[[Status]] is `"loading"`, then return.
     if (--linkSet.loadingCount !== 0)
         return;
 
     try {
-        //> 2.  Let status be the result of calling the Link abstract operation
+        //> 4.  Let status be the result of calling the Link abstract operation
         //>     passing linkSet.[[Loads]] and linkSet.[[Loader]] as arguments.
         LinkModules(linkSet);
     } catch (exc) {
-        //> 3.  If status is an abrupt completion, then
+        //> 5.  If status is an abrupt completion, then
         //>     1. Call FinishLinkSet(linkSet, false, status.[[value]]).
         FinishLinkSet(linkSet, false, exc);
 
         //>     2. Return.
         return;
     }
-    //> 4. Call FinishLinkSet(linkSet, true, undefined).
+    //> 6. Call FinishLinkSet(linkSet, true, undefined).
     FinishLinkSet(linkSet, true, undefined);
 }
 
