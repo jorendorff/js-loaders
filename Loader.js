@@ -1015,14 +1015,14 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
 
         //> 1.  If loader.[[Modules]] contains an entry whose [[key]] is equal
         //>     to name, throw a TypeError exception.
-        if (callFunction(std_Map_has(loaderData.modules, name))) {
+        if (callFunction(std_Map_has, loaderData.modules, name)) {
             throw std_TypeError(
                 "can't define module \"" + name + "\": already loaded");
         }
 
         //> 1.  If loader.[[Loads]] contains a Load Record whose [[Name]] field
         //>     is equal to name, throw a TypeError exception.
-        if (callFunction(std_Map_has(loaderData.loads, name))) {
+        if (callFunction(std_Map_has, loaderData.loads, name)) {
             throw std_TypeError(
                 "can't define module \"" + name + "\": already loading");
         }
@@ -2061,13 +2061,15 @@ def(Loader.prototype, {
         //> 1.  Set F.[[ModuleName]] to name.
         //> 1.  If address is undefined, set F.[[Step]] to `"locate"`.
         //> 1.  Else, set F.[[Step]] to `"fetch"`.
+        //> 1.  Let metadata be the result of ObjectCreate(%ObjectPrototype%,
+        //>     ()).
         //> 1.  Set F.[[ModuleMetadata]] to metadata.
         //> 1.  Set F.[[ModuleSource]] to source.
         //> 1.  Set F.[[ModuleAddress]] to address.
         var f = MakeClosure_AsyncStartLoadPartwayThrough(
             loader, loaderData, name,
             address === undefined ? "locate" : "fetch",
-            metadata, address, undefined);
+            {}, address, undefined);
 
         //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
         return new std_Promise(f);
