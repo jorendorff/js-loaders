@@ -676,6 +676,68 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
     };
 }
 
+//> #### FinishLoad(load, loader, body) Abstract Operation
+//>
+
+//> The FinishLoad abstract operation is called when a Load is done loading. It
+//> processes dependencies, which may trigger additional Loads. It also arranges
+//> for AllDependencyLoadsAdded to be called once any new Loads have been added
+//> to all listening LinkSets.
+//>
+//> FinishLoad performs the following steps:
+//>
+function FinishLoad(load, loader, body) {
+    Assert(load.status === "loading");
+    Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
+
+    load.body = body;
+
+    let refererName = load.name;
+    let linkSets = SetToArray(load.linkSets);
+
+    //> Let moduleRequests be the ModuleRequests of body.
+    let moduleRequests = $ModuleRequests(body);
+
+    // For each new dependency, create a new Load Record, if necessary, and add
+    // it to the same LinkSet.
+    //
+    // The module-specifiers in import-declarations are not necessarily
+    // normalized module names.  We pass them to RequestLoad which will call
+    // the `normalize` hook.
+    //
+    load.dependencies = CreateMap();
+    let loadPromises = [];
+    for (let i = 0; i < moduleRequests.length; i++) {
+        let request = moduleRequests[i];
+        let p = RequestLoad(loader, request, refererName, load.address);
+        p = callFunction(std_Promise_then, p,
+                         MakeClosure_AddDependencyLoad(load, request));
+        callFunction(std_Array_push, loadPromises, p);
+    }
+
+    var p = callFunction(std_Promise_all, std_Promise, loadPromises);
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_AllDependencyLoadsAdded(load, body,
+                                                         dependencies,
+                                                         linkSets));
+    return p;
+}
+
+//> #### OnEndRun(load, mod) Abstract Operation
+//>
+// Called when the `instantiate` hook returns a Module object.
+function OnEndRun(load, mod) {
+    Assert(load.status === "loading");
+    load.status = "linked";
+    load.module = mod;
+
+    let linkSets = SetToArray(load.linkSets);
+    callFunction(std_Array_sort, linkSets,
+                 (a, b) => b.timestamp - a.timestamp);
+    for (let i = 0; i < linkSets.length; i++)
+        UpdateLinkSetOnLoad(linkSets[i], load);
+}
+
 //> #### AddDependencyLoad Functions
 //>
 //> An AddDependencyLoad function is an anonymous function that adds a Load
@@ -743,68 +805,6 @@ function MakeClosure_AllDependencyLoadsAdded(load) {
             UpdateLinkSetOnLoad(linkSets[i], load);
         }
     };
-}
-
-//> #### FinishLoad(load, loader, body) Abstract Operation
-//>
-
-//> The FinishLoad abstract operation is called when a Load is done loading. It
-//> processes dependencies, which may trigger additional Loads. It also arranges
-//> for AllDependencyLoadsAdded to be called once any new Loads have been added
-//> to all listening LinkSets.
-//>
-//> FinishLoad performs the following steps:
-//>
-function FinishLoad(load, loader, body) {
-    Assert(load.status === "loading");
-    Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
-
-    load.body = body;
-
-    let refererName = load.name;
-    let linkSets = SetToArray(load.linkSets);
-
-    //> Let moduleRequests be the ModuleRequests of body.
-    let moduleRequests = $ModuleRequests(body);
-
-    // For each new dependency, create a new Load Record, if necessary, and add
-    // it to the same LinkSet.
-    //
-    // The module-specifiers in import-declarations are not necessarily
-    // normalized module names.  We pass them to RequestLoad which will call
-    // the `normalize` hook.
-    //
-    load.dependencies = CreateMap();
-    let loadPromises = [];
-    for (let i = 0; i < moduleRequests.length; i++) {
-        let request = moduleRequests[i];
-        let p = RequestLoad(loader, request, refererName, load.address);
-        p = callFunction(std_Promise_then, p,
-                         MakeClosure_AddDependencyLoad(load, request));
-        callFunction(std_Array_push, loadPromises, p);
-    }
-
-    var p = callFunction(std_Promise_all, std_Promise, loadPromises);
-    p = callFunction(std_Promise_then, p,
-                     MakeClosure_AllDependencyLoadsAdded(load, body,
-                                                         dependencies,
-                                                         linkSets));
-    return p;
-}
-
-//> #### OnEndRun(load, mod) Abstract Operation
-//>
-// Called when the `instantiate` hook returns a Module object.
-function OnEndRun(load, mod) {
-    Assert(load.status === "loading");
-    load.status = "linked";
-    load.module = mod;
-
-    let linkSets = SetToArray(load.linkSets);
-    callFunction(std_Array_sort, linkSets,
-                 (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < linkSets.length; i++)
-        UpdateLinkSetOnLoad(linkSets[i], load);
 }
 
 
