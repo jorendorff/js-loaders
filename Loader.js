@@ -1376,8 +1376,14 @@ function Module(obj) {
     return mod;
 }
 
-// The `Module` function is not a constructor so its `prototype` is `null`.
+//> #### Module.prototype
+//>
+//> The initial value of `Module.prototype` is null.
+//>
+// *Rationale:* The `Module` function is not a constructor, and all Module
+// *instance objects have null [[Prototype]].
 Module.prototype = null;
+
 
 // ## The Realm class
 
