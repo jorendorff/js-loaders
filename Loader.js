@@ -540,10 +540,7 @@ function RequestLoad(loader, request, refererName, refererAddress) {
         load = CreateLoad(normalized);
         callFunction(std_Map_set, loaderData.loads, normalized, load);
 
-        // Bug: This leaks the use of promises in the implementation, since the
-        //      `Promise` constructor may have had its @@create mutated. We
-        //      need a slightly better strategy for creating async logic in the
-        //      spec.
+        // Bug: As above, this leaks the use of promises in the implementation.
         var p = new std_Promise(MakeClosure_CallLocate(loader, load));
         ProceedToFetch(loader, load, p);
         return load;
