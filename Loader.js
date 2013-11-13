@@ -1305,40 +1305,36 @@ function ConstantGetter(value) {
     return function () { return value; };
 }
 
-// ## The Module factory
-//
-// The `Module` factory function reflectively creates module instance objects.
-//
-// A module instance object:
-//
-//   * has null [[Prototype]].
-//
-//   * has an [[Environment]] internal data property whose value is a
-//     Declarative Environment Record (consisting of all bindings declared at
-//     toplevel in the module) whose outerEnvironment is a Global Environment
-//     Record.
-//
-//   * has an [[Exports]] internal data property whose value is a List of
-//     Export Records, {[[ExportName]]: a String, [[SourceModule]]: a Module,
-//     [[BindingName]]: a String}, such that the [[ExportName]]s of the records
-//     in the List are each unique.
-//
-//   * has a [[Dependencies]] internal data property, a List of Modules or
-//     undefined.  This is populated at link time by the loader and used by
-//     EnsureEvaluated.
-//
-//   * has accessor properties that correspond exactly to the [[Exports]], and no
-//     other properties.
-//
-//   * is non-extensible by the time it is exposed to ECMAScript code.
 
 
 //> ## Module Objects
 //>
+//> A Module object has the following internal slots:
+//>
+//>   * module.[[Environment]] &ndash; a Declarative Environment Record
+//>     consisting of all bindings declared at toplevel in the module. The
+//>     outerEnvironment of this environment record is a Global Environment
+//>     Record.
+//>
+//>   * module.[[Exports]] &ndash; a List of Export Records, {[[ExportName]]: a
+//>     String, [[SourceModule]]: a Module, [[BindingName]]: a String}, such
+//>     that the [[ExportName]]s of the records in the List are each unique.
+//>
+//>   * module.[[Dependencies]] &ndash; a List of Modules or undefined.  This
+//>     is populated at link time by the loader and used by EnsureEvaluated.
+//>
+//> The [[Prototype]] of a Module object is always null.
+//>
+//> A Module object has accessor properties that correspond exactly to its
+//> [[Exports]], and no other properties. It is always non-extensible by the
+//> time it is exposed to ECMAScript code.
+//>
 //> ### The Module Factory Function
 //>
+//> The `Module` factory function reflectively creates module instance objects.
+//>
 //> #### Module ( obj )
-//> 
+//>
 //> When the `Module` function is called with optional argument obj, the
 //> following steps are taken:
 //>
