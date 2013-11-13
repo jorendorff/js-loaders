@@ -1,5 +1,5 @@
 set -eu
 
 cd test
-python runtests.py
+python runtests.py "$@"
 
