@@ -1400,16 +1400,8 @@ Module.prototype = null;
 
 //> ## Realm Objects
 
-// Implementation note: Since ES6 does not have support for private state or
-// private methods, the "internal data properties" of Realm objects are stored
-// on a separate object which is not accessible from user code.
-//
-// So what the specification refers to as `realmObject.[[Realm]]` is implemented
-// as `GetRealmInternalData(realmObject).realm`.
-//
-// The simplest way to connect the two objects without exposing this internal
-// data to user code is to use a `WeakMap`.
-//
+// Implementation note:  As with Loader and Module objects, we use a WeakMap to
+// store Realm objects' internal state.
 let realmInternalDataMap = CreateWeakMap();
 
 //> ### The Realm Constructor
