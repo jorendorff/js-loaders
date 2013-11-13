@@ -1248,7 +1248,7 @@ function EnsureEvaluated(mod, seen, loaderData) {
     // That is, module body evaluation can nest.  However no individual
     // module's body will be evaluated more than once.
 
-    //> 4. If mod.[[Evaluated]] is false,
+    //> 4. If mod.[[Body]] is not undefined and mod.[[Evaluated]] is false,
     if (!$HasBeenEvaluated(mod)) {
         //>     1. Set mod.[[Evaluated]] to true.
         //>     2. Let initContext be a new ECMAScript code execution context.
@@ -1330,6 +1330,11 @@ function Module(obj) {
     //> 1.  Let mod be the result of calling the CreateLinkedModuleInstance
     //>     abstract operation.
     var mod = $CreateModule();
+
+    //> 1.  Set mod.[[Body]] to undefined.
+    ;// mod.[[Body]] doesn't exist in this implementation. Instead, mark this
+    ;// Module as not needing evaluation, which amounts to the same thing.
+    GetModuleInternalData(mod).evaluated = true;
 
     //> 1.  Let keys be the result of calling the ObjectKeys abstract
     //>     operation passing obj as the argument.
