@@ -1195,78 +1195,25 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader) {
 //> EnsureEvaluated performs the following steps:
 //>
 function EnsureEvaluated(mod, seen, loaderData) {
-    // *Why the graph walk doesn't stop at already-evaluated modules:*  It's a
-    // matter of correctness.  Here is the test case:
-    //
-    //     // module "x"
-    //     import y from "y";
-    //     throw fit;
-    //
-    //     // module "y"
-    //     import x from "x";
-    //     global.ok = true;
-    //
-    //     // anonymous module #1
-    //     module y from "y";  // marks "x" as evaluated, but not "y"
-    //
-    //     // anonymous module #2
-    //     module x from "x";  // must evaluate "y" but not "x"
-    //
-    // When we `EnsureEvaluated` anonymous module #2, module `x` is already
-    // marked as evaluated, but one of its dependencies, `y`, isn't.  In order
-    // to achieve the desired postcondition, we must find `y` anyway and
-    // evaluate it.
-    //
-    // Cyclic imports, combined with exceptions during module evaluation
-    // interrupting this algorithm, are the culprit.
-    //
-    // The remedy: when walking the dependency graph, do not stop at
-    // already-marked-evaluated modules.
-    //
-    // (This implementation optimizes away future EnsureEvaluated passes by
-    // clearing mod.[[Dependencies]] for all modules in the dependency tree
-    // when EnsureEvaluated finishes successfully.)
-
     //> 1. Append mod as the last element of seen.
     callFunction(std_Set_add, seen, mod);
 
     //> 2. Let deps be mod.[[Dependencies]].
-    //
-    // (In this implementation, deps is undefined if the module and all its
-    // dependencies have been evaluated; or if the module was created via the
-    // `Module()` constructor rather than from a script.)
     let deps = $GetDependencies(mod);
-    if (deps !== undefined) {
-        //> 3. Repeat for each dep that is an element of deps, in order
-        for (let i = 0; i < deps.length; i++) {
-            let dep = deps[i];
+    if (deps === undefined)
+        return;  // An optimization. See the comment below.
 
-            //>         1. If dep is not an element of seen, then
-            //>             1. Call BuildSchedule with the arguments dep, seen,
-            //>                and schedule.
-            if (!callFunction(std_Set_has, seen, dep))
-                EnsureEvaluated(dep, seen, loaderData);
+    //> 3. Repeat for each dep that is an element of deps, in order
+    for (let i = 0; i < deps.length; i++) {
+        let dep = deps[i];
+
+        //>     1. If dep is not an element of seen, then
+        if (!callFunction(std_Set_has, seen, dep)) {
+            //>         1. Call EnsureEvaluated with the arguments dep, seen,
+            //>            and loader.
+            EnsureEvaluated(dep, seen, loaderData);
         }
     }
-
-    // **Exceptions during evaluation** - Module bodies can throw exceptions,
-    // which are propagated to the caller.
-    //
-    // When this happens, we leave the module in the registry (per samth, 2013
-    // April 16) because re-loading the module and running it again is not
-    // likely to make things better.
-    //
-    // Other fully linked modules in the same LinkSet are also left in
-    // the registry (per dherman, 2013 April 18).  Some of those may be
-    // unrelated to the module that threw.  Since their "has ever
-    // started being evaluated" bit is not yet set, they will be
-    // evaluated on demand.  This allows unrelated modules to finish
-    // loading and initializing successfully, if they are needed.
-    //
-    // **Nesting** - While evaluating a module body, calling `eval()` or
-    // `System.get()` can cause other module bodies to be evaluated.
-    // That is, module body evaluation can nest.  However no individual
-    // module's body will be evaluated more than once.
 
     //> 4. If mod.[[Body]] is not undefined and mod.[[Evaluated]] is false,
     if (!$HasBeenEvaluated(mod)) {
@@ -1286,6 +1233,62 @@ function EnsureEvaluated(mod, seen, loaderData) {
         $EvaluateModuleBody(loaderData.realm, mod);
     }
 }
+//>
+// **Saving work** &ndash; This implementation optimizes away future
+// EnsureEvaluated passes by clearing mod.[[Dependencies]] for all modules in
+// the dependency tree when EnsureEvaluatedHelper finishes successfully.
+//
+// So in the part of the code that implements step 2, `deps` is undefined iff
+// either (a) a previous EnsureEvaluatedHelper call already evaluated the
+// module and all its dependencies; or (b) mod was created via the `Module()`
+// constructor rather than from a script.
+//
+// **Exceptions during evaluation** &ndash; Module bodies can throw exceptions,
+// which are propagated to the caller.
+//
+// When this happens, we leave the module in the registry (per samth, 2013
+// April 16) because re-loading the module and running it again is not
+// likely to make things better.
+//
+// Other fully linked modules in the same LinkSet are also left in
+// the registry (per dherman, 2013 April 18).  Some of those may be
+// unrelated to the module that threw.  Since their "has ever
+// started being evaluated" bit is not yet set, they will be
+// evaluated on demand.  This allows unrelated modules to finish
+// loading and initializing successfully, if they are needed.
+//
+// **Nesting** &ndash; While evaluating a module body, calling `eval()` or
+// `System.get()` can cause other module bodies to be evaluated.
+// That is, module body evaluation can nest.  However no individual
+// module's body will be evaluated more than once.
+//
+// **Why the graph walk doesn't stop at already-evaluated modules** &ndash;
+// It's a matter of correctness.  Here is the test case:
+//
+//     // module "x"
+//     import y from "y";
+//     throw fit;
+//
+//     // module "y"
+//     import x from "x";
+//     global.ok = true;
+//
+//     // anonymous module #1
+//     module y from "y";  // marks "x" as evaluated, but not "y"
+//
+//     // anonymous module #2
+//     module x from "x";  // must evaluate "y" but not "x"
+//
+// When we `EnsureEvaluated` anonymous module #2, module `x` is already marked
+// as evaluated, but one of its dependencies, `y`, isn't.  In order to achieve
+// the desired postcondition, we must find `y` anyway and evaluate it.
+//
+// Cyclic imports, combined with exceptions during module evaluation
+// interrupting this algorithm, are the culprit.
+//
+// The remedy: when walking the dependency graph, do not stop at
+// already-marked-evaluated modules.
+//
 
 function EnsureEvaluatedHelper(mod, loader) {
     let seen = CreateSet();
@@ -1293,9 +1296,10 @@ function EnsureEvaluatedHelper(mod, loader) {
     EnsureEvaluated(mod, seen, loaderData);
 
     // All evaluation succeeded. As an optimization for future EnsureEvaluated
-    // calls, drop this portion of the dependency graph.  (This loop cannot be
-    // fused with the evaluation loop above; the meaning would change on error
-    // for certain dependency graphs containing cycles.)
+    // calls, drop this portion of the dependency graph.
+    //
+    // This loop cannot be fused with the loop in EnsureEvaluated. It would
+    // introduce a bug.
     seen = SetToArray(seen);
     for (let i = 0; i < seen.length; i++)
         $SetDependencies(seen[i], undefined);
@@ -1350,11 +1354,6 @@ function Module(obj) {
     //> 1.  Let mod be the result of calling the CreateLinkedModuleInstance
     //>     abstract operation.
     var mod = $CreateModule();
-
-    //> 1.  Set mod.[[Body]] to undefined.
-    ;// mod.[[Body]] doesn't exist in this implementation. Instead, mark this
-    ;// Module as not needing evaluation, which amounts to the same thing.
-    GetModuleInternalData(mod).evaluated = true;
 
     //> 1.  Let keys be the result of calling the ObjectKeys abstract
     //>     operation passing obj as the argument.
