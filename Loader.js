@@ -454,7 +454,7 @@ function MakeClosure_LoadFailed(load) {
         //> 3.  Set load.[[Exception]] to exc.
         load.exception = exc;
 
-        //> 4.  Let linkSets be a copy of the list load.[[LinkSets]].
+        //> 4.  Let linkSets be a copy of the List load.[[LinkSets]].
         //> 5.  For each linkSet in linkSets, in the order in which the LinkSet
         //>     Records were created,
         let sets = SetToArray(load.linkSets);
@@ -929,34 +929,55 @@ function LinkSetOnLoad(linkSet, load) {
 
 //> #### FinishLinkSet(linkSet, succeeded, exc) Abstract Operation
 //>
-//> Detach the given LinkSet Record from all Load Records and schedule either
-//> the success callback or the error callback.
+//> The FinishLinkSet abstract operation is called when a LinkSet succeeds or
+//> fails.  It detachs the given LinkSet Record from all Load Records and
+//> resolves or rejects the linkSet.[[Done]] Promise.
+//>
+//> On success, this abstract operation is performed after module linking has
+//> succeeded and all the newly loaded modules in linkSet have already been
+//> added to loader's module registry.
+//>
+//> The following steps are taken:
 //>
 function FinishLinkSet(linkSet, succeeded, exc) {
-    let loads = SetToArray(linkSet.loads);
+    //> 1.  Let loader be linkSet.[[Loader]].
     let loaderData = GetLoaderInternalData(linkSet.loader);
+
+    //> 2.  Let loads be a copy of the List linkSet.[[Loads]].
+    let loads = SetToArray(linkSet.loads);
+
+    //> 3.  Repeat for each load in loads,
     for (let i = 0; i < loads.length; i++) {
         let load = loads[i];
 
-        // Detach load from linkSet.
+        //>     1.  Assert: linkSet is an element of the List load.[[LinkSets]].
         Assert(callFunction(std_Set_has, load.linkSets, linkSet));
+
+        //>     2.  Remove linkSet from the List load.[[LinkSets]].
         callFunction(std_Set_delete, load.linkSets, linkSet);
 
-        // If load is not needed by any surviving LinkSet, drop it.
+        //>     3.  If load.[[LinkSets]] is empty and load is an element of the
+        //>         List loader.[[Loads]], then
         if (callFunction(std_Set_get_size, load.linkSets) === 0) {
             let name = load.name;
             if (name !== undefined) {
                 let currentLoad = callFunction(std_Map_get, loaderData.loads, name);
-                if (currentLoad === load)
+                if (currentLoad === load) {
+                    //>         1.  Remove load from the List loader.[[Loads]].
                     callFunction(std_Map_delete, loaderData.loads, name);
+                }
             }
         }
     }
 
+    //> 4.  If succeeded is true, then call the [[Call]] internal method of
+    //>     linkSet.[[Resolve]] passing undefined and (undefined) as arguments.
     if (succeeded)
-        linkSet.resolve(undefined);
-    else
-        linkSet.reject(exc);
+        return linkSet.resolve(undefined);
+
+    //> 5.  Else call the [[Call]] internal method of linkSet.[[Reject]]
+    //>     passing undefined and (exc) as arguments.
+    return linkSet.reject(exc);
 }
 
 // **Timing and grouping of dependencies** - Consider
