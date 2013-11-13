@@ -267,10 +267,9 @@ function $GetLoaderIteratorPrivate(iter) {
 // The following primitives deal with realms.
 //
 //   * `$CreateRealm(realmObject)` creates a new realm for evaluating module
-//     and script code. This can be polyfilled in the browser using techniques
-//     like
-//
-//       https://gist.github.com/wycats/8f5263a0bcc8e818b8e5
+//     and script code. This can be polyfilled in the browser using an iframe,
+//     [as shown in this sample
+//     code](https://gist.github.com/wycats/8f5263a0bcc8e818b8e5).
 //
 //   * `$IndirectEval(realm, source)` performs an indirect eval in the given
 //     realm for the given script source.
