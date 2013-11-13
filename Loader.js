@@ -1386,13 +1386,14 @@ function Module(obj) {
     //> 1.  Return mod.
     return mod;
 }
+//>
 
 //> #### Module.prototype
 //>
 //> The initial value of `Module.prototype` is null.
 //>
 // *Rationale:* The `Module` function is not a constructor, and all Module
-// *instance objects have null [[Prototype]].
+// instance objects have null [[Prototype]].
 Module.prototype = null;
 
 
