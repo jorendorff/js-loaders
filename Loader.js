@@ -1681,26 +1681,25 @@ function GetRealmInternalData(value) {
 //>
 
 
-//> ### GetAddressOption(options) Abstract Operation
+//> ### GetOption(options, name) Abstract Operation
 //>
-//> The GetAddressOption abstract operation is used to extract the `address`
-//> option from an optional options argument.
+//> The GetOption abstract operation is used to extract a property
+//> from an optional options argument.
 //>
 //> The following steps are taken:
 //>
-function GetAddressOption(options) {
+function GetOption(options, name) {
     //> 1.  If options is undefined, then return undefined.
     if (options === undefined)
         return undefined;
 
     //> 2.  If Type(options) is not Object, then throw a TypeError exception.
     if (!IsObject(options))
-        throw std_TypeError("options is not an object");
+        throw std_TypeError("options must be either an object or undefined");
 
-    //> 3.  Let address be the result of calling the [[Get]] internal
-    //>     method of options passing `"address"` as the argument.
-    //> 4.  Return address.
-    return options.address;
+    //> 3.  Return the result of calling the [[Get]] internal
+    //>     method of options passing name as the argument.
+    return options[name];
 }
 
 
@@ -2028,23 +2027,14 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(name).
         name = ToString(name);
 
-        var address = GetAddressOption(options);
+        //> 1.  Let address be GetOption(options, `"address"`).
+        //> 1.  ReturnIfAbrupt(address).
+        var address = GetOption(options, "address");
 
-        let metadata = undefined;
-        //> 1.  If options is undefined then let options be the result of
-        //>     calling ObjectCreate(%ObjectPrototype%, ()).
-        if (options === undefined) {
-            options = {};
-        //> 1.  Else if Type(options) is not Object then throw a TypeError
-        //>     exception.
-        } else if (!IsObject(options)) {
-            throw std_TypeError("options is not an object");
-        }
-
-        //> 1.  Let metadata be the result of calling the [[Get]] internal
-        //>     method of options passing `"metadata"` as the argument.
+        //> 1.  Let metadata be GetOption(options, `"metadata"`).
         //> 1.  ReturnIfAbrupt(metadata).
-        metadata = options.metadata;
+        var metadata = GetOption(options, "metadata");
+
         //> 1.  If metadata is undefined then let metadata be the result of
         //>     calling ObjectCreate(%ObjectPrototype%, ()).
         if (metadata === undefined)
@@ -2092,7 +2082,7 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(name).
         name = ToString(name);
 
-        var address = GetAddressOption(options);
+        var address = GetOption(options, "address");
 
         //> 1.  Let F be a new anonymous function object as defined in
         //>     AsyncStartLoadPartwayThrough.
@@ -2204,7 +2194,7 @@ def(Loader.prototype, {
         //> 1.  ReturnIfAbrupt(name).
         name = ToString(name);
 
-        var address = GetAddressOption(options);
+        var address = GetOption(options, "address");
 
         //> 1.  Let loadPromise be RequestLoad(loader, name, undefined, address).
         let loadPromise = RequestLoad(loader, name, undefined, address);
