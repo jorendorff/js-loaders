@@ -2026,11 +2026,9 @@ def(Loader.prototype, {
             loader, loaderData, name, "translate", metadata, address, source);
 
         //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-
-        // Bug: This leaks the use of promises in the implementation, since the
-        //      `Promise` constructor may have had its @@create mutated. We
-        //      need a slightly better strategy for creating async logic in the
-        //      spec.
+        //
+        // Bug: As elsewhere, constructing %Promise% leaks the use of promises
+        // in the implementation.
         return new std_Promise(f);
     },
     //>
