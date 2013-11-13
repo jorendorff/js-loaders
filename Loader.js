@@ -193,7 +193,7 @@ function Assert(condition) {
 //
 // The following primitive extracts information from a ModuleBody object.
 //
-//   * `$ModuleRequests(body)` - Return an Array of strings, the module
+//   * `$ModuleRequests(body)` returns an Array of strings, the module
 //     specifiers as they appear in import declarations and module declarations
 //     in the given module body, with duplicates removed. (This corresponds to
 //     the ModuleRequests static semantics operation.)
@@ -676,50 +676,95 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
     };
 }
 
-function MakeClosure_AddDependencyLoad(dependencies, request, linkSets) {
-    return function (load) {
-        callFunction(std_Map_set, dependencies, request, load.name);
+//> #### AddDependencyLoad Functions
+//>
+//> An AddDependencyLoad function is an anonymous function that adds a Load
+//> Record for a dependency to any LinkSets associated with the parent Load.
+//>
+//> Each AddDependencyLoad function has [[ParentLoad]] and [[Request]] internal
+//> slots.
+//>
+//> When an AddDependencyLoad function F is called with argument depLoad, the
+//> following steps are taken:
+//>
+function MakeClosure_AddDependencyLoad(parentLoad, request) {
+    return function (depLoad) {
+        //> 1.  Assert: There is no Record in the List
+        //>     parentLoad.[[Dependencies]] whose [[key]] field is equal to
+        //>     request.
+        Assert(!callFunction(std_Map_has, parentLoad.dependencies, request));
+
+        //> 2.  Add the Record {[[key]]: request, [[value]]: depLoad.[[Name]]}
+        //>     to the List parentLoad.[[Dependencies]].
+        callFunction(std_Map_set, parentLoad.dependencies, request, depLoad.name);
+
+        //> 3.  If depLoad.[[Status]] is not `"linked"`, then
         if (depLoad.status !== "linked") {
+            //>     1.  Let linkSets be a copy of the List parentLoad.[[LinkSets]].
+            var linkSets = SetToArray(parentLoad.linkSets);
+
+            //>     2.  For each linkSet in linkSets, do
+            //>         1.  Call AddLoadToLinkSet(linkSet, depLoad).
             for (let j = 0; j < linkSets.length; j++)
                 AddLoadToLinkSet(linkSets[j], depLoad);
         }
     };
 }
 
-function MakeClosure_AllDependencyLoadsAdded(load, body, dependencies, linkSets) {
+//> #### AllDependencyLoadsAdded Functions
+//>
+//> An AllDependencyLoadsAdded function is an anonymous function that
+//> transitions a Load Record from `"loading"` to `"loaded"` and notifies all
+//> associated LinkSet Records of the change. This function concludes the
+//> loader pipeline. It is called after all a newly loaded module's
+//> dependencies are successfully processed.
+//>
+//> Each AllDependencyLoadsAdded function has a [[Load]] internal slot.
+//>
+//> When an AllDependencyLoadsAdded function is called, the following steps are taken:
+//>
+function MakeClosure_AllDependencyLoadsAdded(load) {
     return function (_) {
-        load.status = "loaded";
-        load.body = body;
-        load.dependencies = dependencies;
+        //> 1.  Assert: load.[[Status]] is `"loading"`.
+        Assert(load.status === "loading");
 
-        // For determinism, finish linkable LinkSets in timestamp order.
+        //> 2.  Set the [[Status]] field of load to `"loaded"`.
+        load.status = "loaded";
+
+        //> 3.  Let linkSets be a copy of load.[[LinkSets]].
+        var linkSets = SetToArray(load.linkSets);
+
+        //> 4.  For each linkSet in linkSets, in the order in which the LinkSet
+        //>     Records were created,
         callFunction(std_Array_sort, linkSets,
                      (a, b) => b.timestamp - a.timestamp);
-        for (let i = 0; i < linkSets.length; i++)
+        for (let i = 0; i < linkSets.length; i++) {
+            //>     1.  Call UpdateLinkSetOnLoad(linkSet, load).
             UpdateLinkSetOnLoad(linkSets[i], load);
+        }
     };
 }
 
 //> #### FinishLoad(load, loader, body) Abstract Operation
 //>
-// The loader calls this after the last loader hook (the `instantiate` hook),
-// and after the module has been parsed. FinishLoad does two things:
-//
-//   1. Process imports. This may trigger additional loads.
-//
-//   2. Call UpdateLinkSetOnLoad on any listening LinkSets (see that abstract
-//      operation for the conclusion of the load/link/evaluate process).
-//
-// On success, this transitions the `Load` from `"loading"` status to
-// `"loaded"`.
-//
+
+//> The FinishLoad abstract operation is called when a Load is done loading. It
+//> processes dependencies, which may trigger additional Loads. It also arranges
+//> for AllDependencyLoadsAdded to be called once any new Loads have been added
+//> to all listening LinkSets.
+//>
+//> FinishLoad performs the following steps:
+//>
 function FinishLoad(load, loader, body) {
     Assert(load.status === "loading");
     Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
 
+    load.body = body;
+
     let refererName = load.name;
     let linkSets = SetToArray(load.linkSets);
 
+    //> Let moduleRequests be the ModuleRequests of body.
     let moduleRequests = $ModuleRequests(body);
 
     // For each new dependency, create a new Load Record, if necessary, and add
@@ -729,14 +774,13 @@ function FinishLoad(load, loader, body) {
     // normalized module names.  We pass them to RequestLoad which will call
     // the `normalize` hook.
     //
-    let dependencies = CreateMap();
+    load.dependencies = CreateMap();
     let loadPromises = [];
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
         let p = RequestLoad(loader, request, refererName, load.address);
         p = callFunction(std_Promise_then, p,
-                         MakeClosure_AddDependencyLoad(dependencies, request,
-                                                       linkSets));
+                         MakeClosure_AddDependencyLoad(load, request));
         callFunction(std_Array_push, loadPromises, p);
     }
 
@@ -963,7 +1007,7 @@ function AddLoadToLinkSet(linkSet, load) {
 }
 //>
 //
-// The case in step 3.a.i.1. where there is no matching entry either in
+// The case in step 3.c.i.1. where there is no matching entry either in
 // loader.[[Modules]] or in loader.[[Loads]] can occur, but only through the
 // use of `Loader.prototype.delete`.
 
