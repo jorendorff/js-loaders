@@ -898,8 +898,8 @@ function CreateLinkSet(loader, startingLoad) {
 //> #### AddLoadToLinkSet(linkSet, load) Abstract Operation
 //>
 //> The AddLoadToLinkSet abstract operation associates a LinkSet Record with a
-//> Load Record, indicating that the LinkSet cannot be linked until the Load
-//> succeeds.
+//> Load Record and each of its currently known dependencies, indicating that
+//> the LinkSet cannot be linked until those Loads have finished successfully.
 //>
 //> The following steps are taken:
 //>
@@ -907,7 +907,10 @@ function AddLoadToLinkSet(linkSet, load) {
     //> 1.  Assert: load.[[Status]] is either `"loading"` or `"loaded"`.
     Assert(load.status === "loading" || load.status === "loaded");
 
-    //> 2.  If load is not already an element of the List linkSet.[[Loads]],
+    //> 2.  Let loader be linkSet.[[Loader]].
+    var loaderData = GetLoaderInternalData(linkSet.loader);
+
+    //> 3.  If load is not already an element of the List linkSet.[[Loads]],
     if (!callFunction(std_Set_has, linkSet.loads, load)) {
         //>     1.  Add load to the List linkSet.[[Loads]].
         callFunction(std_Set_add, linkSet.loads, load);
@@ -916,42 +919,39 @@ function AddLoadToLinkSet(linkSet, load) {
         callFunction(std_Set_add, load.linkSets, linkSet);
 
         //>     3.  If load.[[Status]] is `"loaded"`, then
-        if (load.status === "loading") {
-            linkSet.loadingCount++;
-        } else {
+        if (load.status === "loaded") {
             //>         1.  For each name in the List load.[[Dependencies]], do
             let names = MapValuesToArray(load.dependencies);
             for (let i = 0; i < names.length; i++) {
-                //>             1.  Call AddLoadToLinkSetByName(linkSet, name).
-                AddLoadToLinkSetByName(linkSet, names[i]);
+                let name = names[i];
+
+                //>             1.  If there is no element of
+                //>                 loader.[[Modules]] whose [[key]] field is
+                //>                 equal to name,
+                if (!callFunction(std_Map_has, loaderData.modules, name)) {
+                    //>                 1.  If there is an element of
+                    //>                     loader.[[Loads]] whose [[Name]]
+                    //>                     field is equal to name,
+                    //>                     1.  Let depLoad be that Load
+                    //>                         Record.
+                    //>                     2.  Call AddLoadToLinkSet(linkSet,
+                    //>                         depLoad).
+                    let depLoad = callFunction(std_Map_get, loaderData.loads,
+                                               name);
+                    if (depLoad !== undefined)
+                        AddLoadToLinkSet(linkSet, depLoad);
+                }
             }
+        } else {
+            linkSet.loadingCount++;  // See comment at CreateLinkSet().
         }
     }
 }
-
-//> #### AddLoadToLinkSetByName(linkSet, name) Abstract Operation
 //>
-//> If a module with the given normalized name is loading or loaded but not
-//> linked, add the `Load` to the given linkSet.
-//>
-function AddLoadToLinkSetByName(linkSet, name) {
-    //> 1.  Let loader be linkSet.[[Loader]].
-    var loaderData = GetLoaderInternalData(linkSet.loader);
-
-    //> 2.  If there is an element of loader.[[Modules]] whose [[key]] field is
-    //>     equal to name, return.
-    if (callFunction(std_Map_has, loaderData.modules, name))
-        return;
-
-    //> 3.  Assert: There is exactly one element of loader.[[Loads]] whose
-    //>     [[Name]] field is equal to name.
-    //> 4.  Let depLoad be that Load Record.
-    let depLoad = callFunction(std_Map_get, loaderData.loads, name);
-    Assert(depLoad !== undefined);
-
-    //> 5.  Call AddLoadToLinkSet(linkSet, depLoad).
-    AddLoadToLinkSet(linkSet, depLoad);
-}
+//
+// The case in step 3.a.i.1. where there is no matching entry either in
+// loader.[[Modules]] or in loader.[[Loads]] can occur, but only through the
+// use of `Loader.prototype.delete`.
 
 
 //> #### LinkSetOnLoad(linkSet, load) Abstract Operation
