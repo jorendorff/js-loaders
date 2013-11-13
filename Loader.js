@@ -850,7 +850,7 @@ function CreateLinkSet(loader, startingLoad) {
         reject = rej;
     });
 
-    //> 5.  Let linkSet be a new LinkSet record.
+    //> 5.  Let linkSet be a new LinkSet Record.
     var linkSet = {
         //> 6.  Set the [[Loader]] field of linkSet to loader.
         loader: loader,
