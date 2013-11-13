@@ -138,6 +138,19 @@ function MapValuesToArray(map) {
 // The Loader spec uses a few primitives that will likely be provided by the
 // Promise spec.
 function PromiseOf(value) {
+    // Implementation note: Calling `Promise.resolve()` here is user-observable
+    // since `Promise[Symbol.create]` may have been mutated.  This is
+    // considered a bug.  User code should not be able to observe whether the
+    // implementation uses Promises internally or not.
+    //
+    // Every use of `new Promise`, `Promise.all`, `Promise.prototype.then`, and
+    // `Promise.prototype.catch` in this spec has the same problem.
+    //
+    // The plan is for the Promise spec to address this by exposing primitives
+    // that perform these operations but are immune to user tampering.  This is
+    // [issue #73](https://github.com/domenic/promises-unwrapping/issues/73) in
+    // the GitHub repository where the Promise spec is being developed.
+    //
     return callFunction(std_Promise_resolve, std_Promise, value);
 }
 
@@ -503,9 +516,6 @@ function MakeClosure_LoadFailed(load) {
 function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
-    // Bug: This leaks the use of promises in the implementation, since the
-    //      `Promise` constructor may have had its @@create mutated. We need a
-    //      slightly better strategy for creating async logic in the spec.
     var p = PromiseOf(undefined);
     p = callFunction(std_Promise_then, p, function (_) {
         // Call the `normalize` hook to get a normalized module name.  See the
@@ -2040,9 +2050,6 @@ def(Loader.prototype, {
             loader, loaderData, name, "translate", metadata, address, source);
 
         //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-        //
-        // Bug: As elsewhere, constructing %Promise% leaks the use of promises
-        // in the implementation.
         return new std_Promise(f);
     },
     //>
