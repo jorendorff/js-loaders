@@ -1104,24 +1104,6 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
     };
 }
 
-function MakeClosure_CreateLinkSetForLoad(loader) {
-    //> ### CreateLinkSetForLoad ( load )
-    //>
-    //> The following steps are taken:
-    //>
-    return function (load) {
-        //> 1.  Let F be this function object.
-        //> 2.  Let loader be F.[[Loader]].
-        //> 3.  Let linkSet be the result of calling the CreateLinkSet abstract
-        //>     operation passing loader and load as arguments.
-        let linkSet = CreateLinkSet(loader, load);
-
-        //> 4.  Return linkSet.[[Done]].
-        return linkSet.done;
-    };
-    //>
-}
-
 function MakeClosure_EvaluateLoadedModule(loader, load) {
     //> ### EvaluateLoadedModule ( )
     //>
