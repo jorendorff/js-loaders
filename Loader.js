@@ -573,10 +573,10 @@ function ProceedToTranslate(loader, load, p) {
 
 function MakeClosure_CallLocate(loader, load) {
     return function (_) {
-        resolve(loader.locate({
+        return loader.locate({
             name: load.name,
             metadata: load.metadata
-        }));
+        });
     };
 }
 
