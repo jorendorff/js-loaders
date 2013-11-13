@@ -676,6 +676,16 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
     };
 }
 
+function MakeClosure_DependencyLoad(dependencies, request, linkSets) {
+    return function (load) {
+        callFunction(std_Map_set, dependencies, request, load.name);
+        if (depLoad.status !== "linked") {
+            for (let j = 0; j < linkSets.length; j++)
+                AddLoadToLinkSet(linkSets[j], depLoad);
+        }
+    };
+}
+
 //> #### FinishLoad(load, loader, body) Abstract Operation
 //>
 // The loader calls this after the last loader hook (the `instantiate` hook),
@@ -710,13 +720,8 @@ function FinishLoad(load, loader, body) {
     for (let i = 0; i < moduleRequests.length; i++) {
         let request = moduleRequests[i];
         let p = RequestLoad(loader, request, refererName, load.address);
-        p = callFunction(std_Promise_then, p, function (depLoad) {
-            callFunction(std_Map_set, dependencies, request, depLoad.name);
-            if (depLoad.status !== "linked") {
-                for (let j = 0; j < linkSets.length; j++)
-                    AddLoadToLinkSet(linkSets[j], depLoad);
-            }
-        });
+        p = callFunction(std_Promise_then, p,
+                         MakeClosure_DependencyLoad(dependencies, request, linkSets));
         callFunction(std_Array_push, loadPromises, p);
     }
 
