@@ -1446,16 +1446,13 @@ function Realm(options, initializer) {
     let realm = $CreateRealm(realmObject);
 
     //> 1.  If options is undefined, then let options be the result of calling
-    //>     ObjectCreate(%ObjectPrototype%, ()).
-    if (options === undefined) {
-        options = {};
-    }
+    //>     ObjectCreate(null, ()).
+    if (options === undefined)
+        options = std_Object_create(null);
 
-    //> 1.  Else, if Type(options) is not Object, throw a TypeError
-    //>     exception.
-    if (!IsObject(options)) {
+    //> 1.  Else, if Type(options) is not Object, throw a TypeError exception.
+    if (!IsObject(options))
         throw std_TypeError("options must be an object or undefined");
-    }
 
     //> 1.  Let evalHooks be the result of calling the [[Get]] internal
     //>     method of options passing `"eval"` and true as arguments.
@@ -1466,9 +1463,8 @@ function Realm(options, initializer) {
 
     //> 1.  Else, if Type(evalHooks) is not Object, throw a TypeError
     //>     exception.
-    if (!IsObject(evalHooks)) {
+    if (!IsObject(evalHooks))
         throw std_TypeError("options.eval must be an object or undefined");
-    }
 
     //> 1.  Let directEval be the result of calling the [[Get]] internal
     //>     method of evalHooks passing `"direct"` and true as arguments.
@@ -1479,9 +1475,8 @@ function Realm(options, initializer) {
 
     //> 1.  Else, if Type(directEval) is not Object, throw a TypeError
     //>     exception.
-    if (!IsObject(directEval)) {
+    if (!IsObject(directEval))
         throw std_TypeError("options.eval.direct must be an object or undefined");
-    }
 
     //> 1.  Let translate be the result of calling the [[Get]] internal
     //>     method of directEval passing `"translate"` and true as
@@ -1491,9 +1486,8 @@ function Realm(options, initializer) {
 
     //> 1.  If translate is not undefined and IsCallable(translate) is false,
     //>     throw a TypeError exception.
-    if (translate !== undefined && !IsCallable(translate)) {
+    if (translate !== undefined && !IsCallable(translate))
         throw std_TypeError("translate hook is not callable");
-    }
 
     //> 1.  Set realm.[[translateDirectEvalHook]] to translate.
     realm.translateDirectEvalHook = translate;
@@ -1505,9 +1499,8 @@ function Realm(options, initializer) {
 
     //> 1.  If fallback is not undefined and IsCallable(fallback) is false,
     //>     throw a TypeError exception.
-    if (fallback !== undefined && !IsCallable(fallback)) {
+    if (fallback !== undefined && !IsCallable(fallback))
         throw std_TypeError("fallback hook is not callable");
-    }
 
     //> 1.  Set realm.[[fallbackDirectEvalHook]] to fallback.
     realm.fallbackDirectEvalHook = fallback;
@@ -1519,9 +1512,8 @@ function Realm(options, initializer) {
 
     //> 1.  If indirectEval is not undefined and IsCallable(indirectEval) is
     //>     false, throw a TypeError exception.
-    if (indirectEval !== undefined && !IsCallable(indirectEval)) {
+    if (indirectEval !== undefined && !IsCallable(indirectEval))
         throw std_TypeError("indirect eval hook is not callable");
-    }
 
     //> 1.  Set realm.[[indirectEvalHook]] to indirectEval.
     realm.indirectEvalHook = indirectEval;
@@ -1533,9 +1525,8 @@ function Realm(options, initializer) {
 
     //> 1.  If Function is not undefined and IsCallable(Function) is false,
     //>     throw a TypeError exception.
-    if (Function !== undefined && !IsCallable(Function)) {
+    if (Function !== undefined && !IsCallable(Function))
         throw std_TypeError("Function hook is not callable");
-    }
 
     //> 1.  Set realm.[[FunctionHook]] to Function.
     realm.FunctionHook = Function;
@@ -1547,9 +1538,8 @@ function Realm(options, initializer) {
     if (initializer !== undefined) {
         //>     1.  If IsCallable(initializer) is false, throw a TypeError
         //>         exception.
-        if (!IsCallable(initializer)) {
+        if (!IsCallable(initializer))
             throw std_TypeError("initializer is not callable");
-        }
 
         //>     1.  Let builtins be the result of calling
         //>         ObjectCreate(%ObjectPrototype%, ()).
