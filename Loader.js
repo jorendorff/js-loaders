@@ -2619,9 +2619,9 @@ def(Loader.prototype, {
     //>     implemented with standard source-level module declarations can
     //>     still be statically validated.
     //>
-    //>     (This feature is provided in order to support using `import` to
-    //>     import pre-ES6 modules such as AMD modules. See
-    //>     issue #19.)
+    //>     NOTE This feature is provided in order to permit custom loaders to
+    //>     support using `import` to import pre-ES6 modules such as AMD
+    //>     modules.
     //>
     //> *When this hook is called:*  After the `translate` hook, for modules
     //> only.
