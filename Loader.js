@@ -302,42 +302,43 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //> Each Load Record has the following fields:
 //>
-//>   * load.[[Status]] - One of: `"loading"`, `"loaded"`, `"linked"`, or
+//>   * load.[[Status]] &ndash; One of: `"loading"`, `"loaded"`, `"linked"`, or
 //>     `"failed"`.
 //>
-//>   * load.[[Name]] - The normalized name of the module being loaded, or
-//>     **undefined** if loading an anonymous module.
+//>   * load.[[Name]] &ndash; The normalized name of the module being loaded,
+//>     or **undefined** if loading an anonymous module.
 //>
-//>   * load.[[LinkSets]] - A List of all LinkSets that require this load to
-//>     succeed.  There is a many-to-many relation between Loads and LinkSets.
-//>     A single `import()` call can have a large dependency tree, involving
-//>     many Loads.  Many `import()` calls can be waiting for a single Load, if
-//>     they depend on the same module.
+//>   * load.[[LinkSets]] &ndash; A List of all LinkSets that require this load
+//>     to succeed.  There is a many-to-many relation between Loads and
+//>     LinkSets.  A single `import()` call can have a large dependency tree,
+//>     involving many Loads.  Many `import()` calls can be waiting for a
+//>     single Load, if they depend on the same module.
 //>
-//>   * load.[[Metadata]] - An object which loader hooks may use for any purpose.
-//>     See Loader.prototype.locate.
+//>   * load.[[Metadata]] &ndash; An object which loader hooks may use for any
+//>     purpose.  See Loader.prototype.locate.
 //>
-//>   * load.[[Address]] - The result of the locate hook.
+//>   * load.[[Address]] &ndash; The result of the locate hook.
 //>
-//>   * load.[[Source]] - The result of the translate hook.
+//>   * load.[[Source]] &ndash; The result of the translate hook.
 //>
-//>   * load.[[Body]] - Once the Load reaches the `"loaded"` state, a
+//>   * load.[[Body]] &ndash; Once the Load reaches the `"loaded"` state, a
 //>     ModuleBody parse. (???terminology)
 //>
-//>   * load.[[Dependencies]] - Once the Load reaches the `"loaded"` state, a
-//>     List of pairs. Each pair consists of two strings: a module name as it
-//>     appears in an `import` or `export from` declaration in load.[[Body]],
-//>     and the corresponding normalized module name.
+//>   * load.[[Dependencies]] &ndash; Once the Load reaches the `"loaded"`
+//>     state, a List of pairs. Each pair consists of two strings: a module
+//>     name as it appears in an `import` or `export from` declaration in
+//>     load.[[Body]], and the corresponding normalized module name.
 //>
-//>   * load.[[Exception]] - If load.[[Status]] is `"failed"`, the exception
-//>     value that was thrown, causing the load to fail. Otherwise, **null**.
+//>   * load.[[Exception]] &ndash; If load.[[Status]] is `"failed"`, the
+//>     exception value that was thrown, causing the load to fail. Otherwise,
+//>     **null**.
 //>
-//>   * load.[[Module]] - The Module object produced by this load, or
-//>     undefined.  There are three ways for this to be populated, corresponding
-//>     to the three permitted `instantiate` hook return types.
+//>   * load.[[Module]] &ndash; The Module object produced by this load, or
+//>     undefined.  There are three ways for this field to be populated,
+//>     corresponding to the three permitted `instantiate` hook return types.
 //>
-//>     If the `instantiate` hook returns a Module, this internal data property
-//>     is set immediately.
+//>     If the `instantiate` hook returns a Module, this field is set
+//>     immediately.
 //>
 //>     If the `instantiate` hook returns undefined, the module source is then
 //>     parsed, and load.[[Module]] is set if parsing succeeds and there are no
@@ -1109,7 +1110,7 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 }
 //>
 
-// **Timing and grouping of dependencies** - Consider
+// **Timing and grouping of dependencies** &ndash; Consider
 //
 //     loader.module('module x from "x"; module y from "y";');
 //
@@ -1748,16 +1749,17 @@ def(Realm, {"@@create": Realm_create});
 //>
 //> Each Loader object has the following internal data properties:
 //>
-//>   * loader.[[Realm]] - The Realm associated with the loader. All scripts
-//>     and modules evaluated by the loader run in the scope of the global
-//>     object associated with this Realm.
+//>   * loader.[[Realm]] &ndash; The Realm associated with the loader. All
+//>     scripts and modules evaluated by the loader run in the scope of the
+//>     global object associated with this Realm.
 //>
 //>     This property is fixed when the Loader is created and can't be changed.
 //>
-//>   * loader.[[Modules]] - A List of Module Records: the module registry.
+//>   * loader.[[Modules]] &ndash; A List of Module Records: the module
+//>     registry.
 //>
-//>   * loader.[[Loads]] - A List of Load Records. These represent ongoing
-//>     asynchronous module loads.
+//>   * loader.[[Loads]] &ndash; A List of Load Records. These represent
+//>     ongoing asynchronous module loads.
 //>
 
 
