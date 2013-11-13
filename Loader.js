@@ -975,7 +975,10 @@ function FinishLinkSet(linkSet, succeeded, exc) {
     //> 5.  Else call the [[Call]] internal method of linkSet.[[Reject]]
     //>     passing undefined and (exc) as arguments.
     return linkSet.reject(exc);
+
+    //> 6.  Assert: The call performed by step 4 or 5 completed normally.
 }
+//>
 
 // **Timing and grouping of dependencies** - Consider
 //
