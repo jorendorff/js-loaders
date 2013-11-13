@@ -676,13 +676,27 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
     };
 }
 
-function MakeClosure_DependencyLoad(dependencies, request, linkSets) {
+function MakeClosure_AddDependencyLoad(dependencies, request, linkSets) {
     return function (load) {
         callFunction(std_Map_set, dependencies, request, load.name);
         if (depLoad.status !== "linked") {
             for (let j = 0; j < linkSets.length; j++)
                 AddLoadToLinkSet(linkSets[j], depLoad);
         }
+    };
+}
+
+function MakeClosure_AllDependencyLoadsAdded(load, body, dependencies, linkSets) {
+    return function (_) {
+        load.status = "loaded";
+        load.body = body;
+        load.dependencies = dependencies;
+
+        // For determinism, finish linkable LinkSets in timestamp order.
+        callFunction(std_Array_sort, linkSets,
+                     (a, b) => b.timestamp - a.timestamp);
+        for (let i = 0; i < linkSets.length; i++)
+            UpdateLinkSetOnLoad(linkSets[i], load);
     };
 }
 
@@ -721,22 +735,16 @@ function FinishLoad(load, loader, body) {
         let request = moduleRequests[i];
         let p = RequestLoad(loader, request, refererName, load.address);
         p = callFunction(std_Promise_then, p,
-                         MakeClosure_DependencyLoad(dependencies, request, linkSets));
+                         MakeClosure_AddDependencyLoad(dependencies, request,
+                                                       linkSets));
         callFunction(std_Array_push, loadPromises, p);
     }
 
     var p = callFunction(std_Promise_all, std_Promise, loadPromises);
-    p = callFunction(std_Promise_then, p, function (_) {
-        load.status = "loaded";
-        load.body = body;
-        load.dependencies = dependencies;
-
-        // For determinism, finish linkable LinkSets in timestamp order.
-        callFunction(std_Array_sort, linkSets,
-                     (a, b) => b.timestamp - a.timestamp);
-        for (let i = 0; i < linkSets.length; i++)
-            UpdateLinkSetOnLoad(linkSets[i], load);
-    });
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_AllDependencyLoadsAdded(load, body,
+                                                         dependencies,
+                                                         linkSets));
     return p;
 }
 
