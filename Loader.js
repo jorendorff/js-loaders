@@ -1124,8 +1124,7 @@ function MakeClosure_AsyncLoadAndEvaluateModule(loader) {
         //> 1.  Let F be this function.
         //> 1.  Let loader be F.[[Loader]].
 
-        //> 1.  If load.[[Status]] is **linked**, then the following steps are
-        //>     taken:
+        //> 1.  If load.[[Status]] is **linked**, then
         if (load.status === "linked") {
             //>     1.  Let module be load.[[Module]].
             var module = load.module;
