@@ -1638,13 +1638,11 @@ def(Realm, {"@@create": Realm_create});
 //>
 //> Each Loader object has the following internal data properties:
 //>
-//>   * loader.[[Global]] - The global object associated with the loader. All
-//>     scripts and modules loaded by the loader run in the scope of this
-//>     object. (XXX needs better wording; it is hard to be both precise and
-//>     comprehensible on this point)
+//>   * loader.[[Realm]] - The Realm associated with the loader. All scripts
+//>     and modules evaluated by the loader run in the scope of the global
+//>     object associated with this Realm.
 //>
-//> These properties are fixed when the Loader is created and can't be
-//> changed. In addition, each Loader contains two Lists:
+//>     This property is fixed when the Loader is created and can't be changed.
 //>
 //>   * loader.[[Modules]] - A List of Module Records: the module registry.
 //>
