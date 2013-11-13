@@ -1347,8 +1347,8 @@ function Module(obj) {
     //>     abstract operation.
     var mod = $CreateModule();
 
-    //> 1.  Let keys be the result of calling the ObjectKeys abstract
-    //>     operation passing obj as the argument.
+    //> 1.  Let keys be the result of calling the ObjectKeys abstract operation
+    //>     passing obj as the argument.
     //> 1.  ReturnIfAbrupt(keys).
     var keys = std_Object_keys(obj);
 
@@ -1424,8 +1424,8 @@ function Realm(options, initializer) {
     //> 1.  Let realmObject be the this value.
     //
     // Bug: This calls Realm[@@create] directly.  The spec will instead make
-    // `new Realm(options)` equivalent to
-    // `Realm.[[Call]](Realm[@@create](), List [options])`.
+    // `new Realm(options)` equivalent to `Realm.[[Call]](Realm[@@create](),
+    // List [options])`.
     // In other words, Realm[@@create] will be called *before* Realm.
     // We'll change that when symbols and @@create are implemented.
     var realmObject = callFunction(Realm["@@create"], Realm);
@@ -1629,9 +1629,9 @@ def(Realm, {"@@create": Realm_create});
 
 // ## The Loader class
 //
-// The public API of the module loader system is the `Loader` class.
-// A Loader is responsible for asynchronously finding, fetching, linking,
-// and running modules and scripts.
+// The public API of the module loader system is the `Loader` class.  A Loader
+// is responsible for asynchronously finding, fetching, linking, and running
+// modules and scripts.
 
 
 //> ## Loader Objects
@@ -1655,8 +1655,8 @@ def(Realm, {"@@create": Realm_create});
 
 //> ### GetOption(options, name) Abstract Operation
 //>
-//> The GetOption abstract operation is used to extract a property
-//> from an optional options argument.
+//> The GetOption abstract operation is used to extract a property from an
+//> optional options argument.
 //>
 //> The following steps are taken:
 //>
@@ -1669,8 +1669,8 @@ function GetOption(options, name) {
     if (!IsObject(options))
         throw std_TypeError("options must be either an object or undefined");
 
-    //> 3.  Return the result of calling the [[Get]] internal
-    //>     method of options passing name as the argument.
+    //> 3.  Return the result of calling the [[Get]] internal method of options
+    //>     passing name as the argument.
     return options[name];
 }
 
@@ -1692,7 +1692,8 @@ var loaderInternalDataMap = CreateWeakMap();
 
 // Get the internal data for a given `Loader` object.
 function GetLoaderInternalData(value) {
-    // Loader methods could be placed on wrapper prototypes like String.prototype.
+    // Loader methods could be placed on wrapper prototypes like
+    // String.prototype.
     if (typeof value !== "object")
         throw std_TypeError("Loader method called on incompatible primitive");
 
@@ -1708,11 +1709,11 @@ function GetLoaderInternalData(value) {
 //> following steps are taken:
 //>
 function Loader(options={}) {
-    // Bug: In step 1, this implementation calls Loader[@@create] directly.  The spec will instead make
-    // `new Loader(options)` equivalent to
-    // `Loader.[[Call]](Loader[@@create](), List [options])`.
-    // In other words, Loader[@@create] must be called *before* Loader.
-    // We'll change that when symbols and @@create are implemented.
+    // Bug: In step 1, this implementation calls Loader[@@create] directly.
+    // The spec will instead make `new Loader(options)` equivalent to
+    // `Loader.[[Call]](Loader[@@create](), List [options])`.  In other words,
+    // Loader[@@create] must be called *before* Loader.  We'll change that when
+    // symbols and @@create are implemented.
     //
     //> 1.  Let loader be the this value.
     var loader = callFunction(Loader["@@create"], Loader);
@@ -1771,9 +1772,10 @@ function Loader(options={}) {
         if (hook !== undefined) {
             //>         1.  Let result be the result of calling the
             //>             [[DefineOwnProperty]] internal method of loader
-            //>             passing name and the Property Descriptor {[[Value]]:
-            //>             hook, [[Writable]]: true, [[Enumerable]]: true,
-            //>             [[Configurable]]: true} as arguments.
+            //>             passing name and the Property Descriptor
+            //>             {[[Value]]: hook, [[Writable]]: true,
+            //>             [[Enumerable]]: true, [[Configurable]]: true} as
+            //>             arguments.
             //>         2.  ReturnIfAbrupt(result).
             std_Object_defineProperty(loader, name, {
                 configurable: true,
@@ -1799,11 +1801,11 @@ function Loader(options={}) {
 // undefined, so we do nothing.
 //
 // In step 10, hooks provided via `options` are stored as ordinary data
-// properties of the new Loader object.  *Rationale*: The Loader class
-// contains default implementations of each hook. This way the hooks can be
-// called unconditionally, and either the user-provided hook or the default
-// is called. Furthermore, Loader subclasses can add methods with the
-// appropriate names and use `super()` to invoke the base-class behavior.
+// properties of the new Loader object.  *Rationale*: The Loader class contains
+// default implementations of each hook. This way the hooks can be called
+// unconditionally, and either the user-provided hook or the default is
+// called. Furthermore, Loader subclasses can add methods with the appropriate
+// names and use `super()` to invoke the base-class behavior.
 //
 // The algorithm is designed so that all steps that could complete abruptly
 // precede the steps that initialize the internal data properties of the new
@@ -1814,7 +1816,7 @@ function Loader(options={}) {
 // prototype objects and to attach Module and Loader to the global.
 function def(obj, props) {
     // This helper function calls Object methods directly because it is only
-    // called during polyfill initialization, and then never again. In all
+    // called during polyfill initialization, and then never again.  In all
     // other places where standard library features are used, we make an effort
     // to be robust against mutation of the built-in objects.
     var names = Object.getOwnPropertyNames(props);
@@ -1848,17 +1850,16 @@ var Loader_create = function create() {
         // **`loaderData.modules`** is the module registry.  It maps full
         // module names to `Module` objects.
         //
-        // This map only ever contains `Module` objects that have been
-        // fully linked.  However it can contain modules whose bodies
-        // have not yet been evaluated.  Except in the case of cyclic
-        // imports, such modules are not exposed to user code.  See
-        // `EnsureEvaluated()`.
+        // This map only ever contains `Module` objects that have been fully
+        // linked.  However it can contain modules whose bodies have not yet
+        // been evaluated.  Except in the case of cyclic imports, such modules
+        // are not exposed to user code.  See `EnsureEvaluated()`.
         //
         modules: undefined,
 
         // **`loaderData.loads`** stores information about modules that are
-        // loading or loaded but not yet committed to the module registry.
-        // It maps full module names to Load records.
+        // loading or loaded but not yet committed to the module registry.  It
+        // maps full module names to Load records.
         //
         // This is stored in the loader so that multiple calls to
         // `loader.define()/.load()/.module()/.import()` can cooperate to fetch
@@ -1866,17 +1867,17 @@ var Loader_create = function create() {
         //
         loads: undefined,
 
-        // **`loaderData.realm`** is an ECMAScript Realm. It determines the
-        // global scope and intrinsics of all code this Loader runs. By
+        // **`loaderData.realm`** is an ECMAScript Realm.  It determines the
+        // global scope and intrinsics of all code this Loader runs.  By
         // default, `new Loader()` simply uses the current Realm.
         realm: undefined,
 
         // **`loaderData.linkSetCounter`** is used to give each LinkSet record
-        // an id (LinkSet.timestamp) that imposes a total ordering on
-        // LinkSets. This is used when multiple LinkSets are completed or
-        // rejected at once (FinishLoad, RejectLoad).  This counter is an
-        // implementation detail; the spec just says "in the order in which
-        // they were created".
+        // an id (LinkSet.timestamp) that imposes a total ordering on LinkSets.
+        // This is used when multiple LinkSets are completed or rejected at
+        // once (FinishLoad, RejectLoad).  This counter is an implementation
+        // detail; the spec just says "in the order in which they were
+        // created".
         linkSetCounter: 0
     };
     callFunction(std_WeakMap_set, loaderInternalDataMap, loader, loaderData);
@@ -1891,16 +1892,16 @@ def(Loader, {"@@create": Loader_create});
 //>
 //> The abstract operation thisLoader(*value*) performs the following steps:
 //>
-//> 1. If Type(*value*) is Object and value has a [[Modules]] internal data property, then
-//>     1. Let m be *value*.[[Modules]].
-//>     2. If m is not **undefined**, then return *value*.
-//> 2. Throw a **TypeError** exception.
+//> 1.  If Type(*value*) is Object and value has a [[Modules]] internal data
+//>     property, then
+//>     1.  Let m be *value*.[[Modules]].
+//>     2.  If m is not **undefined**, then return *value*.
+//> 2.  Throw a **TypeError** exception.
 //>
 //> The phrase "this Loader" within the specification of a method refers to the
 //> result returned by calling the abstract operation thisLoader with the this
 //> value of the method invocation passed as the argument.
 //>
-
 
 // **`UnpackOption`** - Used by several Loader methods to get options
 // off of an options object and, if defined, coerce them to strings.
@@ -2086,8 +2087,8 @@ def(Loader.prototype, {
     //> The `module` method asynchronously evaluates a top-level, anonymous
     //> module from source.
     //>
-    //> The module's dependencies, if any, are loaded and committed to the registry.
-    //> The anonymous module itself is not added to the registry.
+    //> The module's dependencies, if any, are loaded and committed to the
+    //> registry.  The anonymous module itself is not added to the registry.
     //>
     //> `module` returns a Promise object that resolves to a new Module
     //> instance object once the given module body has been evaluated.
@@ -2123,8 +2124,8 @@ def(Loader.prototype, {
         //> 1.  Let linkSet be CreateLinkSet(loader, load).
         let linkSet = CreateLinkSet(loader, load);
 
-        //> 1.  Let successCallback be a new anonymous function object as defined
-        //>     by EvaluateLoadedModule.
+        //> 1.  Let successCallback be a new anonymous function object as
+        //>     defined by EvaluateLoadedModule.
         //> 1.  Set successCallback.[[Loader]] to loader.
         //> 1.  Set successCallback.[[Load]] to load.
         //> 1.  Let p be the result of calling the [[Call]] internal method of
@@ -2136,8 +2137,8 @@ def(Loader.prototype, {
         //> 1.  Let sourcePromise be PromiseOf(source).
         var sourcePromise = PromiseOf(source);
 
-        //> 1.  Call the ProceedToTranslate abstract operation passing loader, load,
-        //>     and sourcePromise as arguments.
+        //> 1.  Call the ProceedToTranslate abstract operation passing loader,
+        //>     load, and sourcePromise as arguments.
         ProceedToTranslate(loader, load, sourcePromise);
 
         return p;
@@ -2171,11 +2172,12 @@ def(Loader.prototype, {
 
         var address = GetOption(options, "address");
 
-        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined, address).
+        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined,
+        //>     address).
         let loadPromise = RequestLoad(loader, name, undefined, address);
 
         //> 1.  Let G be a new anonymous function object as define in
-        //>         AsyncLoadAndEvaluateModule.
+        //>     AsyncLoadAndEvaluateModule.
         //> 1.  Let G.[[Loader]] be loader.
         //> 1.  Let p be the result of calling the [[Call]] internal method of
         //>     %PromiseThen% passing loadPromise and (G) as arguments.
@@ -2286,8 +2288,8 @@ def(Loader.prototype, {
 
     //> #### Loader.prototype.set ( name, module )
     //>
-    //> Store a module in this Loader's module registry, overwriting any existing
-    //> entry with the same name.
+    //> Store a module in this Loader's module registry, overwriting any
+    //> existing entry with the same name.
     //>
     //> The following steps are taken:
     //>
@@ -2391,8 +2393,8 @@ def(Loader.prototype, {
     // 1. What a module is linked against is properly an implementation
     //    detail, which the "remove everything" behavior would leak.
     //
-    // 2. The transitive closure of what is linked against what is
-    //    an unpredictable amount of stuff, potentially a lot.
+    // 2. The transitive closure of what is linked against what is an
+    //    unpredictable amount of stuff, potentially a lot.
     //
     // 3. Some uses of modules&mdash;in particular polyfilling&mdash;involve
     //    defining a new module `MyX`, linking it against some busted built-in
@@ -2410,8 +2412,11 @@ def(Loader.prototype, {
         //> 1.  Let loader be this Loader.
         //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
-        //> 3.  Return the result of CreateLoaderIterator(loader, `"key+value"`).
-        return new LoaderIterator(callFunction(std_Map_entries, loaderData.modules));
+
+        //> 3.  Return the result of CreateLoaderIterator(loader,
+        //>     `"key+value"`).
+        return new LoaderIterator(
+            callFunction(std_Map_entries, loaderData.modules));
     },
     //>
 
@@ -2424,8 +2429,10 @@ def(Loader.prototype, {
         //> 1.  Let loader be this Loader.
         //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+
         //> 3.  Return the result of CreateLoaderIterator(loader, `"key"`).
-        return new LoaderIterator(callFunction(std_Map_keys, loaderData.modules));
+        return new LoaderIterator(
+            callFunction(std_Map_keys, loaderData.modules));
     },
     //>
 
@@ -2438,8 +2445,10 @@ def(Loader.prototype, {
         //> 1.  Let loader be this Loader.
         //> 2.  ReturnIfAbrupt(loader).
         let loaderData = GetLoaderInternalData(this);
+
         //> 3.  Return the result of CreateLoaderIterator(loader, `"value"`).
-        return new LoaderIterator(callFunction(std_Map_values, loaderData.modules));
+        return new LoaderIterator(
+            callFunction(std_Map_values, loaderData.modules));
     },
 
 
