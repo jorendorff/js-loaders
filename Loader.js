@@ -1405,6 +1405,17 @@ Module.prototype = null;
 // store Realm objects' internal state.
 let realmInternalDataMap = CreateWeakMap();
 
+// Get the internal data for a given `Realm` object.
+function GetRealmInternalData(value) {
+    if (typeof value !== "object")
+        throw std_TypeError("Realm method or accessor called on incompatible primitive");
+
+    let realmData = callFunction(std_WeakMap_get, realmInternalDataMap, value);
+    if (realmData === undefined)
+        throw std_TypeError("Realm method or accessor called on incompatible object");
+    return realmData;
+}
+
 //> ### The Realm Constructor
 //>
 //> #### new Realm ( options, initializer )
@@ -1420,30 +1431,18 @@ function Realm(options, initializer) {
     var realmObject = callFunction(Realm["@@create"], Realm);
 
     //> 1.  If Type(realmObject) is not Object, throw a TypeError exception.
+    if (!IsObject(realmObject))
+        throw std_TypeError("Realm object expected");
+
     //> 1.  If realmObject does not have all of the internal properties of a
     //>     Realm object, throw a TypeError exception.
-    if (!IsObject(realmObject) ||
-        !callFunction(std_WeakMap_has, realmInternalDataMap, this))
-    {
-        throw std_TypeError("not a Realm object");
-    }
-
-    var realmData = callFunction(std_WeakMap_get, realmInternalDataMap, realmObject);
-    if (realmData === undefined)
-        throw std_TypeError("Realm object expected");
+    var realmData =
+        callFunction(std_WeakMap_get, realmInternalDataMap, realmObject);
 
     //> 1.  If realmObject.[[Realm]] is not undefined, throw a TypeError
     //>     exception.
     if (realmData.realm !== undefined)
         throw std_TypeError("Realm object cannot be intitialized more than once");
-
-    //> 1.  If options is not undefined and Type(options) is not Object, throw
-    //>     a TypeError exception.
-    if (options !== undefined && !IsObject(options))
-        throw std_TypeError("options must be an object or undefined");
-
-    //> 1.  Let realm be the result of CreateRealm(realmObject).
-    let realm = $CreateRealm(realmObject);
 
     //> 1.  If options is undefined, then let options be the result of calling
     //>     ObjectCreate(null, ()).
@@ -1453,6 +1452,9 @@ function Realm(options, initializer) {
     //> 1.  Else, if Type(options) is not Object, throw a TypeError exception.
     if (!IsObject(options))
         throw std_TypeError("options must be an object or undefined");
+
+    //> 1.  Let realm be the result of CreateRealm(realmObject).
+    let realm = $CreateRealm(realmObject);
 
     //> 1.  Let evalHooks be the result of calling the [[Get]] internal
     //>     method of options passing `"eval"` and true as arguments.
@@ -1568,19 +1570,14 @@ def(Realm.prototype, {
     //> steps:
     //>
     get global() {
-        //> 1. Let realmObject be this Realm object.
-        //> 1. If realmObject does not have all the internal properties of a
-        //>    Realm object, throw a TypeError exception.
-        if (!IsObject(this) ||
-            !callFunction(std_WeakMap_has, realmInternalDataMap, this))
-        {
-            throw std_TypeError("not a Realm object");
-        }
-
-        let internalData = GetRealmInternalData(this);
+        //> 1.  Let realmObject be this Realm object.
+        //> 1.  If Type(realmObject) is not Object or realmObject does not have
+        //>     all the internal properties of a Realm object, throw a
+        //>     TypeError exception.
+        let realmData = GetRealmInternalData(this);
 
         //> 1. Return realmObject.[[Realm]].[[globalThis]].
-        return internalData.realm.globalThis;
+        return realmData.realm.globalThis;
     },
     //>
 
@@ -1593,17 +1590,11 @@ def(Realm.prototype, {
         //> 1.  If Type(realmObject) is not Object or realmObject does not have
         //>     all the internal properties of a Realm object, throw a
         //>     TypeError exception.
-        if (!IsObject(this) ||
-            !callFunction(std_WeakMap_has, realmInternalDataMap, this))
-        {
-            throw std_TypeError("not a Realm object");
-        }
-
-        let internalData = GetRealmInternalData(this);
+        let realmData = GetRealmInternalData(this);
 
         //> 1.  Return the result of calling the IndirectEval abstract operation
         //>     passing realmObject.[[Realm]] and source as arguments.
-        return $IndirectEval(internalData.realm, source);
+        return $IndirectEval(realmData.realm, source);
     }
 
 });
@@ -1621,32 +1612,19 @@ var Realm_create = function create() {
 
     // The fields are initially undefined but are populated when the
     // constructor runs.
-    var internalData = {
-
+    var realmData = {
         // **`realmData.realm`** is an ECMAScript Realm. It determines the
         // global scope and intrinsics of all code this Realm object runs.
         realm: undefined
-
     };
-    callFunction(std_WeakMap_set, realmInternalDataMap, realmObject, internalData);
+
+    callFunction(std_WeakMap_set, realmInternalDataMap, realmObject, realmData);
 
     //> 3.  Return realm.
     return realmObject;
 };
 
 def(Realm, {"@@create": Realm_create});
-
-// Get the internal data for a given `Realm` object.
-function GetRealmInternalData(value) {
-    // Realm methods could be placed on wrapper prototypes like String.prototype.
-    if (typeof value !== "object")
-        throw std_TypeError("Realm method or accessor called on incompatible primitive");
-
-    let internalData = callFunction(std_WeakMap_get, realmInternalDataMap, value);
-    if (internalData === undefined)
-        throw std_TypeError("Realm method or accessor called on incompatible object");
-    return internalData;
-}
 
 
 // ## The Loader class
@@ -1718,10 +1696,10 @@ function GetLoaderInternalData(value) {
     if (typeof value !== "object")
         throw std_TypeError("Loader method called on incompatible primitive");
 
-    let internalData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
-    if (internalData === undefined)
+    let loaderData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
+    if (loaderData === undefined)
         throw std_TypeError("Loader method called on incompatible object");
-    return internalData;
+    return loaderData;
 }
 
 //> #### Loader ( options )
@@ -1740,6 +1718,9 @@ function Loader(options={}) {
     var loader = callFunction(Loader["@@create"], Loader);
 
     //> 2.  If Type(loader) is not Object, throw a TypeError exception.
+    if (!IsObject(loader))
+        throw std_TypeError("Loader object expected");
+
     //> 3.  If loader does not have all of the internal properties of a Loader
     //>     Instance, throw a TypeError exception.
     var loaderData = callFunction(std_WeakMap_get, loaderInternalDataMap, loader);
@@ -1863,7 +1844,7 @@ var Loader_create = function create() {
 
     // The fields are initially undefined but are populated when the
     // constructor runs.
-    var internalData = {
+    var loaderData = {
         // **`loaderData.modules`** is the module registry.  It maps full
         // module names to `Module` objects.
         //
@@ -1898,7 +1879,7 @@ var Loader_create = function create() {
         // they were created".
         linkSetCounter: 0
     };
-    callFunction(std_WeakMap_set, loaderInternalDataMap, loader, internalData);
+    callFunction(std_WeakMap_set, loaderInternalDataMap, loader, loaderData);
 
     //> 3.  Return loader.
     return loader;
@@ -2216,17 +2197,11 @@ def(Loader.prototype, {
         //> 1.  If Type(loader) is not Object or loader does not have all the
         //>     internal properties of a Loader object, throw a TypeError
         //>     exception.
-        if (!IsObject(this) ||
-            !callFunction(std_WeakMap_has, loaderInternalDataMap, this))
-        {
-            throw std_TypeError("not a Loader object");
-        }
-
-        let internalData = GetLoaderInternalData(this);
+        let loaderData = GetLoaderInternalData(this);
 
         //> 1.  Return the result of calling the IndirectEval abstract operation
         //>     passing loader.[[Realm]] and source as arguments.
-        return $IndirectEval(internalData.realm, source);
+        return $IndirectEval(loaderData.realm, source);
     },
 
 
