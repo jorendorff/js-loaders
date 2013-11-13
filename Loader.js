@@ -925,7 +925,7 @@ function LinkSetOnLoad(linkSet, load) {
 //> #### FinishLinkSet(linkSet, succeeded, exc) Abstract Operation
 //>
 //> The FinishLinkSet abstract operation is called when a LinkSet succeeds or
-//> fails.  It detachs the given LinkSet Record from all Load Records and
+//> fails.  It detaches the given LinkSet Record from all Load Records and
 //> resolves or rejects the linkSet.[[Done]] Promise.
 //>
 //> On success, this abstract operation is performed after module linking has
