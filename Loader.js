@@ -540,12 +540,18 @@ function RequestLoad(loader, request, refererName, refererAddress) {
         load = CreateLoad(normalized);
         callFunction(std_Map_set, loaderData.loads, normalized, load);
 
-        // Bug: As above, this leaks the use of promises in the implementation.
-        var p = new std_Promise(MakeClosure_CallLocate(loader, load));
-        ProceedToFetch(loader, load, p);
+        // Schedule the `locate` hook to be called from an empty stack.
+        ProceedToLocate(loader, load);
         return load;
     });
     return p;
+}
+
+function ProceedToLocate(loader, load) {
+    var p = PromiseOf(undefined);
+    p = callFunction(std_Promise_then, p,
+                     MakeClosure_CallLocate(loader, load));
+    return ProceedToFetch(loader, load, p);
 }
 
 function ProceedToFetch(loader, load, p) {
@@ -566,7 +572,7 @@ function ProceedToTranslate(loader, load, p) {
 }
 
 function MakeClosure_CallLocate(loader, load) {
-    return function (resolve, reject) {
+    return function (_) {
         resolve(loader.locate({
             name: load.name,
             metadata: load.metadata
@@ -1047,9 +1053,8 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
 
         //> 1.  If step is `"locate"`,
         if (step == "locate") {
-            //>     1.  Let namePromise be PromiseOf(name).
-            //>     1.  Call ProceedToLocate(loader, load, namePromise).
-            ProceedToLocate(loader, load, PromiseOf(name));
+            //>     1.  Call ProceedToLocate(loader, load).
+            ProceedToLocate(loader, load);
         //> 1.  Else if step is `"fetch"`,
         } else if (step == "fetch") {
             //>     1.  Let addressPromise be PromiseOf(address).
