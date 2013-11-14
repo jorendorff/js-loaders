@@ -526,11 +526,11 @@ function RequestLoad(loader, request, refererName, refererAddress) {
     //> 6.  Let p be the result of calling OrdinaryConstruct(%Promise%, (F)).
     var p = new std_Promise(F);
 
-    //> 7.  Let G be a new anonymous function as defined by ProduceLoad.
+    //> 7.  Let G be a new anonymous function as defined by GetOrCreateLoad.
     //> 8.  Set the [[Loader]] internal slot of G to loader.
     //> 9.  Let p be the result of calling PromiseThen(p, G).
     p = callFunction(std_Promise_then, p, 
-                     MakeClosure_ProduceLoad(loader));
+                     MakeClosure_GetOrCreateLoad(loader));
 
     //> 10. Return p.
     return p;
@@ -565,17 +565,17 @@ function MakeClosure_CallNormalize(loader, request, refererName, refererAddress)
     };
 }
 
-//> #### ProduceLoad Functions
+//> #### GetOrCreateLoad Functions
 //>
-//> A ProduceLoad function is an anonymous function that gets or creates a Load
+//> A GetOrCreateLoad function is an anonymous function that gets or creates a Load
 //> Record for a given module name.
 //>
-//> Each ProduceLoad function has a [[Loader]] internal slot.
+//> Each GetOrCreateLoad function has a [[Loader]] internal slot.
 //>
-//> When a ProduceLoad function F is called with argument name, the following
+//> When a GetOrCreateLoad function F is called with argument name, the following
 //> steps are taken:
 //>
-function MakeClosure_ProduceLoad(loader) {
+function MakeClosure_GetOrCreateLoad(loader) {
     return function (name) {
         var loaderData = GetLoaderInternalData(loader);
 
