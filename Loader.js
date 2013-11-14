@@ -1865,9 +1865,59 @@ def(Realm, {"@@create": Realm_create});
 //>   * loader.[[Modules]] &ndash; A List of Module Records: the module
 //>     registry.
 //>
+//>     This List only ever contains Module objects that are fully linked.
+//>     However it can contain modules whose code has not yet been evaluated.
+//>     Except in the case of cyclic imports, such modules are not exposed to
+//>     user code.  See `EnsureEvaluated()`.
+//>
 //>   * loader.[[Loads]] &ndash; A List of Load Records. These represent
 //>     ongoing asynchronous module loads.
 //>
+//>     This List is stored in the loader so that multiple calls to
+//>     `loader.define()/.load()/.module()/.import()` can cooperate to fetch
+//>     what they need only once.
+
+// Implementation note: Since ES6 does not have support for private state or
+// private methods, the internal slots of Loader objects are stored on a
+// separate object which user code cannot access.
+//
+// So what the specification refers to as `loader.[[Modules]]` is implemented
+// as `GetLoaderInternalData(loader).modules`.
+//
+// The simplest way to connect the two objects without exposing this internal
+// data to user code is to use a `WeakMap`.
+//
+var loaderInternalDataMap = CreateWeakMap();
+
+// Get the internal data for a given `Loader` object.
+function GetLoaderInternalData(value) {
+    // Loader methods could be placed on wrapper prototypes like
+    // String.prototype.
+    if (typeof value !== "object")
+        throw std_TypeError("Loader method called on incompatible primitive");
+
+    let loaderData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
+    if (loaderData === undefined)
+        throw std_TypeError("Loader method called on incompatible object");
+    return loaderData;
+}
+
+// The lists referred to in the spec are not actually stored that way in this
+// implementation.
+//
+// `loaderData.modules` is a Map from strings (module names) to Module objects.
+//
+// `loaderData.loads` is a Map from strings (module names) to Loads.
+//
+// Maps support faster lookup than the linear List scans described by the
+// specification.
+//
+// `loaderData.linkSetCounter` is not mentioned in the specification at all.
+// This counter is used to give each LinkSet record an id (linkSet.timestamp)
+// that imposes a total ordering on LinkSets.  This is used when multiple
+// LinkSets are completed or rejected at once (LoadFailed, LoadSucceeded).
+// This counter is an implementation detail; the spec just says "in the order
+// in which the LinkSet Records were created".
 
 
 //> ### GetOption(options, name) Abstract Operation
@@ -1893,31 +1943,6 @@ function GetOption(options, name) {
 
 //> ### The Loader Constructor
 //>
-
-// Implementation note: Since ES6 does not have support for private state or
-// private methods, the "internal slots" of Loader objects are stored on a
-// separate object which is not accessible from user code.
-//
-// So what the specification refers to as `loader.[[Modules]]` is implemented
-// as `GetLoaderInternalData(loader).modules`.
-//
-// The simplest way to connect the two objects without exposing this internal
-// data to user code is to use a `WeakMap`.
-//
-var loaderInternalDataMap = CreateWeakMap();
-
-// Get the internal data for a given `Loader` object.
-function GetLoaderInternalData(value) {
-    // Loader methods could be placed on wrapper prototypes like
-    // String.prototype.
-    if (typeof value !== "object")
-        throw std_TypeError("Loader method called on incompatible primitive");
-
-    let loaderData = callFunction(std_WeakMap_get, loaderInternalDataMap, value);
-    if (loaderData === undefined)
-        throw std_TypeError("Loader method called on incompatible object");
-    return loaderData;
-}
 
 //> #### Loader ( options )
 //>
@@ -2056,41 +2081,10 @@ var Loader_create = function create() {
     //>     OrdinaryCreateFromConstructor(F, "%LoaderPrototype%", ([[Modules]],
     //>     [[Loads]], [[Realm]])).
     var loader = std_Object_create(this.prototype);
-
-    // The fields are initially undefined but are populated when the
-    // constructor runs.
     var loaderData = {
-        // **`loaderData.modules`** is the module registry.  It maps full
-        // module names to `Module` objects.
-        //
-        // This map only ever contains `Module` objects that have been fully
-        // linked.  However it can contain modules whose bodies have not yet
-        // been evaluated.  Except in the case of cyclic imports, such modules
-        // are not exposed to user code.  See `EnsureEvaluated()`.
-        //
         modules: undefined,
-
-        // **`loaderData.loads`** stores information about modules that are
-        // loading or loaded but not yet committed to the module registry.  It
-        // maps full module names to Load records.
-        //
-        // This is stored in the loader so that multiple calls to
-        // `loader.define()/.load()/.module()/.import()` can cooperate to fetch
-        // what they need only once.
-        //
         loads: undefined,
-
-        // **`loaderData.realm`** is an ECMAScript Realm.  It determines the
-        // global scope and intrinsics of all code this Loader runs.  By
-        // default, `new Loader()` simply uses the current Realm.
         realm: undefined,
-
-        // **`loaderData.linkSetCounter`** is used to give each LinkSet record
-        // an id (LinkSet.timestamp) that imposes a total ordering on LinkSets.
-        // This is used when multiple LinkSets are completed or rejected at
-        // once (LoadFailed, LoadSucceeded).  This counter is an implementation
-        // detail; the spec just says "in the order in which they were
-        // created".
         linkSetCounter: 0
     };
     callFunction(std_WeakMap_set, loaderInternalDataMap, loader, loaderData);
