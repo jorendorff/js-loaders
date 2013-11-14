@@ -1110,11 +1110,13 @@ function FinishLinkSet(linkSet, succeeded, exc) {
         }
     }
 
-    //> 4.  If succeeded is true, then call the [[Call]] internal method of
-    //>     linkSet.[[Resolve]] passing undefined and (undefined) as arguments.
-    if (succeeded)
-        return linkSet.resolve(undefined);
-
+    //> 4.  If succeeded is true, then
+    if (succeeded) {
+        //>     1.  Let startingLoad be the first element of the list loads.
+        //>     2.  Call the [[Call]] internal method of linkSet.[[Resolve]]
+        //>         passing undefined and (startingLoad) as arguments.
+        return linkSet.resolve(loads[0]);
+    }
     //> 5.  Else call the [[Call]] internal method of linkSet.[[Reject]]
     //>     passing undefined and (exc) as arguments.
     return linkSet.reject(exc);
@@ -1139,6 +1141,37 @@ function FinishLinkSet(linkSet, succeeded, exc) {
 
 
 // ## Module loading entry points
+
+function LoadModule(loader, name, options) {
+    var loaderData = GetLoaderInternalData(loader);
+
+    //> 1.  Let name be ToString(name).
+    //> 1.  ReturnIfAbrupt(name).
+    name = ToString(name);
+
+    //> 1.  Let address be GetOption(options, `"address"`).
+    //> 1.  ReturnIfAbrupt(address).
+    var address = GetOption(options, "address");
+
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     AsyncStartLoadPartwayThrough.
+    //> 1.  Set F.[[Loader]] to loader.
+    //> 1.  Set F.[[ModuleName]] to name.
+    //> 1.  If address is undefined, set F.[[Step]] to `"locate"`.
+    //> 1.  Else, set F.[[Step]] to `"fetch"`.
+    //> 1.  Let metadata be the result of ObjectCreate(%ObjectPrototype%,
+    //>     ()).
+    //> 1.  Set F.[[ModuleMetadata]] to metadata.
+    //> 1.  Set F.[[ModuleSource]] to source.
+    //> 1.  Set F.[[ModuleAddress]] to address.
+    var f = MakeClosure_AsyncStartLoadPartwayThrough(
+        loader, loaderData, name,
+        address === undefined ? "locate" : "fetch",
+        {}, address, undefined);
+
+    //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
+    return new std_Promise(f);
+}
 
 function MakeClosure_AsyncStartLoadPartwayThrough(
     loader, loaderData, name, step, metadata, address, source)
@@ -1214,15 +1247,14 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
     };
 }
 
-function MakeClosure_EvaluateLoadedModule(loader, load) {
-    //> ### EvaluateLoadedModule ( )
+function MakeClosure_EvaluateLoadedModule(loader) {
+    //> ### EvaluateLoadedModule ( load )
     //>
     //> The following steps are taken:
     //>
-    return function (_) {
+    return function (load) {
         //> 1.  Let F be this function.
         //> 2.  Let loader be F.[[Loader]].
-        //> 3.  Let load be F.[[Load]].
 
         //> 4.  Assert: load.[[Status]] is `"linked"`.
         Assert(load.status === "linked");
@@ -1237,43 +1269,6 @@ function MakeClosure_EvaluateLoadedModule(loader, load) {
         return module;
     };
     //>
-}
-
-function MakeClosure_AsyncLoadAndEvaluateModule(loader) {
-    //> ### AsyncLoadAndEvaluateModule ( load )
-    //>
-    //> The following steps are taken:
-    //>
-    return function (load) {
-        //> 1.  Let F be this function.
-        //> 1.  Let loader be F.[[Loader]].
-
-        //> 1.  If load.[[Status]] is **linked**, then
-        if (load.status === "linked") {
-            //>     1.  Let module be load.[[Module]].
-            var module = load.module;
-
-            //>     1.  Call EnsureEvaluated(module, (), loader).
-            EnsureEvaluatedHelper(module, loader);
-
-            //>     1.  Return module.
-            return module;
-        }
-
-        //> 1.  Let linkSet be the result of calling the CreateLinkSet abstract
-        //>     operation passing loader and load as arguments.
-        var linkSet = CreateLinkSet(loader, load);
-
-        //> 1.  Let G be a new anonymous function object as defined in
-        //>     EvaluateLoadedModule.
-        //> 1.  Set G.[[Loader]] to loader.
-        //> 1.  Set G.[[Load]] to load.
-        //> 1.  Let p be the result of calling the [[Call]] internal method of
-        //>     %PromiseThen% passing linkSet.[[Done]] and (G) as arguments.
-        //> 1.  Return p.
-        return callFunction(std_Promise_then, linkSet.done,
-                            MakeClosure_EvaluateLoadedModule(loader, load));
-    };
 }
 
 
@@ -2180,13 +2175,30 @@ def(Loader.prototype, {
         var f = MakeClosure_AsyncStartLoadPartwayThrough(
             loader, loaderData, name, "translate", metadata, address, source);
 
-        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-        return new std_Promise(f);
+        //> 1.  Let p be the result of calling OrdinaryConstruct(%Promise%, (F)).
+        var p = new std_Promise(f);
+
+        //> 1.  Let G be a new anonymous function as defined by ReturnUndefined.
+        //> 1.  Let p be the result of calling PromiseThen(p, G).
+        p = callFunction(std_Promise_then, p, function (_) {});
+
+        //> 1.  Return p.
+        return p;
     },
     //>
     //> The `length` property of the `define` method is **2**.
     //>
 
+
+    //> #### ReturnUndefined Functions
+    //>
+    //> A ReturnUndefined function is an anonymous function.
+    //>
+    //> When a ReturnUndefined function is called, the following steps are
+    //> taken:
+    //>
+    //> 1.  Return undefined.
+    //>
 
     //> #### Loader.prototype.load ( request, options = undefined )
     //>
@@ -2197,34 +2209,17 @@ def(Loader.prototype, {
     //>
     load: function load(name, options = undefined) {
         //> 1.  Let loader be this Loader.
-        //> 1.  ReturnIfAbrupt(loader).
-        var loader = this;
-        var loaderData = GetLoaderInternalData(loader);
+        //> 2.  ReturnIfAbrupt(loader).
+        //> 3.  Let p be the result of LoadModule(loader, name, options).
+        //> 4.  ReturnIfAbrupt(p).
+        var p = LoadModule(this, name, options);
 
-        //> 1.  Let name be ToString(name).
-        //> 1.  ReturnIfAbrupt(name).
-        name = ToString(name);
+        //> 5.  Let f be an anonymous function as described by ReturnUndefined.
+        //> 6.  Let p be the result of PromiseThen(p, f).
+        p = callFunction(std_Promise_then, p, function (_) {});
 
-        var address = GetOption(options, "address");
-
-        //> 1.  Let F be a new anonymous function object as defined in
-        //>     AsyncStartLoadPartwayThrough.
-        //> 1.  Set F.[[Loader]] to loader.
-        //> 1.  Set F.[[ModuleName]] to name.
-        //> 1.  If address is undefined, set F.[[Step]] to `"locate"`.
-        //> 1.  Else, set F.[[Step]] to `"fetch"`.
-        //> 1.  Let metadata be the result of ObjectCreate(%ObjectPrototype%,
-        //>     ()).
-        //> 1.  Set F.[[ModuleMetadata]] to metadata.
-        //> 1.  Set F.[[ModuleSource]] to source.
-        //> 1.  Set F.[[ModuleAddress]] to address.
-        var f = MakeClosure_AsyncStartLoadPartwayThrough(
-            loader, loaderData, name,
-            address === undefined ? "locate" : "fetch",
-            {}, address, undefined);
-
-        //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-        return new std_Promise(f);
+        //> 7.  Return p.
+        return p;
     },
     //>
     //> The `length` property of the `load` method is **1**.
@@ -2280,7 +2275,7 @@ def(Loader.prototype, {
         //>     %PromiseThen% passing linkSet.[[Done]] and (successCallback) as
         //>     arguments.
         let p = callFunction(std_Promise_then, linkSet.done,
-                             MakeClosure_EvaluateLoadedModule(loader, load));
+                             MakeClosure_EvaluateLoadedModule(loader));
 
         //> 1.  Let sourcePromise be PromiseOf(source).
         var sourcePromise = PromiseOf(source);
@@ -2289,6 +2284,7 @@ def(Loader.prototype, {
         //>     load, and sourcePromise as arguments.
         ProceedToTranslate(loader, load, sourcePromise);
 
+        //> 1.  Return p.
         return p;
     },
     //>
@@ -2309,28 +2305,22 @@ def(Loader.prototype, {
     //>
     import: function import_(name, options = undefined) {
         //> 1.  Let loader be this Loader.
-        //> 1.  ReturnIfAbrupt(loader).
+        //> 2.  ReturnIfAbrupt(loader).
+        //> 3.  Let p be the result of calling
+        //>     LoadModule(loader, name, options).
+        //> 4.  ReturnIfAbrupt(p).
         var loader = this;
-        var loaderData = GetLoaderInternalData(this);
+        var p = LoadModule(loader, name, options);
 
-        //> 1.  Let name be ToString(name).
-        //> 1.  ReturnIfAbrupt(name).
-        name = ToString(name);
+        //> 5.  Let F be an anonymous function object as defined by
+        //>     EvaluateLoadedModule.
+        //> 6.  Set the [[Loader]] field of F to loader.
+        //> 7.  Let p be the result of calling PromiseThen(p, F).
+        p = callFunction(std_Promise_then, p, 
+                         MakeClosure_EvaluateLoadedModule(loader));
 
-        var address = GetOption(options, "address");
-
-        //> 1.  Let loadPromise be RequestLoad(loader, name, undefined,
-        //>     address).
-        let loadPromise = RequestLoad(loader, name, undefined, address);
-
-        //> 1.  Let G be a new anonymous function object as define in
-        //>     AsyncLoadAndEvaluateModule.
-        //> 1.  Let G.[[Loader]] be loader.
-        //> 1.  Let p be the result of calling the [[Call]] internal method of
-        //>     %PromiseThen% passing loadPromise and (G) as arguments.
-        //> 1.  Return p.
-        return callFunction(std_Promise_then, loadPromise,
-                            MakeClosure_AsyncLoadAndEvaluateModule(loader));
+        //> 8.  Return p.
+        return p;
     },
     //>
     //> The `length` property of the `import` method is **1**.
