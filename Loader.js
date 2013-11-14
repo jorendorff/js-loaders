@@ -1412,10 +1412,6 @@ function EnsureEvaluatedHelper(mod, loader) {
         $SetDependencies(seen[i], undefined);
 }
 
-function ConstantGetter(value) {
-    return function () { return value; };
-}
-
 
 
 //> ## Module Objects
@@ -1444,6 +1440,42 @@ function ConstantGetter(value) {
 //>
 //> The `Module` factory function reflectively creates module instance objects.
 //>
+
+//> #### Constant Functions
+//>
+//> A Constant function is a function that always returns the same value.
+//>
+//> Each Constant function has a [[ConstantValue]] internal slot.
+//>
+//> When a Constant function F is called, the following steps are taken:
+//>
+//> 1.  Return F.[[ConstantValue]].
+//>
+
+//> #### CreateConstantGetter(key, value) Abstract Operation
+//>
+//> The CreateConstantGetter abstract operation creates and returns a new
+//> Function object that takes no arguments and returns value.  It performs the
+//> following steps:
+//>
+function CreateConstantGetter(key, value) {
+    //> 1.  Let getter be a new Constant function.
+    //> 2.  Set the [[ConstantValue]] internal slot of getter to value.
+    var getter = function () { return value; };
+
+    //> 3.  Call SetFunctionName(getter, key, `"get"`).
+    delete getter.name;
+    std_Object_defineProperty(getter, "name", {
+        configurable: true,
+        enumerable: false,
+        value: "get " + key,
+        writable: false
+    });
+
+    //> 4.  Return getter.
+    return getter;
+}
+
 //> #### Module ( obj )
 //>
 //> When the `Module` function is called with optional argument obj, the
@@ -1469,24 +1501,22 @@ function Module(obj) {
 
         //>     1.  Let value be the result of calling the [[Get]] internal
         //>         method of obj passing key and true as arguments.
+        //>     1.  ReturnIfAbrupt(value).
         var value = obj[key];
 
-        //>     1.  ReturnIfAbrupt(value).
-        //>     1.  Let thrower be the %ThrowTypeError% intrinsic function
-        //>         Object.
-        //>     1.  Let F be the result of calling the CreateConstantGetter
-        //>         abstract operation passing value as the argument.
+        //>     1.  Let F be the result of calling
+        //>         CreateConstantGetter(key, value).
         //>     1.  Let desc be the PropertyDescriptor {[[Configurable]]:
         //>         false, [[Enumerable]]: true, [[Get]]: F, [[Set]]:
-        //>         thrower}.
+        //>         undefined}.
         //>     1.  Let status be the result of calling the
         //>         DefinePropertyOrThrow abstract operation passing mod, key,
         //>         and desc as arguments.
         //>     1.  ReturnIfAbrupt(status).
-        std_Object_defineProperty(mod, keys[i], {
+        std_Object_defineProperty(mod, key, {
             configurable: false,
             enumerable: true,
-            get: ConstantGetter(value),
+            get: CreateConstantGetter(key, value),
             set: undefined
         });
     }
