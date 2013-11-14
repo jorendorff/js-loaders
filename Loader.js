@@ -633,19 +633,59 @@ function ProceedToLocate(loader, load) {
     return ProceedToFetch(loader, load, p);
 }
 
+//> #### ProceedToFetch(loader, load, p) Abstract Operation
+//>
+//> The ProceedToFetch abstract operation continues the asynchronous loading
+//> process at the `fetch` hook.
+//>
+//> ProceedToFetch performs the following steps:
+//>
 function ProceedToFetch(loader, load, p) {
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     CallFetch.
+    //> 1.  Set F.[[Loader]] to loader.
+    //> 1.  Set F.[[Load]] to load.
+    //> 1.  Set F.[[AddressPromise]] to p.
+    //> 1.  Let p be the result of calling PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallFetch(loader, load));
+    //> 1.  Return ProceedToTranslate(loader, load, p).
     return ProceedToTranslate(loader, load, p);
 }
 
+//> #### ProceedToTranslate(loader, load, p) Abstract Operation
+//>
+//> The ProceedToTranslate abstract operation continues the asynchronous loading
+//> process at the `translate` hook.
+//>
+//> ProceedToTranslate performs the following steps:
+//>
 function ProceedToTranslate(loader, load, p) {
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     CallTranslate.
+    //> 1.  Set F.[[Loader]] to loader.
+    //> 1.  Set F.[[Load]] to load.
+    //> 1.  Let p be the result of calling PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallTranslate(loader, load));
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     CallInstantiate.
+    //> 1.  Set F.[[Loader]] to loader.
+    //> 1.  Set F.[[Load]] to load.
+    //> 1.  Let p be the result of calling PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallInstantiate(loader, load));
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     InstantiateSucceeded.
+    //> 1.  Set F.[[Loader]] to loader.
+    //> 1.  Set F.[[Load]] to load.
+    //> 1.  Let p be the result of calling PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_InstantiateSucceeded(loader, load));
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     LoadFailed.
+    //> 1.  Set F.[[Load]] to load.
+    //> 1.  Let p be the result of calling PromiseCatch(p, F).
     callFunction(std_Promise_catch, p,
                  MakeClosure_LoadFailed(load));
 }
