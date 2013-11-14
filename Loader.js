@@ -1475,6 +1475,7 @@ function CreateConstantGetter(key, value) {
     var getter = function () { return value; };
 
     //> 3.  Call SetFunctionName(getter, key, `"get"`).
+/*
     delete getter.name;
     std_Object_defineProperty(getter, "name", {
         configurable: true,
@@ -1482,6 +1483,7 @@ function CreateConstantGetter(key, value) {
         value: "get " + key,
         writable: false
     });
+*/
 
     //> 4.  Return getter.
     return getter;
