@@ -100,7 +100,7 @@ function IsCallable(v) {
 }
 
 // This implementation uses ES6 Set, Map, and WeakMap objects in some places
-// where the spec text refers to Lists and internal data properties.
+// where the spec text refers to Lists and internal slots.
 //
 // Bug: In implementations that support @@create, the `CreateSet()` function
 // given here would be affected by modifying the @@create method of the Set
@@ -254,7 +254,7 @@ function $HasBeenEvaluated(module) {
 // Loader iterators require a little private state.
 //
 //   * `$SetLoaderIteratorPrivate(iter, value)` stores `value` in an internal
-//     data property of `iter`.
+//     slot of `iter`.
 //
 var loaderIteratorInternalDataMap = CreateWeakMap();
 function $SetLoaderIteratorPrivate(iter, value) {
@@ -1747,7 +1747,7 @@ def(Realm, {"@@create": Realm_create});
 
 //> ## Loader Objects
 //>
-//> Each Loader object has the following internal data properties:
+//> Each Loader object has the following internal slots:
 //>
 //>   * loader.[[Realm]] &ndash; The Realm associated with the loader. All
 //>     scripts and modules evaluated by the loader run in the scope of the
@@ -1789,8 +1789,8 @@ function GetOption(options, name) {
 //>
 
 // Implementation note: Since ES6 does not have support for private state or
-// private methods, the "internal data properties" of Loader objects are stored
-// on a separate object which is not accessible from user code.
+// private methods, the "internal slots" of Loader objects are stored on a
+// separate object which is not accessible from user code.
 //
 // So what the specification refers to as `loader.[[Modules]]` is implemented
 // as `GetLoaderInternalData(loader).modules`.
@@ -1918,8 +1918,7 @@ function Loader(options={}) {
 // names and use `super()` to invoke the base-class behavior.
 //
 // The algorithm is designed so that all steps that could complete abruptly
-// precede the steps that initialize the internal data properties of the new
-// loader.
+// precede the steps that initialize the internal slots of the new Loader.
 
 // Define properties on an object. The properties defined this way are exactly
 // like the originals on *props*, but non-enumerable. This is used to build
@@ -2002,8 +2001,8 @@ def(Loader, {"@@create": Loader_create});
 //>
 //> The abstract operation thisLoader(*value*) performs the following steps:
 //>
-//> 1.  If Type(*value*) is Object and value has a [[Modules]] internal data
-//>     property, then
+//> 1.  If Type(*value*) is Object and value has a [[Modules]] internal slot,
+//>     then
 //>     1.  Let m be *value*.[[Modules]].
 //>     2.  If m is not **undefined**, then return *value*.
 //> 2.  Throw a **TypeError** exception.
@@ -2404,8 +2403,8 @@ def(Loader.prototype, {
         //> 4.  ReturnIfAbrupt(name).
         name = ToString(name);
 
-        //> 5.  If module does not have all the internal data properties of a
-        //>     Module instance, throw a TypeError exception.
+        //> 5.  If module does not have all the internal slots of a Module
+        //>     instance, throw a TypeError exception.
         if (!$IsModule(module))
             throw std_TypeError("Module object required");
 
@@ -2769,7 +2768,7 @@ def(Loader.prototype, {"@@iterator": Loader.prototype.entries});
 //> objects. It performs the following steps:
 //>
 //> 1.  Assert: Type(loader) is Object.
-//> 2.  Assert: loader has all the internal data properties of a Loader object.
+//> 2.  Assert: loader has all the internal slots of a Loader object.
 //> 3.  Let iterator be the result of ObjectCreate(%LoaderIteratorPrototype%,
 //>     ([[Loader]], [[ModuleMapNextIndex]], [[MapIterationKind]])).
 //> 4.  Set iterator.[[Loader]] to loader.
@@ -2781,14 +2780,14 @@ function LoaderIterator(iterator) {
     $SetLoaderIteratorPrivate(this, iterator);
 }
 
-//> #### The Loader Iterator Prototype
+//> #### The %LoaderIteratorPrototype% Object
 //>
-//> All Loader Iterator Objects inherit properties from a common Loader
-//> Iterator Prototype object.  The [[Prototype]] internal data property of the
-//> Loader Iterator Prototype is the %ObjectPrototype% intrinsic object. In
-//> addition, the Loader Iterator Prototype has the following properties:
+//> All Loader Iterator Objects inherit properties from the
+//> %LoaderIteratorPrototype% intrinsic object.  The %LoaderIteratorPrototype%
+//> intrinsic object is an ordinary object and its [[Prototype]] internal slot
+//> is the %ObjectPrototype% intrinsic object. In addition,
+//> %LoaderIteratorPrototype% has the following properties:
 //>
-
 def(LoaderIterator.prototype, {
     //> ##### *LoaderIteratorPrototype*.constructor
     //>
@@ -2799,22 +2798,19 @@ def(LoaderIterator.prototype, {
     //> 2.  If Type(O) is not Object, throw a TypeError exception.
     //> 3.  If O does not have all of the internal properties of a Loader
     //>     Iterator Instance, throw a TypeError exception.
-    //> 4.  Let loader be the value of the [[Loader]] internal data property of
-    //>     O.
-    //> 5.  Let index be the value of the [[ModuleMapNextIndex]] internal data
-    //>     property of O.
-    //> 6.  Let itemKind be the value of the [[MapIterationKind]] internal data
-    //>     property of O.
-    //> 7.  Assert: loader has a [[Modules]] internal data property and loader
-    //>     has been initialised so the value of loader.[[Modules]] is not
-    //>     undefined.
+    //> 4.  Let loader be the value of the [[Loader]] internal slot of O.
+    //> 5.  Let index be the value of the [[ModuleMapNextIndex]] internal slot
+    //>     of O.
+    //> 6.  Let itemKind be the value of the [[MapIterationKind]] internal slot
+    //>     of O.
+    //> 7.  Assert: loader has a [[Modules]] internal slot and loader has been
+    //>     initialised so the value of loader.[[Modules]] is not undefined.
     //> 8.  Repeat while index is less than the total number of elements of
     //>     loader.[[Modules]],
     //>     1.  Let e be the Record {[[key]], [[value]]} at 0-origined
     //>         insertion position index of loader.[[Modules]].
     //>     2.  Set index to index + 1.
-    //>     3.  Set the [[ModuleMapNextIndex]] internal data property of O to
-    //>         index.
+    //>     3.  Set the [[ModuleMapNextIndex]] internal slot of O to index.
     //>     4.  If e.[[key]] is not empty, then
     //>         1.  If itemKind is `"key"`, then let result be e.[[key]].
     //>         2.  Else if itemKind is `"value"`, then let result be
