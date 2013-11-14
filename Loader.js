@@ -515,55 +515,111 @@ function MakeClosure_LoadFailed(load) {
 //> The following steps are taken:
 //>
 function RequestLoad(loader, request, refererName, refererAddress) {
-    var loaderData = GetLoaderInternalData(loader);
+    //> 1.  Let F be a new anonymous function as defined by CallNormalize.
+    //> 2.  Set the [[Loader]] internal slot of F to loader.
+    //> 3.  Set the [[Request]] internal slot of F to request.
+    //> 4.  Set the [[RefererName]] internal slot of F to refererName.
+    //> 5.  Set the [[RefererAddress]] internal slot of F to refererAddress.
+    var F = MakeClosure_CallNormalize(loader, request, refererName,
+                                      refererAddress);
 
-    var p =
-        new std_Promise(
-            MakeClosure_CallNormalize(
-                loader, request, refererName, refererAddress));
+    //> 6.  Let p be the result of calling OrdinaryConstruct(%Promise%, (F)).
+    var p = new std_Promise(F);
 
+    //> 7.  Let G be a new anonymous function as defined by ProduceLoad.
+    //> 8.  Set the [[Loader]] internal slot of G to loader.
+    //> 9.  Let p be the result of calling PromiseThen(p, G).
     p = callFunction(std_Promise_then, p, 
                      MakeClosure_ProduceLoad(loader));
+
+    //> 10. Return p.
     return p;
 }
+//>
 
+//> #### CallNormalize Functions
+//>
+//> A CallNormalize function is an anonymous function that calls a loader's
+//> normalize hook.
+//>
+//> Each CallNormalize function has internal slots [[Loader]], [[Request]],
+//> [[RefererName]], and [[RefererAddress]].
+//>
+//> When a CallNormalize function F is called with arguments resolve and
+//> reject, the following steps are taken.
+//>
 function MakeClosure_CallNormalize(loader, request, refererName, refererAddress) {
     return function (resolve, reject) {
-        var result = loader.normalize(request, refererName, refererAddress);
-        resolve(result);
+        //> 1.  Let loader be F.[[Loader]].
+        //> 2.  Let request be F.[[Request]].
+        //> 3.  Let refererName be F.[[RefererName]].
+        //> 4.  Let refererAddress be F.[[RefererAddress]].
+        //> 5.  Let normalizeHook be the result of Get(loader, `"normalize"`).
+        //> 6.  Let name be the result of calling the [[Call]] internal method
+        //>     of normalizeHook passing loader and (request, refererName,
+        //>     refererAddress) as arguments.
+        //> 7.  ReturnIfAbrupt(name).
+        //> 8.  Call the [[Call]] internal method of resolve passing undefined
+        //>     and (name) as arguments.
+        resolve(loader.normalize(request, refererName, refererAddress));
     };
 }
 
+//> #### ProduceLoad Functions
+//>
+//> A ProduceLoad function is an anonymous function that gets or creates a Load
+//> Record for a given module name.
+//>
+//> Each ProduceLoad function has a [[Loader]] internal slot.
+//>
+//> When a ProduceLoad function F is called with argument name, the following
+//> steps are taken:
+//>
 function MakeClosure_ProduceLoad(loader) {
-    return function (normalized) {
+    return function (name) {
         var loaderData = GetLoaderInternalData(loader);
 
-        normalized = ToString(normalized);
+        //> 1.  Let name be ToString(name).
+        //> 2.  ReturnIfAbrupt(name).
+        name = ToString(name);
 
-        // If the module has already been linked, we are done.
-        let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
+        //> 3.  If there is a Record in loader.[[Modules]] whose [[key]] field
+        //>     is equal to name, then
+        var existingModule = callFunction(std_Map_get, loaderData.modules, name);
         if (existingModule !== undefined) {
-            return {
-                status: "linked",
-                name: normalized,
-                module: existingModule,
-                then: undefined
-            };
-        }
-
-        // If the module is already loading or loaded, we are done.
-        let load = callFunction(std_Map_get, loaderData.loads, normalized);
-        if (load !== undefined) {
-            Assert(load.status === "loading" || load.status === "loaded");
+            //>     1.  Let existingModule be the [[value]] field of that Record.
+            //>     2.  Let load be the result of CreateLoad(name).
+            //>     3.  Set the [[Status]] field of load to `"linked"`.
+            //>     4.  Set the [[Module]] field of load to existingModule.
+            //>     5.  Return load.
+            var load = CreateLoad(name);
+            load.status = "linked";
+            load.module = existingModule;
             return load;
         }
 
-        // Start a new Load.
-        load = CreateLoad(normalized);
-        callFunction(std_Map_set, loaderData.loads, normalized, load);
+        //> 4.  Else, if there is a Load Record in the List loader.[[Loads]]
+        //>     whose [[Name]] field is equal to name, then
+        var load = callFunction(std_Map_get, loaderData.loads, name);
+        if (load !== undefined) {
+            //>     1. Let load be that Load Record.
+            //>     2. Assert: load.status is either `"loading"` or `"loaded"`.
+            Assert(load.status === "loading" || load.status === "loaded");
 
-        // Schedule the `locate` hook to be called from an empty stack.
+            //>     3. Return load.
+            return load;
+        }
+
+        //> 5.  Let load be the result of CreateLoad(name).
+        load = CreateLoad(name);
+
+        //> 6.  Add load to the List loader.[[Loads]].
+        callFunction(std_Map_set, loaderData.loads, name, load);
+
+        //> 7.  Call ProceedToLocate(loader, load).
         ProceedToLocate(loader, load);
+
+        //> 8.  Return load.
         return load;
     };
 }
