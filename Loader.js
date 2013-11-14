@@ -1910,7 +1910,7 @@ function Loader(options={}) {
 // In step 8, this implementation represents the implicit Realm as
 // undefined, so we do nothing.
 //
-// In step 10, hooks provided via `options` are stored as ordinary data
+// In step 11, hooks provided via `options` are stored as ordinary data
 // properties of the new Loader object.  *Rationale*: The Loader class contains
 // default implementations of each hook. This way the hooks can be called
 // unconditionally, and either the user-provided hook or the default is
