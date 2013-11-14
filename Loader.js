@@ -1509,8 +1509,7 @@ function Module(obj) {
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
 
-        //>     1.  Let value be the result of calling the [[Get]] internal
-        //>         method of obj passing key and true as arguments.
+        //>     1.  Let value be the result of Get(obj, key).
         //>     1.  ReturnIfAbrupt(value).
         var value = obj[key];
 
@@ -1607,8 +1606,7 @@ function Realm(options, initializer) {
     //> 1.  Let realm be the result of CreateRealm(realmObject).
     let realm = $CreateRealm(realmObject);
 
-    //> 1.  Let evalHooks be the result of calling the [[Get]] internal
-    //>     method of options passing `"eval"` and true as arguments.
+    //> 1.  Let evalHooks be the result of Get(options, `"eval"`).
     //> 1.  ReturnIfAbrupt(evalHooks).
     //> 1.  If evalHooks is undefined then let evalHooks be the result of
     //>     calling ObjectCreate(%ObjectPrototype%, ()).
@@ -1619,8 +1617,7 @@ function Realm(options, initializer) {
     if (!IsObject(evalHooks))
         throw std_TypeError("options.eval must be an object or undefined");
 
-    //> 1.  Let directEval be the result of calling the [[Get]] internal
-    //>     method of evalHooks passing `"direct"` and true as arguments.
+    //> 1.  Let directEval be the result of Get(evalHooks, `"direct"`).
     //> 1.  ReturnIfAbrupt(directEval).
     //> 1.  If directEval is undefined then let directEval be the result of
     //>     calling ObjectCreate(%ObjectPrototype%, ()).
@@ -1631,9 +1628,7 @@ function Realm(options, initializer) {
     if (!IsObject(directEval))
         throw std_TypeError("options.eval.direct must be an object or undefined");
 
-    //> 1.  Let translate be the result of calling the [[Get]] internal
-    //>     method of directEval passing `"translate"` and true as
-    //>     arguments.
+    //> 1.  Let translate be the result of Get(directEval, `"translate"`).
     //> 1.  ReturnIfAbrupt(translate).
     let translate = UnpackOption(directEval, "translate");
 
@@ -1645,8 +1640,7 @@ function Realm(options, initializer) {
     //> 1.  Set realm.[[translateDirectEvalHook]] to translate.
     realm.translateDirectEvalHook = translate;
 
-    //> 1.  Let fallback be the result of calling the [[Get]] internal method
-    //>     of directEval passing `"fallback"` and true as arguments.
+    //> 1.  Let fallback be the result of Get(directEval, `"fallback"`).
     //> 1.  ReturnIfAbrupt(fallback).
     let fallback = UnpackOption(directEval, "fallback");
 
@@ -1658,8 +1652,7 @@ function Realm(options, initializer) {
     //> 1.  Set realm.[[fallbackDirectEvalHook]] to fallback.
     realm.fallbackDirectEvalHook = fallback;
 
-    //> 1.  Let indirectEval be the result of calling the [[Get]] internal
-    //>     method of options passing `"indirect"` and true as arguments.
+    //> 1.  Let indirectEval be the result of Get(options, `"indirect"`).
     //> 1.  ReturnIfAbrupt(indirectEval).
     let indirectEval = UnpackOption(evalHooks, "indirect");
 
@@ -1671,8 +1664,7 @@ function Realm(options, initializer) {
     //> 1.  Set realm.[[indirectEvalHook]] to indirectEval.
     realm.indirectEvalHook = indirectEval;
 
-    //> 1.  Let Function be the result of calling the [[Get]] internal method
-    //>     of options passing `"Function"` and true as arguments.
+    //> 1.  Let Function be the result of Get(options, `"Function"`).
     //> 1.  ReturnIfAbrupt(Function).
     let Function = UnpackOption(options, "Function");
 
@@ -1819,8 +1811,7 @@ function GetOption(options, name) {
     if (!IsObject(options))
         throw std_TypeError("options must be either an object or undefined");
 
-    //> 3.  Return the result of calling the [[Get]] internal method of options
-    //>     passing name as the argument.
+    //> 3.  Return the result of Get(options, name).
     return options[name];
 }
 
@@ -1887,8 +1878,7 @@ function Loader(options={}) {
     if (!IsObject(options))
         throw std_TypeError("options must be an object or undefined");
 
-    //> 6.  Let realmObject be the result of calling the [[Get]] internal
-    //>     method  of options with arguments `"realm"` and options.
+    //> 6.  Let realmObject be the result of Get(options, `"realm"`).
     //> 7.  ReturnIfAbrupt(realmObject).
     var realmObject = options.realm;
 
@@ -1914,8 +1904,7 @@ function Loader(options={}) {
     let hooks = ["normalize", "locate", "fetch", "translate", "instantiate"];
     for (let i = 0; i < hooks.length; i++) {
         let name = hooks[i];
-        //>     1.  Let hook be the result of calling the [[Get]] internal
-        //>         method of options with arguments name and options.
+        //>     1.  Let hook be the result of Get(options, name).
         //>     2.  ReturnIfAbrupt(hook).
         var hook = options[name];
         //>     3.  If hook is not undefined,
@@ -2245,24 +2234,15 @@ def(Loader.prototype, {
         var loader = this;
         GetLoaderInternalData(this);
 
-        let address = undefined;
-        //> 1.  If options is undefined then let options be the result of
-        //>     calling ObjectCreate(%ObjectPrototype%, ()).
-        if (options === undefined) {
-            options = {};
-        //> 1.  Else if Type(options) is not Object then throw a TypeError
-        //>     exception.
-        } else if (!IsObject(options)) {
-            throw std_TypeError("options is not an object");
-        }
-
-        //> 1.  Let address be the result of calling the [[Get]] internal
-        //>     method of options passing `"address"` as the argument.
+        //> 1.  Let address be GetOption(options, `"address"`).
         //> 1.  ReturnIfAbrupt(address).
-        address = options.address;
+        var address = GetOption(options, "address");
 
         //> 1.  Let load be CreateLoad(undefined).
         let load = CreateLoad(undefined);
+
+        //> 1.  Set the [[Address]] field of load to addres.
+        load.address = address;
 
         //> 1.  Let linkSet be CreateLinkSet(loader, load).
         let linkSet = CreateLinkSet(loader, load);
@@ -2651,8 +2631,7 @@ def(Loader.prototype, {
     //> When the locate method is called, the following steps are taken:
     //>
     locate: function locate(load) {
-        //> 1. Return the result of calling the [[Get]] internal method of load
-        //>    passing `"name"` and load as the arguments.
+        //> 1. Return the result of Get(load, `"name"`).
         return load.name;
     },
     //>
@@ -2714,8 +2693,7 @@ def(Loader.prototype, {
     //> When the translate method is called, the following steps are taken:
     //>
     translate: function translate(load) {
-        //> 1. Return the result of calling the [[Get]] internal method of load
-        //>    passing `"source"` and load as the arguments.
+        //> 1. Return the result of Get(load, `"source"`).
         return load.source;
     },
     //>
