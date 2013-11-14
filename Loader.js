@@ -517,34 +517,43 @@ function MakeClosure_LoadFailed(load) {
 function RequestLoad(loader, request, refererName, refererAddress) {
     var loaderData = GetLoaderInternalData(loader);
 
-    var p = PromiseOf(undefined);
-    p = callFunction(std_Promise_then, p, function (_) {
-        // Call the `normalize` hook to get a normalized module name.  See the
-        // comment on `normalize()`.
-        //
-        // Errors that happen during this step propagate to the caller.
-        //
-        return loader.normalize(request, refererName, refererAddress);
-    });
-    p = callFunction(std_Promise_then, p, function (normalized) {
+    var p =
+        new std_Promise(
+            MakeClosure_CallNormalize(
+                loader, request, refererName, refererAddress));
+
+    p = callFunction(std_Promise_then, p, 
+                     MakeClosure_ProduceLoad(loader, loaderData));
+    return p;
+}
+
+function MakeClosure_CallNormalize(loader, request, refererName, refererAddress) {
+    return function (resolve, reject) {
+        var result = loader.normalize(request, refererName, refererAddress);
+        resolve(result);
+    };
+}
+
+function MakeClosure_ProduceLoad(laoder, loaderData) {
+    return function (normalized) {
         normalized = ToString(normalized);
 
         // If the module has already been linked, we are done.
         let existingModule = callFunction(std_Map_get, loaderData.modules, normalized);
         if (existingModule !== undefined) {
-            return PromiseOf({
+            return {
                 status: "linked",
                 name: normalized,
                 module: existingModule,
                 then: undefined
-            });
+            };
         }
 
         // If the module is already loading or loaded, we are done.
         let load = callFunction(std_Map_get, loaderData.loads, normalized);
         if (load !== undefined) {
             Assert(load.status === "loading" || load.status === "loaded");
-            return PromiseOf(load);
+            return load;
         }
 
         // Start a new Load.
@@ -554,8 +563,7 @@ function RequestLoad(loader, request, refererName, refererAddress) {
         // Schedule the `locate` hook to be called from an empty stack.
         ProceedToLocate(loader, load);
         return load;
-    });
-    return p;
+    };
 }
 
 function ProceedToLocate(loader, load) {
@@ -679,15 +687,18 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
 
 //> #### FinishLoad(load, loader, body) Abstract Operation
 //>
-
-//> The FinishLoad abstract operation is called when a Load is done loading. It
-//> processes dependencies, which may trigger additional Loads. It also arranges
-//> for AllDependencyLoadsAdded to be called once any new Loads have been added
-//> to all listening LinkSets.
+//> The FinishLoad abstract operation is called after an `instantiate` hook
+//> produces undefined or an object that implements the ModuleFactory
+//> interface.
+//>
+//> FinishLoad processes dependencies, which may trigger additional Loads. It also
+//> arranges for AllDependencyLoadsAdded to be called once any new Loads have
+//> been added to all listening LinkSets.
 //>
 //> FinishLoad performs the following steps:
 //>
 function FinishLoad(load, loader, body) {
+
     Assert(load.status === "loading");
     Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
 
