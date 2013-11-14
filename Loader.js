@@ -699,7 +699,7 @@ function MakeClosure_CallInstantiate(loader, load) {
 
 // **`InstantiateSucceeded`** - This is called once the `instantiate` hook
 // succeeds. Continue module loading by interpreting the hook's result and
-// calling FinishLoad if necessary.
+// calling ProcessLoadDependencies if necessary.
 function MakeClosure_InstantiateSucceeded(loader, load) {
     return function (instantiateResult) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
@@ -710,9 +710,9 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
         if (instantiateResult === undefined) {
             let body = $ParseModule(loader, load.source, load.name, load.address);
 
-            // FinishLoad returns a promise. The only way to propagate errors
+            // ProcessLoadDependencies returns a promise. The only way to propagate errors
             // is to return it.
-            return FinishLoad(load, loader, body);
+            return ProcessLoadDependencies(load, loader, body);
         } else if (!IsObject(instantiateResult)) {
             throw std_TypeError("instantiate hook must return an object or undefined");
         } else if ($IsModule(instantiateResult)) {
@@ -743,53 +743,71 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
     };
 }
 
-//> #### FinishLoad(load, loader, body) Abstract Operation
+//> #### ProcessLoadDependencies(load, loader, body) Abstract Operation
 //>
-//> The FinishLoad abstract operation is called after an `instantiate` hook
+//> The ProcessLoadDependencies abstract operation is called after an `instantiate` hook
 //> produces undefined or an object that implements the ModuleFactory
 //> interface.
 //>
-//> FinishLoad processes dependencies, which may trigger additional Loads. It also
-//> arranges for AllDependencyLoadsAdded to be called once any new Loads have
+//> ProcessLoadDependencies which may trigger additional Loads. It also
+//> arranges for LoadSucceeded to be called once any new Loads have
 //> been added to all listening LinkSets.
 //>
-//> FinishLoad performs the following steps:
+//> ProcessLoadDependencies performs the following steps:
 //>
-function FinishLoad(load, loader, body) {
-
+function ProcessLoadDependencies(load, loader, body) {
+    //> 1.  Assert: load.[[Status]] is `"loading"`.
     Assert(load.status === "loading");
+
+    //> 2.  Assert: The List load.[[LinkSets]] is not empty.
     Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
 
+    //> 3.  Set the [[Body]] field of load to body.
     load.body = body;
 
-    let refererName = load.name;
-    let linkSets = SetToArray(load.linkSets);
+    //> 4.  Let refererName be load.[[Name]].
+    var refererName = load.name;
 
-    //> Let moduleRequests be the ModuleRequests of body.
-    let moduleRequests = $ModuleRequests(body);
+    //> 5.  Let moduleRequests be the ModuleRequests of body.
+    var moduleRequests = $ModuleRequests(body);
 
-    // For each new dependency, create a new Load Record, if necessary, and add
-    // it to the same LinkSet.
-    //
-    // The module-specifiers in import-declarations are not necessarily
-    // normalized module names.  We pass them to RequestLoad which will call
-    // the `normalize` hook.
-    //
+    //> 6.  Set the [[Dependencies]] field of load to a new empty List.
     load.dependencies = CreateMap();
-    let loadPromises = [];
-    for (let i = 0; i < moduleRequests.length; i++) {
-        let request = moduleRequests[i];
-        let p = RequestLoad(loader, request, refererName, load.address);
+
+    //> 7.  Let loadPromises be a new empty List.
+    var loadPromises = [];
+
+    //> 8.  For each request in moduleRequests, do
+    for (var i = 0; i < moduleRequests.length; i++) {
+        var request = moduleRequests[i];
+
+        //>     1.  Let p be the result of RequestLoad(loader, request,
+        //>         refererName, load.[[Address]]).
+        var p = RequestLoad(loader, request, refererName, load.address);
+
+        //>     2.  Let F be a new anonymous function as defined by
+        //>         AddDependencyLoad.
+        //>     3.  Set the [[Load]] internal slot of F to load.
+        //>     4.  Set the [[Request]] internal slot of F to request.
+        //>     5.  Let p be the result of PromiseThen(p, F).
         p = callFunction(std_Promise_then, p,
                          MakeClosure_AddDependencyLoad(load, request));
+
+        //>     6.  Append p as the last element of loadPromises.
         callFunction(std_Array_push, loadPromises, p);
     }
 
+    //> 9.  Let p be PromiseAll(loadPromises).
     var p = callFunction(std_Promise_all, std_Promise, loadPromises);
+
+    //> 10. Let F be a new anonymous function as defined by
+    //>     LoadSucceeded.
+    //> 11. Set the [[Load]] internal slot of F to load.
+    //> 12. Let p be the result of PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
-                     MakeClosure_AllDependencyLoadsAdded(load, body,
-                                                         dependencies,
-                                                         linkSets));
+                     MakeClosure_LoadSucceeded(load));
+
+    //> 13. Return p.
     return p;
 }
 
@@ -843,30 +861,31 @@ function MakeClosure_AddDependencyLoad(parentLoad, request) {
     };
 }
 
-//> #### AllDependencyLoadsAdded Functions
+//> #### LoadSucceeded Functions
 //>
-//> An AllDependencyLoadsAdded function is an anonymous function that
-//> transitions a Load Record from `"loading"` to `"loaded"` and notifies all
-//> associated LinkSet Records of the change. This function concludes the
-//> loader pipeline. It is called after all a newly loaded module's
-//> dependencies are successfully processed.
+//> A LoadSucceeded function is an anonymous function that transitions a Load
+//> Record from `"loading"` to `"loaded"` and notifies all associated LinkSet
+//> Records of the change. This function concludes the loader pipeline. It is
+//> called after all a newly loaded module's dependencies are successfully
+//> processed.
 //>
-//> Each AllDependencyLoadsAdded function has a [[Load]] internal slot.
+//> Each LoadSucceeded function has a [[Load]] internal slot.
 //>
-//> When an AllDependencyLoadsAdded function is called, the following steps are taken:
+//> When a LoadSucceeded function F is called, the following steps are taken:
 //>
-function MakeClosure_AllDependencyLoadsAdded(load) {
+function MakeClosure_LoadSucceeded(load) {
     return function (_) {
-        //> 1.  Assert: load.[[Status]] is `"loading"`.
+        //> 1.  Let load be F.[[Load]].
+        //> 2.  Assert: load.[[Status]] is `"loading"`.
         Assert(load.status === "loading");
 
-        //> 2.  Set the [[Status]] field of load to `"loaded"`.
+        //> 3.  Set the [[Status]] field of load to `"loaded"`.
         load.status = "loaded";
 
-        //> 3.  Let linkSets be a copy of load.[[LinkSets]].
+        //> 4.  Let linkSets be a copy of load.[[LinkSets]].
         var linkSets = SetToArray(load.linkSets);
 
-        //> 4.  For each linkSet in linkSets, in the order in which the LinkSet
+        //> 5.  For each linkSet in linkSets, in the order in which the LinkSet
         //>     Records were created,
         callFunction(std_Array_sort, linkSets,
                      (a, b) => b.timestamp - a.timestamp);
@@ -2069,7 +2088,7 @@ var Loader_create = function create() {
         // **`loaderData.linkSetCounter`** is used to give each LinkSet record
         // an id (LinkSet.timestamp) that imposes a total ordering on LinkSets.
         // This is used when multiple LinkSets are completed or rejected at
-        // once (FinishLoad, RejectLoad).  This counter is an implementation
+        // once (LoadFailed, LoadSucceeded).  This counter is an implementation
         // detail; the spec just says "in the order in which they were
         // created".
         linkSetCounter: 0
@@ -2079,6 +2098,7 @@ var Loader_create = function create() {
     //> 3.  Return loader.
     return loader;
 };
+//>
 
 def(Loader, {"@@create": Loader_create});
 
