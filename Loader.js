@@ -10,19 +10,28 @@
 
 // ## Current status
 //
-// This code does not work yet. We're focusing on producing a coherent spec
-// document. I'm also very interested in standing the system up and running
-// tests, but that will have to wait a week or two.
+// This code does not work yet, though it passes [a few very basic
+// tests](https://github.com/jorendorff/js-loaders/tree/master/test).  We're
+// focusing on producing a coherent spec document.  I'm also very interested in
+// standing the system up and running tests, but that will have to wait a week
+// or two.
+//
+// This is not an introduction to the ES6 module system. It's not a tutorial or
+// a rationale document. It's mainly specification text with a few explanatory
+// comments.
 
 
 // ## Prelude
 //
-// This implementation uses some ES builtins. User scripts may mutate or delete
-// those builtins, so we capture everything we need up front.
+// This section is not exactly riveting reading. It's safe to skip down to
+// &ldquo;Primitives&rdquo;.
 //
 (function (global) {
 "use strict";
 
+// This implementation uses some ES builtins. User scripts may mutate or delete
+// those builtins, so we capture everything we need up front.
+//
 var std_Function_call = Function.prototype.call;
 var std_Function_bind = Function.prototype.bind;
 var bind = std_Function_call.bind(std_Function_bind);
@@ -74,8 +83,7 @@ function ToString(v) {
     return "" + v;
 }
 
-// Return true if Type(v) is Object.
-//
+// **IsObject(v)** &ndash; Return true if Type(v) is Object.
 // Perhaps surprisingly, process of elimination is the only correct way to
 // implement this.  See [ES5 11.4.3, "The `typeof`
 // Operator"](https://people.mozilla.com/~jorendorff/es5.1-final.html#sec-11.4.3).
@@ -90,11 +98,6 @@ function IsObject(v) {
 }
 
 // ES6 IsCallable abstract operation.
-//
-// This is technically correct according to the table in the defintion of the
-// ES6 `typeof` operator, although some JavaScript engines return `"object"` as
-// the type of some objects that implement [[Call]].
-//
 function IsCallable(v) {
     return typeof v === "function";
 }
@@ -135,7 +138,7 @@ function MapValuesToArray(map) {
     return IteratorToArray(callFunction(std_Map_values, map), std_Map_iterator_next);
 }
 
-// The Loader spec uses a few primitives that will likely be provided by the
+// The Loader spec uses a few operations that will likely be provided by the
 // Promise spec.
 function PromiseOf(value) {
     // Implementation note: Calling `Promise.resolve()` here is user-observable
@@ -170,9 +173,8 @@ function Assert(condition) {
 // ## Primitives
 //
 // We rely on the JavaScript implementation to provide a few primitives.  You
-// can skip over this stuff. On the other hand, it tells what sort of thing
-// we'll be doing here.
-
+// can skip over this stuff too.  On the other hand, it tells what sort of
+// thing we'll be doing here.
 
 // The first two primitives parse ECMAScript code.
 //
