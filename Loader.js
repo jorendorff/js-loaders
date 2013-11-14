@@ -2148,8 +2148,7 @@ def(Loader.prototype, {
     //>
     define: function define(name, source, options = undefined) {
         //> 1.  Let loader be this Loader.
-        //> 1.  If loader does not have all the internal properties of a Loader
-        //>     object, throw a TypeError exception.
+        //> 1.  ReturnIfAbrupt(loader).
         var loader = this;
         var loaderData = GetLoaderInternalData(this);
 
