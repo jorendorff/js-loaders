@@ -523,7 +523,7 @@ function RequestLoad(loader, request, refererName, refererAddress) {
                 loader, request, refererName, refererAddress));
 
     p = callFunction(std_Promise_then, p, 
-                     MakeClosure_ProduceLoad(loader, loaderData));
+                     MakeClosure_ProduceLoad(loader));
     return p;
 }
 
@@ -534,8 +534,10 @@ function MakeClosure_CallNormalize(loader, request, refererName, refererAddress)
     };
 }
 
-function MakeClosure_ProduceLoad(laoder, loaderData) {
+function MakeClosure_ProduceLoad(loader) {
     return function (normalized) {
+        var loaderData = GetLoaderInternalData(loader);
+
         normalized = ToString(normalized);
 
         // If the module has already been linked, we are done.
