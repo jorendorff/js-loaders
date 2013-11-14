@@ -2173,8 +2173,8 @@ def(Loader.prototype, {
     // loading and running code.
     //
     // These are implemented in terms of slightly lower-level building blocks.
-    // Each of these methods creates a `LinkSet` object, which is in charge
-    // of linking, and at least one `Load`.
+    // Each of these methods directly or indirectly creates a `LinkSet` object,
+    // which is in charge of linking, and at least one `Load`.
 
     // **options.address** &ndash; Several Loader methods accept an `options`
     // parameter.  For these methods, `options.address`, if present, is passed
