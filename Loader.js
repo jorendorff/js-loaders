@@ -1107,8 +1107,8 @@ function AddLoadToLinkSet(linkSet, load) {
 //> Load successfully finishes, after starting Loads for any dependencies that
 //> were not already loading, loaded, or in the module registry.
 //>
-//> This routine determines whether linkSet is ready to link, and if so, calls
-//> LinkModules and marks linkSet as finished.
+//> This operation determines whether linkSet is ready to link, and if so,
+//> calls Link and FinishLinkSet.
 //>
 //> The following steps are taken:
 //>
@@ -1127,7 +1127,7 @@ function UpdateLinkSetOnLoad(linkSet, load) {
     try {
         //> 4.  Let status be the result of calling the Link abstract operation
         //>     passing linkSet.[[Loads]] and linkSet.[[Loader]] as arguments.
-        LinkModules(linkSet);
+        Link(linkSet.loads, linkSet.loader);
     } catch (exc) {
         //> 5.  If status is an abrupt completion, then
         //>     1. Call FinishLinkSet(linkSet, false, status.[[value]]).
@@ -1350,9 +1350,19 @@ function MakeClosure_EvaluateLoadedModule(loader) {
 
 //> ## Module Linking
 //>
-//> (Please see specs/linking.docx.)
-
-
+//
+// Please see specs/linking.docx.
+//
+// Here we include a stub implementation of the Link function described
+// in the specification that is good enough to pass some trivial tests.
+//
+function Link(loads, loader) {
+    loads = SetToArray(loads);
+    for (var i = 0; i < loads.length; i++) {
+        if (loads[i].status !== "linked")
+            throw new InternalError("Module linking is not implemented.");
+    }
+}
 
 //> ## Module Evaluation
 //>
