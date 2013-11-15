@@ -626,10 +626,24 @@ function MakeClosure_GetOrCreateLoad(loader) {
     };
 }
 
+//> #### ProceedToLocate(loader, load, p) Abstract Operation
+//>
+//> The ProceedToLocate abstract operation continues the asynchronous loading
+//> process at the `locate` hook.
+//>
+//> ProceedToLocate performs the following steps:
+//>
 function ProceedToLocate(loader, load) {
+    //> 1.  Let p be the result of PromiseResolve(undefined).
     var p = PromiseOf(undefined);
+    //> 1.  Let F be a new anonymous function object as defined in
+    //>     CallLocate.
+    //> 1.  Set F.[[Loader]] to loader.
+    //> 1.  Set F.[[Load]] to load.
+    //> 1.  Let p be the result of calling PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallLocate(loader, load));
+    //> 1.  Return ProceedToFetch(loader, load, p).
     return ProceedToFetch(loader, load, p);
 }
 
