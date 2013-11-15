@@ -2714,12 +2714,12 @@ def(Loader.prototype, {
     //> #### Loader.prototype.normalize ( name, refererName, refererAddress )
     //>
     //> This hook receives the module name as written in the import
-    //> declaration.  It returns a string, the full module name, which is used
-    //> for the rest of the import process.  In particular, loader.[[Loads]]
-    //> and loader.[[Modules]] are both keyed by normalized module names.  Only
-    //> a single load can be in progress for a given normalized module name at
-    //> a time.  The module registry can contain at most one module for a given
-    //> module name.)
+    //> declaration.  It returns a string or a thenable for a string, the full
+    //> module name, which is used for the rest of the import process.  In
+    //> particular, loader.[[Loads]] and loader.[[Modules]] are both keyed by
+    //> normalized module names.  Only a single load can be in progress for a
+    //> given normalized module name at a time.  The module registry can
+    //> contain at most one module for a given module name.
     //>
     //> *When this hook is called:*  When a module body is parsed, once per
     //> distinct module specifier in that module body.
