@@ -2902,16 +2902,29 @@ def(Loader.prototype, {
 def(Loader.prototype, {"@@iterator": Loader.prototype.entries});
 
 
-//> ### Loader Iterator Object Structure
+
+//> ### Loader Iterator Objects
 //>
-//> A Loader Iterator is an object, with the structure defined below, that
-//> represents a specific iteration over the module registry of some specific
-//> Loader instance object.
+//> A Loader Iterator object represents a specific iteration over the module
+//> registry of some specific Loader instance object.
+//>
+//> Loader Iterator objects are similar in structure to Map Iterator objects.
+//> They are created with three internal slots:
+//>
+//>   * [[Loader]] &ndash; The Loader object whose module registry is being
+//>     iterated.
+//>
+//>   * [[ModuleMapNextIndex]] &ndash; The integer index of the next element of
+//>     [[Loader]].[[Modules]] to be examined by this iteration.
+//>
+//>   * [[MapIterationKind]] &ndash; A string value that identifies what is to
+//>     be returned for each element of the iteration. The possible values are:
+//>     `"key"`, `"value"`, `"key+value"`.
 //>
 
 //> #### CreateLoaderIterator(loader, kind) Abstract Operation
 //>
-//> Several methods of Loader objects return LoaderIterator objects. The
+//> Several methods of Loader objects return Loader Iterator objects. The
 //> abstract iteration CreateLoaderIterator is used to create such iterator
 //> objects. It performs the following steps:
 //>
@@ -2936,11 +2949,8 @@ function LoaderIterator(iterator) {
 //> is the %ObjectPrototype% intrinsic object. In addition,
 //> %LoaderIteratorPrototype% has the following properties:
 //>
-def(LoaderIterator.prototype, {
-    //> ##### *LoaderIteratorPrototype*.constructor
-    //>
-
-    //> ##### *LoaderIteratorPrototype*.next ( )
+LoaderIterator.prototype = {
+    //> ##### %LoaderIteratorPrototype%.next ( )
     //>
     //> 1.  Let O be the this value.
     //> 2.  If Type(O) is not Object, throw a TypeError exception.
@@ -2980,26 +2990,28 @@ def(LoaderIterator.prototype, {
         return callFunction(std_Map_iterator_next, $GetLoaderIteratorPrivate(this));
     },
 
-    //> ##### *LoaderIteratorPrototype* [ @@iterator ] ()
+    //> ##### %LoaderIteratorPrototype% [ @@iterator ] ()
     //>
     //> The following steps are taken:
     //>
-    // Bug: "@@iterator" should of course be [Symbol.iterator].  This will be
-    // updated once Symbols are implemented.
-    //
     "@@iterator": function () {
         //> 1.  Return the this value.
         return this;
     },
     //>
+    //> The value of the `name` property of this function is
+    //> `"[Symbol.iterator]"`.
+    //>
+    // Implementation bug: "@@iterator" should of course be [Symbol.iterator].
+    // This will be updated once Symbols are implemented.
+    //
 
-    //> ##### *LoaderIteratorPrototype* [ @@toStringTag ]
+    //> ##### %LoaderIteratorPrototype% [ @@toStringTag ]
     //>
     //> The initial value of the @@toStringTag property is the string value
     //> `"Loader Iterator"`.
     //>
     "@@toStringTag": "Loader Iterator"
-});
-
+};
 
 })(this);
