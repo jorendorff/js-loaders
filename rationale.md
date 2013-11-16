@@ -2,8 +2,8 @@
 
 ## Why JS is different
 
-Most module systems assume access to a fast filesystem. They use blocking
-I/O. They search many directories looking for files.
+**Most module systems assume access to a fast filesystem.** They use
+blocking I/O. They search many directories looking for files.
 
 Obviously that won't fly on the Web. We need a module system that works
 asynchronously.
@@ -11,13 +11,24 @@ asynchronously.
 Things can happen in an asynchronous module system that can't happen in
 synchronous systems.
 
-  * Dependencies can load in parallel.
+  * A module's dependencies can load in parallel.
 
-  * While dependencies are loading for one script, another script can run.
-    And that script may share dependencies with the first one.
+  * While dependencies are loading for one module, the Web page may
+    decide to run some code that imports another module.  And those two
+    loading modules may share some dependencies.
 
-Also, the precise behavior of the system must be specified in some detail, to
-minimize cross-browser compatibility gotchas.
+These cases have affected the design in a few places.
+
+**Many module systems have a single module registry** that every part of the
+program uses.  `sys.modules` in Python is an example.  But in a browser,
+each `window` must have its own module registry, to prevent Web pages
+from tampering with one another or gaining access to one another's
+global object and prototype objects.
+
+**Most module systems only have implementations, not full
+specifications.**  The precise behavior of the ES6 module system must be
+specified in some detail, to minimize cross-browser compatibility
+gotchas.
 
 
 ## Module use cases
