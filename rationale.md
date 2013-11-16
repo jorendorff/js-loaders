@@ -31,11 +31,50 @@ specified in some detail, to minimize cross-browser compatibility
 gotchas.
 
 
+## The system in a nutshell
+
+The module system consists of:
+
+  * an HTML `<module>` element;
+
+  * some new declarative JS syntax (`import`, `export`, and `module`
+    keywords); and
+
+  * a new `Loader` builtin constructor with an asynchronous API, for
+    loading modules dynamically and for customizing module loading.
+
+
 ## Module use cases
 
 ### Importing modules others have written
 
-Use case: just importing underscore (one module in one file)
+#### Use case: just importing underscore (one module in one file)
+
+It will look like this:
+
+    import _ from "underscore";
+
+The HTML syntax isn&rsquo;t completely worked out yet, but we
+anticipate:
+
+    <module>
+        import _ from "underscore";
+        _.each(["hello", "world"], alert);
+    </module>
+
+How it works:
+
+The `<module>` element is like `<script>`, but asynchronous.  Code in a
+`<module>` runs as soon as the HTML page is ready *and* any imported
+modules have loaded.
+
+The `import` keyword can&rsquo;t be used in a `<script>`. *Rationale:*
+The system is asynchronous.  The `import` keyword *never* blocks the
+rest of the page from loading and staying responsive.
+
+(If a `<script>` or `eval()` code needs to load a module, it can, using
+the asynchronous Loader API, which we&rsquo;ll get to later.)
+
 
 Use case: importing minimized modularized jquery (a package with many modules in one file)
 
