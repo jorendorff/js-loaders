@@ -44,7 +44,7 @@ The module system consists of:
     loading modules dynamically and for customizing module loading.
 
 
-## Module use cases
+## Examples
 
 ### Importing modules others have written
 
@@ -52,21 +52,26 @@ The module system consists of:
 
 It will look like this:
 
-    import _ from "underscore";
+    module _ from "underscore";
 
-The HTML syntax isn&rsquo;t completely worked out yet, but we
-anticipate:
+...followed by code that uses `_`.
+
+The HTML syntax isn&rsquo;t completely worked out yet, but we anticipate
+something like:
 
     <module>
-        import _ from "underscore";
-        _.each(["hello", "world"], alert);
+        module _ from "underscore";
+        // ... code that uses _ ...
     </module>
 
 How it works:
 
 The `<module>` element is like `<script>`, but asynchronous.  Code in a
-`<module>` runs as soon as the HTML page is ready *and* any imported
-modules have loaded.
+`<module>` runs as soon as the HTML page *and* any imported modules have
+finished loading.
+
+By default, we expect the module loader will load `"underscore"` from
+the relative URL `underscore.js`; this is configurable.
 
 The `import` keyword can&rsquo;t be used in a `<script>`. *Rationale:*
 The system is asynchronous.  The `import` keyword *never* blocks the
@@ -76,23 +81,93 @@ rest of the page from loading and staying responsive.
 the asynchronous Loader API, which we&rsquo;ll get to later.)
 
 
+#### Use case: importing a module which imports another module
+
+Simple:
+
+    module Backbone from "backbone";
+
+If `"backbone"` contains this:
+
+    module _ from "underscore";
+
+then we load `"underscore"`.  No code runs until all dependencies are
+loaded.
+
+
+#### Use case: hosting the code yourself
+
+You do not have to change any JS code.  In particular, your `import`
+declarations, which will likely be scattered across all your JS files,
+do not need to change.
+
+
 Use case: importing minimized modularized jquery (a package with many modules in one file)
-
-Use case: importing both Backbone and Underscore, if Backbone imports Underscore
-
-Use case: hosting the code yourself
 
 Use case: importing the same modules from many different web pages on a site
 
 
-### Easy development and debugging
+### Development and debugging
 
 Use case: importing a multifile package in source form
 
 Use case: bundling your package for others to use
 
 
-### Efficient and convenient deployment
+### Deployment
+
+#### How to improve load times for modules with dependencies
+
+Recall an earlier example:
+
+    module Backbone from "backbone";
+
+where the `"backbone"` module contains this:
+
+    module _ from "underscore";
+
+Note that this example, as written, causes two network round-trips in
+series.  First we load the `"backbone"` module.  When that loads, the
+module system sees that Backbone requires Underscore, so we then load
+`"underscore"`.
+
+The system can&rsquo;t start loading `"underscore"` until the source
+code for `"backbone"` arrives; it simply has no way of knowing what
+`"backbone"` imports until it can look at the source code.
+
+Can the extra network round-trip be eliminated?  Yes.  Here are some
+ways:
+
+  * **Use HTTP2/SPDY.**  The server will figure out that it should send
+    *both* files (Backbone and Underscore) whenever a client asks for
+    Backbone.  This is the nicest approach.  It requires no changes to
+    your JS or HTML code.
+
+  * **Kick off loads eagerly.**  You can change your JS code to say
+
+        module _ from "underscore";
+        module Backbone from "backbone";
+
+    or add this to your HTML code:
+
+        <module name="underscore" src="..."></module>
+
+    Either way, the point is to kick off *all* loads as early as
+    possible, so that they can run in parallel rather than in series,
+    reducing the total wait time.
+
+  * **Make a bundle.**  You can bundle several modules into a single
+    file on the server, and send that to the client eagerly, cutting
+    short a bunch of round trips.  Loader hooks make this easy.  We'll
+    see an example below.
+
+  * **Use a new kind of URL?**  W3C is considering a "zip URL" feature
+    that would be another very easy-to-deploy alternative.
+
+But if your load times are satisfactory for now, you don&rsquo;t need to
+do anything.  The system is designed so that *all* these techniques are
+easy to deploy after the fact, without significant changes to your
+application code.
 
 Use case: moving your JS to a CDN
 
