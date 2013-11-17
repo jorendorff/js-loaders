@@ -324,7 +324,7 @@ function $GetLoaderIteratorPrivate(iter) {
 //>   * load.[[Source]] &ndash; The result of the translate hook.
 //>
 //>   * load.[[Body]] &ndash; Once the Load reaches the `"loaded"` state, a
-//>     ModuleBody parse. (???terminology)
+//>     Module parse.
 //>
 //>   * load.[[Dependencies]] &ndash; Once the Load reaches the `"loaded"`
 //>     state, a List of pairs. Each pair consists of two strings: a module
@@ -869,25 +869,41 @@ function MakeClosure_CallInstantiate(loader, load) {
 }
 //>
 
-// **`InstantiateSucceeded`** - This is called once the `instantiate` hook
-// succeeds. Continue module loading by interpreting the hook's result and
-// calling ProcessLoadDependencies if necessary.
+//> #### InstantiateSucceeded Functions
+//>
+//> An InstantiateSucceeded function is an anonymous function that handles
+//> the result of the `instantiate` hook.
+//>
+//> Each InstantiateSucceeded function has [[Loader]] and [[Load]] internal
+//> slots.
+//>
+//> When an InstantiateSucceeded function F is called with argument
+//> instantiateResult, the following steps are taken:
+//>
 function MakeClosure_InstantiateSucceeded(loader, load) {
     return function (instantiateResult) {
+        //> 1.  Let loader be F.[[Loader]].
+        //> 2.  Let load be F.[[Load]].
+
+        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
 
-        // Interpret `instantiateResult`.  See comment on the `instantiate()`
-        // method.
+        //> 4.  If instantiateResult is undefined, then
         if (instantiateResult === undefined) {
+            //>     1. ???
             let body = $ParseModule(loader, load.source, load.name, load.address);
 
             // ProcessLoadDependencies returns a promise. The only way to propagate errors
             // is to return it.
             return ProcessLoadDependencies(load, loader, body);
+        //> 5.  Else if Type(instantiateResult) is not Object, then
         } else if (!IsObject(instantiateResult)) {
+            //>     1.  Throw a TypeError exception.
             throw std_TypeError("instantiate hook must return an object or undefined");
+        //> 6. Else if instantiateResult has all the internal slots of a Module object, then
         } else if ($IsModule(instantiateResult)) {
+            //>     1. ???
             let mod = instantiateResult;
             let name = load.name;
             if (name !== undefined) {
@@ -901,7 +917,9 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
                 callFunction(std_Map_set, loaderData.modules, name, mod);
             }
             OnEndRun(load, mod);
+        //> 7. Else
         } else {
+            //>     1. ???
             let mod = null;
             let imports = instantiateResult.imports;
 
