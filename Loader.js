@@ -743,12 +743,40 @@ function MakeClosure_CallLocate(loader, load) {
         });
     };
 }
+//>
 
+//> #### CallFetch Functions
+//>
+//> A CallFetch function is an anonymous function that calls the `fetch`
+//> loader hook.
+//>
+//> Each CallFetch function has [[Loader]] and [[Load]] internal slots.
+//>
+//> When a CallLocate function F is called with argument address, the following
+//> steps are taken:
+//>
 function MakeClosure_CallFetch(loader, load) {
     return function (address) {
+        //> 1.  Let loader be F.[[Loader]].
+        //> 2.  Let load be F.[[Load]].
+
+        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
+
+        //> 4.  Set the [[Address]] field of load to address.
         load.address = address;
+
+        //> 5.  Let hook be the result of Get(loader, `"fetch"`).
+        //> 6.  ReturnIfAbrupt(hook).
+        //> 7.  If IsCallable(hook) is false, throw a TypeError exception.
+        //> 8.  Let obj be the result of calling
+        //>     ObjectCreate(%ObjectPrototype%, ()).
+        //> 9.  Call SimpleDefine(obj, `"name"`, load.[[Name]]).
+        //> 10. Call SimpleDefine(obj, `"metadata"`, load.[[Metadata]]).
+        //> 11. Call SimpleDefine(obj, `"address"`, address).
+        //> 12. Return the result of calling the [[Call]] internal method of
+        //>     hook with loader and (obj) as arguments.
         return loader.fetch({
             name: load.name,
             metadata: load.metadata,
@@ -756,6 +784,7 @@ function MakeClosure_CallFetch(loader, load) {
         });
     };
 }
+//>
 
 function MakeClosure_CallTranslate(loader, load) {
     return function (source) {
