@@ -752,7 +752,7 @@ function MakeClosure_CallLocate(loader, load) {
 //>
 //> Each CallFetch function has [[Loader]] and [[Load]] internal slots.
 //>
-//> When a CallLocate function F is called with argument address, the following
+//> When a CallFetch function F is called with argument address, the following
 //> steps are taken:
 //>
 function MakeClosure_CallFetch(loader, load) {
