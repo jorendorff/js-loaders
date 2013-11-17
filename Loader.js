@@ -826,11 +826,39 @@ function MakeClosure_CallTranslate(loader, load) {
 }
 //>
 
+//> #### CallInstantiate Functions
+//>
+//> A CallInstantiate function is an anonymous function that calls the
+//> `instantiate` loader hook.
+//>
+//> Each CallInstantiate function has [[Loader]] and [[Load]] internal slots.
+//>
+//> When a CallInstantiate function F is called with argument source, the
+//> following steps are taken:
+//>
 function MakeClosure_CallInstantiate(loader, load) {
     return function (source) {
+        //> 1.  Let loader be F.[[Loader]].
+        //> 2.  Let load be F.[[Load]].
+
+        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
+
+        //> 4.  Set the [[Source]] internal slot of load to source.
         load.source = source;
+
+        //> 5.  Let hook be the result of Get(loader, `"instantiate"`).
+        //> 6.  ReturnIfAbrupt(hook).
+        //> 7.  If IsCallable(hook) is false, throw a TypeError exception.
+        //> 8.  Let obj be the result of calling
+        //>     ObjectCreate(%ObjectPrototype%, ()).
+        //> 9.  Call SimpleDefine(obj, `"name"`, load.[[Name]]).
+        //> 10. Call SimpleDefine(obj, `"metadata"`, load.[[Metadata]]).
+        //> 11. Call SimpleDefine(obj, `"address"`, load.[[Address]]).
+        //> 12. Call SimpleDefine(obj, `"source"`, source).
+        //> 13. Return the result of calling the [[Call]] internal method of
+        //>     hook with loader and (obj) as arguments.
         return loader.instantiate({
             name: load.name,
             metadata: load.metadata,
@@ -839,6 +867,7 @@ function MakeClosure_CallInstantiate(loader, load) {
         });
     };
 }
+//>
 
 // **`InstantiateSucceeded`** - This is called once the `instantiate` hook
 // succeeds. Continue module loading by interpreting the hook's result and
