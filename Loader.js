@@ -581,11 +581,12 @@ function MakeClosure_GetOrCreateLoad(loader) {
     return function (name) {
         var loaderData = GetLoaderInternalData(loader);
 
-        //> 1.  Let name be ToString(name).
-        //> 2.  ReturnIfAbrupt(name).
+        //> 1.  Let loader be F.[[Loader]].
+        //> 2.  Let name be ToString(name).
+        //> 3.  ReturnIfAbrupt(name).
         name = ToString(name);
 
-        //> 3.  If there is a Record in loader.[[Modules]] whose [[key]] field
+        //> 4.  If there is a Record in loader.[[Modules]] whose [[key]] field
         //>     is equal to name, then
         var existingModule = callFunction(std_Map_get, loaderData.modules, name);
         if (existingModule !== undefined) {
@@ -600,7 +601,7 @@ function MakeClosure_GetOrCreateLoad(loader) {
             return load;
         }
 
-        //> 4.  Else, if there is a Load Record in the List loader.[[Loads]]
+        //> 5.  Else, if there is a Load Record in the List loader.[[Loads]]
         //>     whose [[Name]] field is equal to name, then
         var load = callFunction(std_Map_get, loaderData.loads, name);
         if (load !== undefined) {
@@ -612,16 +613,16 @@ function MakeClosure_GetOrCreateLoad(loader) {
             return load;
         }
 
-        //> 5.  Let load be the result of CreateLoad(name).
+        //> 6.  Let load be the result of CreateLoad(name).
         load = CreateLoad(name);
 
-        //> 6.  Add load to the List loader.[[Loads]].
+        //> 7.  Add load to the List loader.[[Loads]].
         callFunction(std_Map_set, loaderData.loads, name, load);
 
-        //> 7.  Call ProceedToLocate(loader, load).
+        //> 8.  Call ProceedToLocate(loader, load).
         ProceedToLocate(loader, load);
 
-        //> 8.  Return load.
+        //> 9.  Return load.
         return load;
     };
 }
