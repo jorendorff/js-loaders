@@ -705,8 +705,38 @@ function ProceedToTranslate(loader, load, p) {
                  MakeClosure_LoadFailed(load));
 }
 
+//> #### SimpleDefine(obj, name, value) Abstract Operation
+//>
+//> The SimpleDefine operation defines a writable, configurable, enumerable
+//> data property on an ordinary object by taking the following steps:
+//>
+//> 1.  Return the result of calling OrdinaryDefineOwnProperty with arguments
+//>     obj, name, and PropertyDescriptor{[[Value]]: value, [[Writable]]: true,
+//>     [[Enumerable]]: true, [[Configurable]]: true}.
+//>
+
+//> #### CallLocate Functions
+//>
+//> A CallLocate function is an anonymous function that calls the `locate`
+//> loader hook.
+//>
+//> Each CallLocate function has [[Loader]] and [[Load]] internal slots.
+//>
+//> When a CallLocate function F is called, the following steps are taken:
+//>
 function MakeClosure_CallLocate(loader, load) {
     return function (_) {
+        //> 1.  Let loader be F.[[Loader]].
+        //> 2.  Let load be F.[[Load]].
+        //> 3.  Let obj be the result of calling
+        //>     ObjectCreate(%ObjectPrototype%, ()).
+        //> 4.  Call SimpleDefine(obj, `"name"`, load.[[Name]]).
+        //> 5.  Call SimpleDefine(obj, `"metadata"`, load.[[Metadata]]).
+        //> 6.  Let hook be the result of Get(loader, `"locate"`).
+        //> 7.  ReturnIfAbrupt(hook).
+        //> 8.  If IsCallable(hook) is false, throw a TypeError exception.
+        //> 9.  Return the result of calling the [[Call]] internal method of
+        //>     hook with loader and (obj) as arguments.
         return loader.locate({
             name: load.name,
             metadata: load.metadata
