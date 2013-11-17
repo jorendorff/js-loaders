@@ -728,13 +728,13 @@ function MakeClosure_CallLocate(loader, load) {
     return function (_) {
         //> 1.  Let loader be F.[[Loader]].
         //> 2.  Let load be F.[[Load]].
-        //> 3.  Let obj be the result of calling
+        //> 3.  Let hook be the result of Get(loader, `"locate"`).
+        //> 4.  ReturnIfAbrupt(hook).
+        //> 5.  If IsCallable(hook) is false, throw a TypeError exception.
+        //> 6.  Let obj be the result of calling
         //>     ObjectCreate(%ObjectPrototype%, ()).
-        //> 4.  Call SimpleDefine(obj, `"name"`, load.[[Name]]).
-        //> 5.  Call SimpleDefine(obj, `"metadata"`, load.[[Metadata]]).
-        //> 6.  Let hook be the result of Get(loader, `"locate"`).
-        //> 7.  ReturnIfAbrupt(hook).
-        //> 8.  If IsCallable(hook) is false, throw a TypeError exception.
+        //> 7.  Call SimpleDefine(obj, `"name"`, load.[[Name]]).
+        //> 8.  Call SimpleDefine(obj, `"metadata"`, load.[[Metadata]]).
         //> 9.  Return the result of calling the [[Call]] internal method of
         //>     hook with loader and (obj) as arguments.
         return loader.locate({
