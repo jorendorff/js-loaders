@@ -1554,25 +1554,34 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
     };
 }
 
-function MakeClosure_EvaluateLoadedModule(loader) {
-    //> ### EvaluateLoadedModule ( load )
-    //>
-    //> The following steps are taken:
-    //>
-    return function (load) {
-        //> 1.  Let F be this function.
-        //> 2.  Let loader be F.[[Loader]].
 
-        //> 4.  Assert: load.[[Status]] is `"linked"`.
+//> ### EvaluateLoadedModule Functions
+//>
+//> An EvaluateLoadedModule function is an anonymous function that is used by
+//> Loader.prototype.module and Loader.prototype.import to ensure that a module
+//> has been evaluated before it is passed to script code.
+//>
+//> Each EvaluateLoadedModule function has a [[Loader]] internal slot.
+//>
+//> When a EvaluateLoadedModule function F is called, the following steps are
+//> taken:
+//>
+function MakeClosure_EvaluateLoadedModule(loader) {
+    return function (load) {
+        //> 1.  Let loader be F.[[Loader]].
+
+        //> 2.  Assert: load.[[Status]] is `"linked"`.
         Assert(load.status === "linked");
 
-        //> 5.  Let module be load.[[Module]].
+        //> 3.  Let module be load.[[Module]].
         var module = load.module;
 
-        //> 6.  Call EnsureEvaluated(module, (), loader).
+        //> 4.  Let result be the result of EnsureEvaluated(module, (),
+        //>     loader).
+        //> 5.  ReturnIfAbrupt(result).
         EnsureEvaluatedHelper(module, loader);
 
-        //> 7.  Return module.
+        //> 6.  Return module.
         return module;
     };
     //>
