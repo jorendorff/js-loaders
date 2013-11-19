@@ -920,13 +920,24 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
             OnEndRun(load, mod);
         //> 7. Else
         } else {
-            //>     1. ???
-            let mod = null;
-            let imports = instantiateResult.imports;
+            //>     1.  Let deps be the result of calling the [[Get]] internal method of
+            //>         instantiateResult passing "deps" as the single argument.
+            //>     1.  ReturnIfAbrupt(deps).
+            let deps = instantiateResult.deps;
 
-            // P4 issue: "iterable" vs. "array"
-            if (imports !== undefined)
-                imports = [...imports];
+            //>     1.  If deps is undefined, then let depsList be a new empty List.
+            if (deps === undefined) {
+                deps = [];
+            //>     1.  Else:
+            } else {
+                //>         1.  Let depsList be the result of calling the IterableToArray
+                //>             abstract operation passing deps as the single argument.
+                //>         1.  ReturnIfAbrupt(depsList).
+                deps = [...deps];
+            }
+            //>     1.  Let execute be the result of calling the [[Get]] internal method
+            //>         of instantiateResult passing "execute" as the single argument.
+            //>     1.  ReturnIfAbrupt(execute).
             let execute = instantiateResult.execute;
 
             throw TODO;
