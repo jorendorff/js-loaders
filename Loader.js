@@ -1024,16 +1024,19 @@ function ProcessLoadDependencies(load, loader, depsList) {
 //>
 function MakeClosure_AddDependencyLoad(parentLoad, request) {
     return function (depLoad) {
-        //> 1.  Assert: There is no Record in the List
+        //> 1.  Let parentLoad be F.[[ParentLoad]].
+        //> 2.  Let request be F.[[Request]].
+
+        //> 3.  Assert: There is no Record in the List
         //>     parentLoad.[[Dependencies]] whose [[key]] field is equal to
         //>     request.
         Assert(!callFunction(std_Map_has, parentLoad.dependencies, request));
 
-        //> 2.  Add the Record {[[key]]: request, [[value]]: depLoad.[[Name]]}
+        //> 4.  Add the Record {[[key]]: request, [[value]]: depLoad.[[Name]]}
         //>     to the List parentLoad.[[Dependencies]].
         callFunction(std_Map_set, parentLoad.dependencies, request, depLoad.name);
 
-        //> 3.  If depLoad.[[Status]] is not `"linked"`, then
+        //> 5.  If depLoad.[[Status]] is not `"linked"`, then
         if (depLoad.status !== "linked") {
             //>     1.  Let linkSets be a copy of the List parentLoad.[[LinkSets]].
             var linkSets = SetToArray(parentLoad.linkSets);
@@ -1045,6 +1048,7 @@ function MakeClosure_AddDependencyLoad(parentLoad, request) {
         }
     };
 }
+//>
 
 //> #### LoadSucceeded Functions
 //>
