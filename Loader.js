@@ -1595,11 +1595,12 @@ function EnsureEvaluated(mod, seen, loaderData) {
     if (deps === undefined)
         return;  // An optimization. See the comment below.
 
-    //> 3. Repeat for each dep that is an element of deps, in order
+    //> 3. For each pair in deps, in List order,
     for (let i = 0; i < deps.length; i++) {
+        //>     1.  Let dep be pair.[[value]].
         let dep = deps[i];
 
-        //>     1. If dep is not an element of seen, then
+        //>     2. If dep is not an element of seen, then
         if (!callFunction(std_Set_has, seen, dep)) {
             //>         1. Call EnsureEvaluated with the arguments dep, seen,
             //>            and loader.
