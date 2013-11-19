@@ -69,12 +69,13 @@ def html_to_ooxml(html_element, first_numId, first_abstractNumId):
         return e
 
     class Paragraph(list):
-        __slots__ = ["pStyle", "numId", "ilvl"]
-        def __init__(self, runs=(), pStyle=None, numId=None, ilvl=None):
+        __slots__ = ["pStyle", "numId", "ilvl", "spacingAfter"]
+        def __init__(self, runs=(), pStyle=None, numId=None, ilvl=None, spacingAfter=None):
             list.__init__(self, runs)
             self.pStyle = pStyle
             self.numId = numId
             self.ilvl = ilvl
+            self.spacingAfter = spacingAfter
 
         def to_etree(self):
             content = []
@@ -87,6 +88,9 @@ def html_to_ooxml(html_element, first_numId, first_abstractNumId):
                     w_element(u"numId", val=str(self.numId)),
                     w_element(u"ilvl", val=str(self.ilvl))
                 ]))
+            if self.spacingAfter is not None:
+                pPr_content.append(w_element(u"spacing", after=str(self.spacingAfter)))
+                pPr_content.append(w_element(u"contextualSpacing"))
             if pPr_content:
                 pPr = w_element(u"pPr", pPr_content)
                 content.append(pPr)
@@ -243,9 +247,14 @@ def html_to_ooxml(html_element, first_numId, first_abstractNumId):
             else:
                 pStyle = "Alg4"
 
-            for child in e:
-                for p in convert_li(child, numId, pStyle, list_level=list_level + 1):
-                    yield p
+            # Put extra spacing on the last list item.
+            paras = [p for child in e
+                           for p in convert_li(child, numId, pStyle, list_level=list_level + 1)]
+            if tag == 'ol' and list_level == 0 and paras:
+                paras[-1].spacingAfter = 240
+            for p in paras:
+                yield p
+
         elif tag == "blockquote":
             if list_level != 0:
                 raise Exception("can't convert a blockquote inside a list")
