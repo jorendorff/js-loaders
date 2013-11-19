@@ -486,8 +486,8 @@ function MakeClosure_LoadFailed(load) {
         callFunction(std_Array_sort, linkSets,
                      (a, b) => b.timestamp - a.timestamp);
         for (let i = 0; i < linkSets.length; i++) {
-            //>     1.  Call FinishLinkSet(linkSet, false, exc).
-            FinishLinkSet(linkSets[i], false, exc);
+            //>     1.  Call LinkSetFailed(linkSet, exc).
+            LinkSetFailed(linkSets[i], exc);
         }
 
         //> 7.  Assert: load.[[LinkSets]] is empty.
@@ -1293,7 +1293,7 @@ function AddLoadToLinkSet(linkSet, load) {
 //> were not already loading, loaded, or in the module registry.
 //>
 //> This operation determines whether linkSet is ready to link, and if so,
-//> calls Link and FinishLinkSet.
+//> calls Link.
 //>
 //> The following steps are taken:
 //>
@@ -1309,44 +1309,54 @@ function UpdateLinkSetOnLoad(linkSet, load) {
     if (--linkSet.loadingCount !== 0)
         return;
 
+    //> 4.  Let startingLoad be the first element of the List
+    //>     linkSet.[[Loads]].
+    var startingLoad = callFunction(std_Set_iterator_next,
+                                    callFunction(std_Set_iterator,
+                                                 linkSet.loads));
+
     try {
-        //> 4.  Let status be the result of Link(linkSet.[[Loads]],
+        //> 5.  Let status be the result of Link(linkSet.[[Loads]],
         //>     linkSet.[[Loader]]).
         Link(linkSet.loads, linkSet.loader);
     } catch (exc) {
-        //> 5.  If status is an abrupt completion, then
-        //>     1. Call FinishLinkSet(linkSet, false, status.[[value]]).
-        FinishLinkSet(linkSet, false, exc);
+        //> 6.  If status is an abrupt completion, then
+        //>     1.  Call LinkSetFailed(linkSet, status.[[value]]).
+        LinkSetFailed(linkSet, exc);
 
-        //>     2. Return.
+        //>     2.  Return.
         return;
     }
-    //> 6. Call FinishLinkSet(linkSet, true, undefined).
-    FinishLinkSet(linkSet, true, undefined);
-}
 
-//> #### FinishLinkSet(linkSet, succeeded, exc) Abstract Operation
+    //> 7.  Assert: linkSet.[[Loads]] is an empty List.
+    Assert(callFunction(std_Set_size, linkSet.loads) === 0);
+
+    //> 8.  Call the [[Call]] internal method of linkSet.[[Resolve]] passing
+    //>     undefined and (startingLoad) as arguments.
+    //> 9.  Assert: The call performed by step 8 completed normally.
+    linkSet.resolve(startingLoad);
+}
 //>
-//> The FinishLinkSet abstract operation is called when a LinkSet succeeds or
-//> fails.  It detaches the given LinkSet Record from all Load Records and
-//> resolves or rejects the linkSet.[[Done]] Promise.
+
+
+//> #### LinkSetFailed(linkSet, exc) Abstract Operation
 //>
-//> On success, this abstract operation is performed after module linking has
-//> succeeded and all the newly loaded modules in linkSet have already been
-//> added to loader's module registry.
+//> The LinkSetFailed abstract operation is called when a LinkSet fails.  It
+//> detaches the given LinkSet Record from all Load Records and rejects the
+//> linkSet.[[Done]] Promise.
 //>
 //> The following steps are taken:
 //>
-function FinishLinkSet(linkSet, succeeded, exc) {
+function LinkSetFailed(linkSet, exc) {
     //> 1.  Let loader be linkSet.[[Loader]].
-    let loaderData = GetLoaderInternalData(linkSet.loader);
+    var loaderData = GetLoaderInternalData(linkSet.loader);
 
     //> 2.  Let loads be a copy of the List linkSet.[[Loads]].
-    let loads = SetToArray(linkSet.loads);
+    var loads = SetToArray(linkSet.loads);
 
-    //> 3.  Repeat for each load in loads,
-    for (let i = 0; i < loads.length; i++) {
-        let load = loads[i];
+    //> 3.  For each load in loads,
+    for (var i = 0; i < loads.length; i++) {
+        var load = loads[i];
 
         //>     1.  Assert: linkSet is an element of the List
         //>         load.[[LinkSets]].
@@ -1370,20 +1380,57 @@ function FinishLinkSet(linkSet, succeeded, exc) {
         }
     }
 
-    //> 4.  If succeeded is true, then
-    if (succeeded) {
-        //>     1.  Let startingLoad be the first element of the list loads.
-        //>     2.  Call the [[Call]] internal method of linkSet.[[Resolve]]
-        //>         passing undefined and (startingLoad) as arguments.
-        return linkSet.resolve(loads[0]);
-    }
-    //> 5.  Else call the [[Call]] internal method of linkSet.[[Reject]]
-    //>     passing undefined and (exc) as arguments.
+    //> 4.  Call the [[Call]] internal method of linkSet.[[Reject]] passing
+    //>     undefined and (exc) as arguments.
+    //> 5.  Assert: The call performed by step 4 completed normally.
     return linkSet.reject(exc);
-
-    //> 6.  Assert: The call performed by step 4 or 5 completed normally.
 }
 //>
+
+
+//> #### FinishLoad(loader, load) Abstract Operation
+//>
+//> The FinishLoad Abstract Operation removes a completed Load Record from all
+//> LinkSets and commits the newly loaded Module to the registry.  It performs
+//> the following steps:
+//>
+function FinishLoad(loader, load) {
+    var loaderData = GetLoaderInternalData(loader);
+
+    //> 1.  Let name be load.[[Name]].
+    var name = load.name;
+
+    //> 2.  If name is not undefined, then
+    if (name !== undefined) {
+        //>     1.  Assert: There is no Record {[[key]], [[value]]} p that is
+        //>         an element of loader.[[Modules]], such that p.[[key]] is
+        //>         equal to load.[[Name]].
+        Assert(!callFunction(std_Map_has, loaderData.modules, name));
+
+        //>     2.  Append the Record {[[key]]: load.[[Name]], [[value]]:
+        //>         load.[[Module]]} as the last element of loader.[[Modules]].
+        callFunction(std_Map_set, loaderData.modules, name, load.module);
+    }
+
+    //> 3.  If load is an element of the List loader.[[Loads]], then
+    var name = load.name;
+    if (name !== undefined) {
+        let currentLoad =
+            callFunction(std_Map_get, loaderData.loads, name);
+        if (currentLoad === load) {
+            //>     1.  Remove load from the List loader.[[Loads]].
+            callFunction(std_Map_delete, loaderData.loads, name);
+        }
+    }
+
+    //> 4.  For each linkSet in load.[[LinkSets]],
+    for (var i = 0; i < linkSets.length; i++) {
+        //>     1.  Remove load from linkSet.[[Loads]].
+        callFunction(std_Set_delete, linkSets[i].loads);
+    }
+}
+//>
+
 
 // **Timing and grouping of dependencies** &ndash; Consider
 //
