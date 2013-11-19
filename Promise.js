@@ -3,7 +3,13 @@
 // <div "lines added by jorendorff to make this stuff work in the SM shell">
 var window = this,
     require = x => window[x],
-    assert = function (c) { assertEq(c, true); },
+    assert = function (c) {
+        if (c !== true) {
+            print("=== Assertion failed:");
+            print(new Error().stack);
+            assertEq(c, true);
+        }
+    },
     exports = {},
     process = {
         _queue: [],
