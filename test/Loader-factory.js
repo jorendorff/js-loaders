@@ -1,9 +1,13 @@
-// Returning a Module from the instantiate hook skips linking.
+// Returning a trivial factory object from the instantiate hook.
 
 var m = new Module({x: 1});
 var l = new Loader({
-    fetch: function (address) { return ""; },
-    instantiate: function (source) { return m; }
+    fetch: function (address) {
+        return "";
+    },
+    instantiate: function (source) {
+        return {deps: [], execute: () => m};
+    }
 });
 l.import("water").then(x => {
     assertEq(x, m);

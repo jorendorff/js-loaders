@@ -1605,8 +1605,22 @@ function MakeClosure_EvaluateLoadedModule(loader) {
 function Link(loads, loader) {
     loads = SetToArray(loads);
     for (var i = 0; i < loads.length; i++) {
-        if (loads[i].status !== "linked")
+        if (loads[i].kind !== "dynamic")
             throw new InternalError("Module linking is not implemented.");
+    }
+
+    LinkDynamicModules(loads, loader);
+}
+
+function LinkDynamicModules(loads, loader) {
+    for (var i = 0; i < loads.length; i++) {
+        var load = loads[i];
+        var mod = callFunction(load.execute, undefined);
+        if (!$IsModule(mod))
+            throw std_TypeError("factory.execute callback must return a Module object");
+        load.module = mod;
+        load.status = "linked";
+        FinishLoad(loader, load);
     }
 }
 
