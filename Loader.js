@@ -323,8 +323,18 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //>   * load.[[Source]] &ndash; The result of the translate hook.
 //>
-//>   * load.[[Body]] &ndash; Once the Load reaches the `"loaded"` state, a
-//>     Module parse.
+//>   * load.[[Kind]] &ndash; Once the Load reaches the `"loaded"` state,
+//>     either **declarative** or **dynamic**.  If the `instantiate` hook
+//>     returned undefined, the module is declarative, and load.[[Body]]
+//>     contains a Module parse.  Otherwise, the `instantiate` hook returned a
+//>     ModuleFactory object; load.[[Execute]] contains the `.execute` callable
+//>     object.
+//>
+//>   * load.[[Body]] &ndash; A Module parse, if load.[[Kind]] is
+//>     **declarative**. Otherwise undefined.
+//>
+//>   * load.[[Execute]] &ndash; The value of `factory.execute`, if
+//>     load.[[Kind]] is **dynamic**. Otherwise undefined.
 //>
 //>   * load.[[Dependencies]] &ndash; Once the Load reaches the `"loaded"`
 //>     state, a List of pairs. Each pair consists of two strings: a module
@@ -336,19 +346,16 @@ function $GetLoaderIteratorPrivate(iter) {
 //>     **null**.
 //>
 //>   * load.[[Module]] &ndash; The Module object produced by this load, or
-//>     undefined.  There are three ways for this field to be populated,
-//>     corresponding to the three permitted `instantiate` hook return types.
+//>     undefined.
 //>
-//>     If the `instantiate` hook returns a Module, this field is set
-//>     immediately.
-//>
-//>     If the `instantiate` hook returns undefined, the module source is then
-//>     parsed, and load.[[Module]] is set if parsing succeeds and there are no
-//>     early errors.
+//>     If the `instantiate` hook returns undefined, load.[[Module]] is
+//>     populated at that point, if parsing succeeds and there are no early
+//>     errors.
 //>
 //>     Otherwise the `instantiate` hook returns a factory object, and
 //>     load.[[Module]] is set during the link phase, when the
-//>     factory.execute() method returns a Module.
+//>     `factory.execute()` method returns a Module.
+//>
 
 // A Load is in one of four states:
 //
@@ -428,17 +435,19 @@ function CreateLoad(name) {
         address: undefined,
         //> 8.  Set the [[Source]] field of load to undefined.
         source: undefined,
-        //> 9.  Set the [[Body]] field of load to undefined.
+        //> 9.  Set the [[Kind]] field of load to undefined.
+        kind: undefined,
+        //> 10. Set the [[Body]] field of load to undefined.
         body: undefined,
-        //> 10. Set the [[Factory]] field of load to undefined.
-        factory: undefined,
-        //> 11. Set the [[Exception]] field of load to undefined.
+        //> 11. Set the [[Execute]] field of load to undefined.
+        execute: undefined,
+        //> 12. Set the [[Exception]] field of load to undefined.
         exception: undefined,
-        //> 12. Set the [[Module]] field of load to undefined.
+        //> 13. Set the [[Module]] field of load to undefined.
         module: null,
         then: undefined
     };
-    //> 13.  Return load.
+    //> 14. Return load.
 }
 //>
 //
@@ -890,98 +899,86 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
 
+        var depsList;
+
         //> 4.  If instantiateResult is undefined, then
         if (instantiateResult === undefined) {
-            //>     1. ???
+            //>     1.  Let body be the result of parsing load.[[Source]],
+            //>         interpreted as UTF-16 encoded Unicode text as described
+            //>         in clause 10.1.1, using Module as the goal
+            //>         symbol. Throw a SyntaxError exception if the parse
+            //>         fails or if any static semantics errors are detected.
             let body = $ParseModule(loader, load.source, load.name, load.address);
 
-            // ProcessLoadDependencies returns a promise. The only way to propagate errors
-            // is to return it.
-            return ProcessLoadDependencies(load, loader, body);
-        //> 5.  Else if Type(instantiateResult) is not Object, then
-        } else if (!IsObject(instantiateResult)) {
+            //>     2.  Set the [[Body]] field of load to body.
+            load.body = body;
+
+            //>     3.  Set the [[Kind]] field of load to **declarative**.
+            load.kind = "declarative";
+
+            //>     4.  Let depsList be the ModuleRequests of body.
+            depsList = $ModuleRequests(body);
+
+        //> 5.  Else if Type(instantiateResult) is Object, then
+        } else if (IsObject(instantiateResult)) {
+            //>     1.  Let deps be the result of Get(instantiateResult, `"deps"`).
+            //>     2.  ReturnIfAbrupt(deps).
+            var deps = instantiateResult.deps;
+
+            //>     3.  If deps is undefined, then let depsList be a new empty List.
+            //>     4.  Else:
+            //>         1.  Let depsList be the result of calling the IterableToArray
+            //>             abstract operation passing deps as the single argument.
+            //>         2.  ReturnIfAbrupt(depsList).
+            depsList = deps === undefined ? [] : [...deps];
+
+            //>     5.  Let execute be the result of Get(instantiateResult,
+            //>         `"execute"`).
+            //>     6.  ReturnIfAbrupt(execute).
+            var execute = instantiateResult.execute;
+
+            //>     7.  Set the [[Execute]] field of load to execute.
+            load.execute = execute;
+
+            //>     8.  Set the [[Kind]] field of load to **dynamic**.
+            load.kind = "dynamic";
+        //> 6. Else,
+        } else {
             //>     1.  Throw a TypeError exception.
             throw std_TypeError("instantiate hook must return an object or undefined");
-        //> 6. Else if instantiateResult has all the internal slots of a Module object, then
-        } else if ($IsModule(instantiateResult)) {
-            //>     1. ???
-            let mod = instantiateResult;
-            let name = load.name;
-            if (name !== undefined) {
-                var loaderData = GetLoaderInternalData(loader);
-
-                if (callFunction(std_Map_has, loaderData.modules, name)) {
-                    throw std_TypeError("fetched module \"" + name + "\" " +
-                                        "but a module with that name is already " +
-                                        "in the registry");
-                }
-                callFunction(std_Map_set, loaderData.modules, name, mod);
-            }
-            OnEndRun(load, mod);
-        //> 7. Else
-        } else {
-            //>     1.  Let deps be the result of calling the [[Get]] internal method of
-            //>         instantiateResult passing "deps" as the single argument.
-            //>     1.  ReturnIfAbrupt(deps).
-            let deps = instantiateResult.deps;
-
-            //>     1.  If deps is undefined, then let depsList be a new empty List.
-            if (deps === undefined) {
-                deps = [];
-            //>     1.  Else:
-            } else {
-                //>         1.  Let depsList be the result of calling the IterableToArray
-                //>             abstract operation passing deps as the single argument.
-                //>         1.  ReturnIfAbrupt(depsList).
-                deps = [...deps];
-            }
-            //>     1.  Let execute be the result of calling the [[Get]] internal method
-            //>         of instantiateResult passing "execute" as the single argument.
-            //>     1.  ReturnIfAbrupt(execute).
-            let execute = instantiateResult.execute;
-
-            throw TODO;
         }
+
+        //> 7.  Return the result of calling ProcessLoadDependencies(load,
+        //>     loader, depsList).
+        ;// ProcessLoadDependencies returns a promise. The only way to
+        ;// propagate errors is to return it.
+        return ProcessLoadDependencies(load, loader, moduleRequests);
     };
 }
 
-//> #### ProcessLoadDependencies(load, loader, body) Abstract Operation
+//> #### ProcessLoadDependencies(load, loader, depsList) Abstract Operation
 //>
-//> The ProcessLoadDependencies abstract operation is called after an `instantiate` hook
-//> produces undefined or an object that implements the ModuleFactory
-//> interface.
+//> The ProcessLoadDependencies abstract operation is called after one module
+//> has nearly finished loading. It starts new loads as needed to load the
+//> module's dependencies.
 //>
-//> ProcessLoadDependencies which may trigger additional Loads. It also
-//> arranges for LoadSucceeded to be called once any new Loads have
-//> been added to all listening LinkSets.
+//> ProcessLoadDependencies also arranges for LoadSucceeded to be called.
 //>
-//> ProcessLoadDependencies performs the following steps:
+//> The following steps are taken:
 //>
-function ProcessLoadDependencies(load, loader, body) {
-    //> 1.  Assert: load.[[Status]] is `"loading"`.
-    Assert(load.status === "loading");
-
-    //> 2.  Assert: The List load.[[LinkSets]] is not empty.
-    Assert(callFunction(std_Set_get_size, load.linkSets) !== 0);
-
-    //> 3.  Set the [[Body]] field of load to body.
-    load.body = body;
-
-    //> 4.  Let refererName be load.[[Name]].
+function ProcessLoadDependencies(load, loader, depsList) {
+    //> 1.  Let refererName be load.[[Name]].
     var refererName = load.name;
 
-    //> 5.  Let moduleRequests be the ModuleRequests of body.
-    var moduleRequests = $ModuleRequests(body);
-
-    //> 6.  Set the [[Dependencies]] field of load to a new empty List.
+    //> 2.  Set the [[Dependencies]] field of load to a new empty List.
     load.dependencies = CreateMap();
 
-    //> 7.  Let loadPromises be a new empty List.
+    //> 3.  Let loadPromises be a new empty List.
     var loadPromises = [];
 
-    //> 8.  For each request in moduleRequests, do
-    for (var i = 0; i < moduleRequests.length; i++) {
-        var request = moduleRequests[i];
+    //> 4.  For each request in depsList, do
+    for (var i = 0; i < depsList.length; i++) {
+        var request = depsList[i];
 
         //>     1.  Let p be the result of RequestLoad(loader, request,
         //>         refererName, load.[[Address]]).
@@ -999,33 +996,18 @@ function ProcessLoadDependencies(load, loader, body) {
         callFunction(std_Array_push, loadPromises, p);
     }
 
-    //> 9.  Let p be PromiseAll(loadPromises).
+    //> 5.  Let p be PromiseAll(loadPromises).
     var p = callFunction(std_Promise_all, std_Promise, loadPromises);
 
-    //> 10. Let F be a new anonymous function as defined by
+    //> 6.  Let F be a new anonymous function as defined by
     //>     LoadSucceeded.
-    //> 11. Set the [[Load]] internal slot of F to load.
-    //> 12. Let p be the result of PromiseThen(p, F).
+    //> 7.  Set the [[Load]] internal slot of F to load.
+    //> 8.  Let p be the result of PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_LoadSucceeded(load));
 
-    //> 13. Return p.
+    //> 9.  Return p.
     return p;
-}
-
-//> #### OnEndRun(load, mod) Abstract Operation
-//>
-// Called when the `instantiate` hook returns a Module object.
-function OnEndRun(load, mod) {
-    Assert(load.status === "loading");
-    load.status = "linked";
-    load.module = mod;
-
-    let linkSets = SetToArray(load.linkSets);
-    callFunction(std_Array_sort, linkSets,
-                 (a, b) => b.timestamp - a.timestamp);
-    for (let i = 0; i < linkSets.length; i++)
-        UpdateLinkSetOnLoad(linkSets[i], load);
 }
 
 //> #### AddDependencyLoad Functions
@@ -1160,13 +1142,14 @@ function MakeClosure_LoadSucceeded(load) {
 //
 // Errors related to a `LinkSet`:
 //
-//   - During linking, we can find that a factory-made module is involved in an
+//   - During linking, we can find that a dynamic module is involved in an
 //     import cycle. This is an error.
 //
-//   - Linking a set of non-factory-made modules can fail in several ways.
+//   - Linking a set of declarative modules can fail in several ways.
 //     These are described under "Runtime Semantics: Link Errors".
 //
-//   - A factory function can throw or return an invalid value.
+//   - A dynamic `factory.execute()` function can throw or return an invalid
+//     value.
 //
 //   - Evaluation of a module body or a script can throw.
 //
@@ -1327,8 +1310,8 @@ function UpdateLinkSetOnLoad(linkSet, load) {
         return;
 
     try {
-        //> 4.  Let status be the result of calling the Link abstract operation
-        //>     passing linkSet.[[Loads]] and linkSet.[[Loader]] as arguments.
+        //> 4.  Let status be the result of Link(linkSet.[[Loads]],
+        //>     linkSet.[[Loader]]).
         Link(linkSet.loads, linkSet.loader);
     } catch (exc) {
         //> 5.  If status is an abrupt completion, then
@@ -1441,13 +1424,13 @@ function LoadModule(loader, name, options) {
     //> 1.  Set F.[[ModuleMetadata]] to metadata.
     //> 1.  Set F.[[ModuleSource]] to source.
     //> 1.  Set F.[[ModuleAddress]] to address.
-    var f = MakeClosure_AsyncStartLoadPartwayThrough(
+    var F = MakeClosure_AsyncStartLoadPartwayThrough(
         loader, loaderData, name,
         address === undefined ? "locate" : "fetch",
         {}, address, undefined);
 
     //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
-    return new std_Promise(f);
+    return new std_Promise(F);
 }
 
 function MakeClosure_AsyncStartLoadPartwayThrough(
@@ -2534,9 +2517,7 @@ def(Loader.prototype, {
         //>     defined by EvaluateLoadedModule.
         //> 1.  Set successCallback.[[Loader]] to loader.
         //> 1.  Set successCallback.[[Load]] to load.
-        //> 1.  Let p be the result of calling the [[Call]] internal method of
-        //>     %PromiseThen% passing linkSet.[[Done]] and (successCallback) as
-        //>     arguments.
+        //> 1.  Let p be the result of calling PromiseThen(linkSet.[[Done]], successCallback).
         let p = callFunction(std_Promise_then, linkSet.done,
                              MakeClosure_EvaluateLoadedModule(loader));
 
@@ -2993,43 +2974,36 @@ def(Loader.prototype, {
     //> `load.source` is the translated module source. (This is the value
     //> produced by the `translate` hook.)
     //>
-    //> There are three options.
+    //> If the `instantiate` hook returns **undefined** or a thenable for the
+    //> value **undefined**, then the loader uses the default linking behavior.
+    //> It parses src as a Module, looks at its imports, loads its dependencies
+    //> asynchronously, and finally links them together and adds them to the
+    //> registry.
     //>
-    //>  1. The instantiate hook may return `undefined`. The loader then uses
-    //>     the default linking behavior.  It parses src as a module body,
-    //>     looks at its imports, loads all dependencies asynchronously, and
-    //>     finally links them as a unit and adds them to the registry.
+    //> Otherwise, the hook should return a factory object (or a thenable for a
+    //> factory object) which the loader will use to create the module and link
+    //> it with its clients and dependencies.
     //>
-    //>     The module bodies will then be evaluated on demand; see
-    //>     `EnsureEvaluated`.
+    //> The form of a factory object is:
     //>
-    //>  2. The hook may return a full `Module` instance object.  The loader
-    //>     then simply adds that module to the registry.
+    //>     {
+    //>         deps: <array of strings (module names)>,
+    //>         execute: <function (Module, Module, ...) -> Module>
+    //>     }
     //>
-    //>  3. The hook may return a factory object which the loader will use to
-    //>     create the module and link it with its clients and dependencies.
+    //> The module is executed during the linking process.  First all of its
+    //> dependencies are executed and linked, and then passed to the `execute`
+    //> function.  Then the resulting module is linked with the downstream
+    //> dependencies.
     //>
-    //>     The form of a factory object is:
+    //> NOTE This feature is provided in order to permit custom loaders to
+    //> support using `import` to import pre-ES6 modules such as AMD modules.
+    //> The design requires incremental linking when such modules are present,
+    //> but it ensures that modules implemented with standard source-level
+    //> module declarations can still be statically validated.
     //>
-    //>         {
-    //>             imports: <array of strings (module names)>,
-    //>             execute: <function (Module, Module, ...) -> Module>
-    //>         }
-    //>
-    //>     The module is executed during the linking process.  First all of
-    //>     its dependencies are executed and linked, and then passed to the
-    //>     relevant execute function.  Then the resulting module is linked
-    //>     with the downstream dependencies.  This requires incremental
-    //>     linking when such modules are present, but it ensures that modules
-    //>     implemented with standard source-level module declarations can
-    //>     still be statically validated.
-    //>
-    //>     NOTE This feature is provided in order to permit custom loaders to
-    //>     support using `import` to import pre-ES6 modules such as AMD
-    //>     modules.
-    //>
-    //> *When this hook is called:*  After the `translate` hook, for modules
-    //> only.
+    //> *When this hook is called:* For all modules, after the `translate`
+    //> hook.
     //>
     //> *Default behavior:*  Return undefined.
     //>
