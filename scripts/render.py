@@ -23,8 +23,19 @@ def preprocess(source):
         # Find names in the body.
         for m in re.finditer(ur'\bcalled\s+on\s+an\s+object\s+(\w+)', body):
             names.add(m.group(1))
-        for m in re.finditer(ur'(?i)\blet\s+(\w+)\s+be\b', body):
+        for m in re.finditer(ur'(?i)\.\s+let\s+(\w+)\s+be\b', body):
             names.add(m.group(1))
+        for m in re.finditer(ur'(?i)\.\s+for each\s+(\w+)\s+in\b', body):
+            names.add(m.group(1))
+        for m in re.finditer(ur'(?i)\bfunction\s+(\w+)\s+is\s+called,', body):
+            names.add(m.group(1))
+        for m in re.finditer(ur'(?i)\bfunction\s+(\w+)\s+is\s+called\s+with\s+argument\s+(\w+),', body):
+            names.add(m.group(1))
+            names.add(m.group(2))
+        for m in re.finditer(ur'(?i)\bfunction\s+(\w+)\s+is\s+called\s+with\s+arguments\s+(\w+)\s+and\s+(\w+),', body):
+            names.add(m.group(1))
+            names.add(m.group(2))
+            names.add(m.group(3))
 
         if names:
             # Italicize all names in the body.
