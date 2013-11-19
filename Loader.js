@@ -48,6 +48,7 @@ var std_Set_get_size = Object.getOwnPropertyDescriptor(Set.prototype, "size").ge
 var std_Set_has = Set.prototype.has;
 var std_Set_add = Set.prototype.add;
 var std_Set_delete = Set.prototype.delete;
+var std_Set_clear = Set.prototype.clear;
 var std_Set_iterator = Set.prototype["@@iterator"];
 var std_Set_iterator_next = new Set()["@@iterator"]().next;
 var std_Map = Map;
@@ -952,7 +953,7 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
         //>     loader, depsList).
         ;// ProcessLoadDependencies returns a promise. The only way to
         ;// propagate errors is to return it.
-        return ProcessLoadDependencies(load, loader, moduleRequests);
+        return ProcessLoadDependencies(load, loader, depsList);
     };
 }
 
@@ -1313,7 +1314,7 @@ function UpdateLinkSetOnLoad(linkSet, load) {
     //>     linkSet.[[Loads]].
     var startingLoad = callFunction(std_Set_iterator_next,
                                     callFunction(std_Set_iterator,
-                                                 linkSet.loads));
+                                                 linkSet.loads)).value;
 
     try {
         //> 5.  Let status be the result of Link(linkSet.[[Loads]],
@@ -1329,7 +1330,7 @@ function UpdateLinkSetOnLoad(linkSet, load) {
     }
 
     //> 7.  Assert: linkSet.[[Loads]] is an empty List.
-    Assert(callFunction(std_Set_size, linkSet.loads) === 0);
+    Assert(callFunction(std_Set_get_size, linkSet.loads) === 0);
 
     //> 8.  Call the [[Call]] internal method of linkSet.[[Resolve]] passing
     //>     undefined and (startingLoad) as arguments.
@@ -1424,10 +1425,14 @@ function FinishLoad(loader, load) {
     }
 
     //> 4.  For each linkSet in load.[[LinkSets]],
+    var linkSets = SetToArray(load.linkSets);
     for (var i = 0; i < linkSets.length; i++) {
         //>     1.  Remove load from linkSet.[[Loads]].
-        callFunction(std_Set_delete, linkSets[i].loads);
+        callFunction(std_Set_delete, linkSets[i].loads, load);
     }
+
+    //> 5.  Remove all elements from the List load.[[LinkSets]].
+    callFunction(std_Set_clear, load.linkSets);
 }
 //>
 
