@@ -460,17 +460,18 @@ function CreateLoad(name) {
 //>
 function MakeClosure_LoadFailed(load) {
     return function (exc) {
-        //> 1.  Assert: load.[[Status]] is `"loading"`.
+        //> 1.  Let load be F.[[Load]].
+        //> 2.  Assert: load.[[Status]] is `"loading"`.
         Assert(load.status === "loading");
 
-        //> 2.  Set load.[[Status]] to `"failed".
+        //> 3.  Set load.[[Status]] to `"failed".
         load.status = "failed";
 
-        //> 3.  Set load.[[Exception]] to exc.
+        //> 4.  Set load.[[Exception]] to exc.
         load.exception = exc;
 
-        //> 4.  Let linkSets be a copy of the List load.[[LinkSets]].
-        //> 5.  For each linkSet in linkSets, in the order in which the LinkSet
+        //> 5.  Let linkSets be a copy of the List load.[[LinkSets]].
+        //> 6.  For each linkSet in linkSets, in the order in which the LinkSet
         //>     Records were created,
         let linkSets = SetToArray(load.linkSets);
         callFunction(std_Array_sort, linkSets,
@@ -480,7 +481,7 @@ function MakeClosure_LoadFailed(load) {
             FinishLinkSet(linkSets[i], false, exc);
         }
 
-        //> 6.  Assert: load.[[LinkSets]] is empty.
+        //> 7.  Assert: load.[[LinkSets]] is empty.
         Assert(callFunction(std_Set_get_size, load.linkSets) === 0);
     };
 }
