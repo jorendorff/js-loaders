@@ -772,7 +772,7 @@ function MakeClosure_CallFetch(loader, load) {
         //> 1.  Let loader be F.[[Loader]].
         //> 2.  Let load be F.[[Load]].
 
-        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
+        //> 3.  If load.[[LinkSets]] is an empty List, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
 
@@ -813,7 +813,7 @@ function MakeClosure_CallTranslate(loader, load) {
         //> 1.  Let loader be F.[[Loader]].
         //> 2.  Let load be F.[[Load]].
 
-        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
+        //> 3.  If load.[[LinkSets]] is an empty List, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
 
@@ -853,7 +853,7 @@ function MakeClosure_CallInstantiate(loader, load) {
         //> 1.  Let loader be F.[[Loader]].
         //> 2.  Let load be F.[[Load]].
 
-        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
+        //> 3.  If load.[[LinkSets]] is an empty List, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
 
@@ -897,7 +897,7 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
         //> 1.  Let loader be F.[[Loader]].
         //> 2.  Let load be F.[[Load]].
 
-        //> 3.  If load.[[LinkSets]] is an empty list, return undefined.
+        //> 3.  If load.[[LinkSets]] is an empty List, return undefined.
         if (callFunction(std_Set_get_size, load.linkSets) === 0)
             return;
 
