@@ -2040,7 +2040,7 @@ function Realm(options, initializer) {
     //> 1.  Set realmObject.[[Realm]] to realm.
     realmData.realm = realm;
 
-    //> 1.  If initializer is not undefined then the following steps are taken:
+    //> 1.  If initializer is not undefined, then
     if (initializer !== undefined) {
         //>     1.  If IsCallable(initializer) is false, throw a TypeError
         //>         exception.
