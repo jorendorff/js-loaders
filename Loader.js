@@ -395,7 +395,7 @@ function $GetLoaderIteratorPrivate(iter) {
 //     The load leaves this state when a LinkSet successfully links the module
 //     and moves it into the loader's module registry.
 //
-// 3.  Done:  The module has been linked and added to the loader's module
+// 3.  Linked:  The module has been linked and added to the loader's module
 //     registry.  Its body may or may not have been evaluated yet (see
 //     `EnsureEvaluated`).
 //
