@@ -339,8 +339,9 @@ function $GetLoaderIteratorPrivate(iter) {
 //>
 //>   * load.[[Dependencies]] &ndash; Once the Load reaches the `"loaded"`
 //>     state, a List of pairs. Each pair consists of two strings: a module
-//>     name as it appears in an `import` or `export from` declaration in
-//>     load.[[Body]], and the corresponding normalized module name.
+//>     name as it appears in a `module`, `import`, or `export from`
+//>     declaration in load.[[Body]], and the corresponding normalized module
+//>     name.
 //>
 //>   * load.[[Exception]] &ndash; If load.[[Status]] is `"failed"`, the
 //>     exception value that was thrown, causing the load to fail. Otherwise,
