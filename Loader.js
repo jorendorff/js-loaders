@@ -1490,15 +1490,25 @@ function LoadModule(loader, name, options) {
     return new std_Promise(F);
 }
 
+//> ### AsyncStartLoadPartwayThrough Functions
+//>
+//> An AsyncStartLoadPartwayThrough function is an anonymous function that
+//> creates a new Load Record and populates it with some information provided
+//> by the caller, so that loading can proceed from either the `locate` hook,
+//> the `fetch` hook, or the `translate` hook. This functionality is used to
+//> implement builtin methods like `Loader.prototype.load`, which permits the
+//> user to specify both the normalized module name and the address.
+//>
+//> Each LoadSucceeded function has internal slots [[Loader]], [[ModuleName]],
+//> [[Step]], [[ModuleMetadata]], [[ModuleAddress]], and [[ModuleSource]].
+//>
+//> When an AsyncStartLoadPartwayThrough function F is called with arguments
+//> resolve and reject, the following steps are taken:
+//>
 function MakeClosure_AsyncStartLoadPartwayThrough(
     loader, loaderData, name, step, metadata, address, source)
 {
-    //> ### AsyncStartLoadPartwayThrough ( resolve, reject )
-    //>
-    //> The following steps are taken:
-    //>
     return function (resolve, reject) {
-        //> 1.  Let F be this function object.
         //> 1.  Let loader be F.[[Loader]].
         //> 1.  Let name be F.[[ModuleName]].
         //> 1.  Let step be F.[[Step]].
