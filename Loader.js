@@ -1932,13 +1932,15 @@ function GetRealmInternalData(value) {
 //> #### new Realm ( options, initializer )
 //>
 function Realm(options, initializer) {
-    //> 1.  Let realmObject be the this value.
+    // Implementation bug: In step 1, this implementation calls Realm[@@create]
+    // directly.  The spec instead makes `new Realm(options)` equivalent to
+    // `Realm.[[Call]](Realm[@@create](), List [options])`.  In other words,
+    // Realm[@@create] is called *before* Realm.  We'll change that when
+    // symbols and @@create are implemented. For now it is just very very
+    // slightly out of line with the spec. The Loader constructor has the same
+    // discrepancy.
     //
-    // Bug: This calls Realm[@@create] directly.  The spec will instead make
-    // `new Realm(options)` equivalent to `Realm.[[Call]](Realm[@@create](),
-    // List [options])`.
-    // In other words, Realm[@@create] will be called *before* Realm.
-    // We'll change that when symbols and @@create are implemented.
+    //> 1.  Let realmObject be the this value.
     var realmObject = callFunction(Realm["@@create"], Realm);
 
     //> 1.  If Type(realmObject) is not Object, throw a TypeError exception.
@@ -2236,11 +2238,8 @@ function GetOption(options, name) {
 //> following steps are taken:
 //>
 function Loader(options={}) {
-    // Bug: In step 1, this implementation calls Loader[@@create] directly.
-    // The spec will instead make `new Loader(options)` equivalent to
-    // `Loader.[[Call]](Loader[@@create](), List [options])`.  In other words,
-    // Loader[@@create] must be called *before* Loader.  We'll change that when
-    // symbols and @@create are implemented.
+    // Implementation note: See the comment about @@create methods on step 1 of
+    // the Realm constructor, above.
     //
     //> 1.  Let loader be the this value.
     var loader = callFunction(Loader["@@create"], Loader);
