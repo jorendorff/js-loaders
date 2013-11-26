@@ -1459,6 +1459,10 @@ function FinishLoad(loader, load) {
 
 // ## Module loading entry points
 
+//> #### LoadModule(loader, name, options) Abstract Operation
+//>
+//> The following steps are taken:
+//>
 function LoadModule(loader, name, options) {
     var loaderData = GetLoaderInternalData(loader);
 
@@ -1489,6 +1493,7 @@ function LoadModule(loader, name, options) {
     //> 1.  Return the result of calling OrdinaryConstruct(%Promise%, (F)).
     return new std_Promise(F);
 }
+//>
 
 //> ### AsyncStartLoadPartwayThrough Functions
 //>
