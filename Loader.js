@@ -507,7 +507,7 @@ function MakeClosure_LoadFailed(load) {
 
 // ## The loader pipeline
 
-//> #### RequestLoad(loader, request, refererName, refererAddress) Abstract Operation
+//> #### RequestLoad(loader, request, referrerName, referrerAddress) Abstract Operation
 //>
 //> The RequestLoad abstract operation normalizes the given module name,
 //> request, and returns a promise that resolves to the value of a Load object
@@ -519,7 +519,7 @@ function MakeClosure_LoadFailed(load) {
 //> appears in the import-declaration or as the argument to `loader.load()` or
 //> `loader.import()`.
 //>
-//> refererName and refererAddress provide information about the context of
+//> referrerName and referrerAddress provide information about the context of
 //> the `import()` call or import-declaration.  This information is passed to
 //> all the loader hooks.
 //>
@@ -532,14 +532,14 @@ function MakeClosure_LoadFailed(load) {
 //>
 //> The following steps are taken:
 //>
-function RequestLoad(loader, request, refererName, refererAddress) {
+function RequestLoad(loader, request, referrerName, referrerAddress) {
     //> 1.  Let F be a new anonymous function as defined by CallNormalize.
     //> 2.  Set the [[Loader]] internal slot of F to loader.
     //> 3.  Set the [[Request]] internal slot of F to request.
-    //> 4.  Set the [[RefererName]] internal slot of F to refererName.
-    //> 5.  Set the [[RefererAddress]] internal slot of F to refererAddress.
-    var F = MakeClosure_CallNormalize(loader, request, refererName,
-                                      refererAddress);
+    //> 4.  Set the [[ReferrerName]] internal slot of F to referrerName.
+    //> 5.  Set the [[ReferrerAddress]] internal slot of F to referrerAddress.
+    var F = MakeClosure_CallNormalize(loader, request, referrerName,
+                                      referrerAddress);
 
     //> 6.  Let p be the result of calling OrdinaryConstruct(%Promise%, (F)).
     var p = new std_Promise(F);
@@ -561,25 +561,25 @@ function RequestLoad(loader, request, refererName, refererAddress) {
 //> normalize hook.
 //>
 //> Each CallNormalize function has internal slots [[Loader]], [[Request]],
-//> [[RefererName]], and [[RefererAddress]].
+//> [[ReferrerName]], and [[ReferrerAddress]].
 //>
 //> When a CallNormalize function F is called with arguments resolve and
 //> reject, the following steps are taken.
 //>
-function MakeClosure_CallNormalize(loader, request, refererName, refererAddress) {
+function MakeClosure_CallNormalize(loader, request, referrerName, referrerAddress) {
     return function (resolve, reject) {
         //> 1.  Let loader be F.[[Loader]].
         //> 2.  Let request be F.[[Request]].
-        //> 3.  Let refererName be F.[[RefererName]].
-        //> 4.  Let refererAddress be F.[[RefererAddress]].
+        //> 3.  Let referrerName be F.[[ReferrerName]].
+        //> 4.  Let referrerAddress be F.[[ReferrerAddress]].
         //> 5.  Let normalizeHook be the result of Get(loader, `"normalize"`).
         //> 6.  Let name be the result of calling the [[Call]] internal method
-        //>     of normalizeHook passing loader and (request, refererName,
-        //>     refererAddress) as arguments.
+        //>     of normalizeHook passing loader and (request, referrerName,
+        //>     referrerAddress) as arguments.
         //> 7.  ReturnIfAbrupt(name).
         //> 8.  Call the [[Call]] internal method of resolve passing undefined
         //>     and (name) as arguments.
-        resolve(loader.normalize(request, refererName, refererAddress));
+        resolve(loader.normalize(request, referrerName, referrerAddress));
     };
 }
 
@@ -972,8 +972,8 @@ function MakeClosure_InstantiateSucceeded(loader, load) {
 //> The following steps are taken:
 //>
 function ProcessLoadDependencies(load, loader, depsList) {
-    //> 1.  Let refererName be load.[[Name]].
-    var refererName = load.name;
+    //> 1.  Let referrerName be load.[[Name]].
+    var referrerName = load.name;
 
     //> 2.  Set the [[Dependencies]] field of load to a new empty List.
     load.dependencies = CreateMap();
@@ -986,8 +986,8 @@ function ProcessLoadDependencies(load, loader, depsList) {
         var request = depsList[i];
 
         //>     1.  Let p be the result of RequestLoad(loader, request,
-        //>         refererName, load.[[Address]]).
-        var p = RequestLoad(loader, request, refererName, load.address);
+        //>         referrerName, load.[[Address]]).
+        var p = RequestLoad(loader, request, referrerName, load.address);
 
         //>     2.  Let F be a new anonymous function as defined by
         //>         AddDependencyLoad.
@@ -2473,7 +2473,7 @@ def(Loader.prototype, {
     // **options.address** &ndash; Several Loader methods accept an `options`
     // parameter.  For these methods, `options.address`, if present, is passed
     // to the `translate` and `instantiate` hooks as `load.address`, and to the
-    // `normalize` hook for each dependency, as `refererAddress`.  The default
+    // `normalize` hook for each dependency, as `referrerAddress`.  The default
     // loader hooks ignore it, though.
     //
     // Implementations may also store `options.address` in the compiled module
@@ -2937,7 +2937,7 @@ def(Loader.prototype, {
     // itself.)
     //
 
-    //> #### Loader.prototype.normalize ( name, refererName, refererAddress )
+    //> #### Loader.prototype.normalize ( name, referrerName, referrerAddress )
     //>
     //> This hook receives the module name as written in the import
     //> declaration.  It returns a string or a thenable for a string, the full
@@ -2958,7 +2958,7 @@ def(Loader.prototype, {
     //>
     //> When the normalize method is called, the following steps are taken:
     //>
-    normalize: function normalize(name, refererName, refererAddress) {
+    normalize: function normalize(name, referrerName, referrerAddress) {
         //> 1. Return name.
         return name;
     },
