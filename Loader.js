@@ -1507,8 +1507,9 @@ function LoadModule(loader, name, options) {
 //> implement builtin methods like `Loader.prototype.load`, which permits the
 //> user to specify both the normalized module name and the address.
 //>
-//> Each LoadSucceeded function has internal slots [[Loader]], [[ModuleName]],
-//> [[Step]], [[ModuleMetadata]], [[ModuleAddress]], and [[ModuleSource]].
+//> Each AsyncStartLoadPartwayThrough function has internal slots [[Loader]],
+//> [[ModuleName]], [[Step]], [[ModuleMetadata]], [[ModuleAddress]], and
+//> [[ModuleSource]].
 //>
 //> When an AsyncStartLoadPartwayThrough function F is called with arguments
 //> resolve and reject, the following steps are taken:
