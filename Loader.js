@@ -991,7 +991,7 @@ function ProcessLoadDependencies(load, loader, depsList) {
 
         //>     2.  Let F be a new anonymous function as defined by
         //>         AddDependencyLoad.
-        //>     3.  Set the [[Load]] internal slot of F to load.
+        //>     3.  Set the [[ParentLoad]] internal slot of F to load.
         //>     4.  Set the [[Request]] internal slot of F to request.
         //>     5.  Let p be the result of PromiseThen(p, F).
         p = callFunction(std_Promise_then, p,
