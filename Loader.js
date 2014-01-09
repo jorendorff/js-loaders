@@ -676,7 +676,6 @@ function ProceedToFetch(loader, load, p) {
     //>     CallFetch.
     //> 1.  Set F.[[Loader]] to loader.
     //> 1.  Set F.[[Load]] to load.
-    //> 1.  Set F.[[AddressPromise]] to p.
     //> 1.  Let p be the result of calling PromiseThen(p, F).
     p = callFunction(std_Promise_then, p,
                      MakeClosure_CallFetch(loader, load));
