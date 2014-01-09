@@ -1486,7 +1486,7 @@ function LoadModule(loader, name, options) {
     //> 1.  Let metadata be the result of ObjectCreate(%ObjectPrototype%,
     //>     ()).
     //> 1.  Set F.[[ModuleMetadata]] to metadata.
-    //> 1.  Set F.[[ModuleSource]] to source.
+    //> 1.  Set F.[[ModuleSource]] to undefined.
     //> 1.  Set F.[[ModuleAddress]] to address.
     var F = MakeClosure_AsyncStartLoadPartwayThrough(
         loader, loaderData, name,
