@@ -1592,8 +1592,8 @@ function MakeClosure_AsyncStartLoadPartwayThrough(
 //>
 //> Each EvaluateLoadedModule function has a [[Loader]] internal slot.
 //>
-//> When a EvaluateLoadedModule function F is called, the following steps are
-//> taken:
+//> When an EvaluateLoadedModule function F is called with argument load, the
+//> following steps are taken:
 //>
 function MakeClosure_EvaluateLoadedModule(loader) {
     return function (load) {
