@@ -1808,6 +1808,30 @@ function EnsureEvaluatedHelper(mod, loader) {
 //>   * module.[[Dependencies]] &ndash; a List of Modules or undefined.  This
 //>     is populated at link time by the loader and used by EnsureEvaluated.
 //>
+//>   * module.[[Evaluated]] &ndash; **true** if the module body has been
+//>     evaluated.
+//>
+//> In addition, a Module object has the following internal slots which are used
+//> only while a module is being loaded, and can be discarded once the module
+//> is fully loaded and linked, and the module body has been evaluated.
+//>
+//>   * module.[[Body]] &ndash; The module body, a Module parse.
+//>
+//>   * module.[[ExportDefinitions]] &ndash; A List of Records, {
+//>     [[Module]]: a Module Object or null, [[ImportName]]: a String,
+//>     [[LocalName]]: a String or null, [[ExportName]]: a String,
+//>     [[Explicit]]: a Boolean}, such that the [[ExportName]]s of the Records
+//>     in the List are all distinct.
+//>
+//>   * module.[[UnlinkedDependencies]] &ndash; A List
+//>
+//>   * module.[[ImportEntries]] &ndash; 
+//>
+//>   * module.[[ImportDefinitions]] &ndash; 
+//>
+//>   * module.[[LinkErrors]] &ndash; A List of Objects, errors detected during
+//>     linking.
+//>
 //> The [[Prototype]] of a Module object is always null.
 //>
 //> A Module object has accessor properties that correspond exactly to its
